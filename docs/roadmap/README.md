@@ -1,3 +1,3 @@
-# Roadmap
+# Roadmap (superseded index)
 
-Sprint 0 will review ADR-000 and convert validated boundaries into canonical architecture decisions.
+The canonical AAO roadmap is [Flagship V1 roadmap](flagship-v1.md). This file is retained only as a stable pointer; it contains no competing roadmap.

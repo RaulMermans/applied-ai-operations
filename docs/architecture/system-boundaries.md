@@ -1,0 +1,33 @@
+# System boundaries
+
+This document assigns responsibility among AAO architectural layers. The workflow runtime is the primary execution layer; all layers retain AAO-owned contracts even when infrastructure is used underneath.
+
+## Control Plane
+
+Owns workflow and agent definitions, tool registrations, model policies, company configuration, permissions, approvals, run inspection, and evaluation configuration. Future user interfaces consume this layer.
+
+## Workflow Runtime
+
+Loads, validates, and compiles workflow specifications; executes nodes and routes edges; manages the run lifecycle and state; enforces budgets; coordinates pause/resume; and emits canonical runtime events. LangGraph may support this layer but cannot define AAO's public contract.
+
+## Model Layer
+
+Transforms an AAO model request through AAO policy and provider/model resolution to a provider adapter, then returns a canonical model result. Vercel AI SDK may operate behind this boundary; provider SDK types cannot become AAO contracts.
+
+## Tool Layer and MCP Connector Layer
+
+The Tool Layer owns canonical tool contracts, input/output validation, namespaces, risk classes, permissions, invocation, canonical errors, and audit metadata. The MCP Connector Layer treats MCP as a connector protocol for external tools, resources, and appropriate prompts. AAO owns MCP host behavior, authorization, exposure, orchestration, approval, state, traces, and evaluation; MCP is not the workflow engine.
+
+## Governance Layer
+
+Owns actors, roles, permissions, policies, risk classification, approval requirements, sensitive-data rules, and side-effect authorization. It remains deterministic.
+
+## Durability Layer
+
+Owns run persistence, checkpoints, resume, interruption recovery, persisted operation records, and future side-effect idempotency. AAO owns the semantics while storage technology remains replaceable. AAO makes no exactly-once claim.
+
+## Observability and Evaluation Layers
+
+Observability owns canonical execution truth: run and node events, model and tool calls, retries, approvals, checkpoints, latency, measurable token and cost use, evaluation results, errors, and artifacts. It is part of correctness, not decorative monitoring.
+
+Evaluation owns workflow and schema evaluation, tool-use and trace assertions, authorization tests, regression cases, safety tests, and model/capability benchmarks. A final response does not establish correct execution.

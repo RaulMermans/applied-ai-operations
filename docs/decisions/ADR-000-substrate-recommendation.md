@@ -1,6 +1,6 @@
-# ADR-000: Provisional substrate recommendation
+# ADR-000: Substrate recommendation
 
-Status: proposed for Sprint 0 review. This does not freeze AAO architecture.
+Status: accepted. This records the Sprint 0 substrate stance; it does not create production AAO contracts or select a deployment.
 
 ## Context
 
@@ -59,7 +59,7 @@ The executable local evidence supports `ADOPT_BEHIND_ADAPTER`; it does not selec
 
 ## Consequences
 
-Sprint 0 may proceed after Sprint 0A.1 to refine canonical contracts and repository structure. The following are explicit future gates, not Sprint 0 architecture-contract prerequisites:
+Sprint 0A and 0A.1 evidence has been incorporated into the canonical architecture contract. The following remain explicit future gates, not architecture-contract prerequisites:
 
 | Future gate | Intended phase |
 | --- | --- |

@@ -1,0 +1,14 @@
+# State, memory, and durability boundaries
+
+These terms have separate responsibilities and must not be conflated.
+
+| Concept | Purpose | Examples | Boundary |
+| --- | --- | --- | --- |
+| State | Active structured data for one workflow run | Inputs, node outputs, routes, approval state, status | Authoritative active run data. |
+| Short-Term Context | Context assembled for a model during the current run | Relevant state, retrieved company information, recent tool output, compressed context | Not authoritative persistence. |
+| Long-Term Memory | Approved reusable knowledge across work | Stable preferences, validated corrections, reusable lessons, approved rules | Not in initial V1; never persist speculative model conclusions as truth. |
+| Checkpoint | Durable recovery snapshot | Approval waitpoints, expensive work, long-running work, external actions, major boundaries | Supports resume and interruption recovery. |
+| Artifact | Intentional run output | Reports, drafts, extracted files, proposals, structured datasets | A first-class output, not an incidental log. |
+| Logs / Traces | Operational execution evidence | Lifecycle events, calls, retries, approvals, errors | Not business state; sensitive data is not copied indiscriminately. |
+
+AAO owns state, checkpoint, run persistence, interruption recovery, and persisted-operation semantics. Underlying storage remains replaceable. Before durable external actions, implementation must establish idempotency keys and a recoverable side-effect design. No exactly-once semantics are claimed.

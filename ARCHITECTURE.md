@@ -1,0 +1,70 @@
+# AAO architecture
+
+Applied AI Operations (AAO) is a reusable runtime and control layer for governed AI-powered operational workflows. AAO is a layer, not an operating system or a generic application product.
+
+The workflow is AAO's primary execution unit. Agents are optional, bounded components that perform open-ended reasoning only where a workflow needs them. Deterministic infrastructure controls the lifecycle and every external action.
+
+```mermaid
+flowchart TB
+  input[Business users, events, processes, and company software] --> intake[Deterministic intake and workflow selection]
+  intake --> spec[AAO workflow specification]
+  spec --> runtime[AAO workflow runtime]
+  runtime --> nodes[Deterministic, model, bounded-agent, tool, approval, and evaluator nodes]
+  nodes --> governance[Deterministic governance and authorization]
+  governance --> approval[Human approval where policy requires]
+  approval --> execution[External execution and verification]
+  execution --> evidence[Trace, audit, artifacts, and evaluation]
+  runtime --> state[AAO state and checkpoint contracts]
+  runtime --> model[AAO model policy and provider adapters]
+  runtime --> tools[AAO tool and capability adapters]
+  tools --> external[APIs, MCP servers, databases, SaaS, and internal systems]
+  model --> external
+```
+
+## Canonical architecture documents
+
+- [Product contract](docs/product/product-contract.md) — product purpose, boundaries, V1 proof, and success criteria.
+- [System boundaries](docs/architecture/system-boundaries.md) — architectural layers and ownership.
+- [Core vs company](docs/architecture/core-vs-company.md) — portability boundary and configuration responsibilities.
+- [Execution model](docs/architecture/execution-model.md) — workflow-first design, responsibility split, and patterns.
+- [Runtime lifecycle](docs/architecture/runtime-lifecycle.md) — run and node states.
+- [State, memory, and durability](docs/architecture/state-memory-durability.md) — persistence and evidence boundaries.
+- [Integration model](docs/architecture/integration-model.md) — capability adapters, provider boundaries, and MCP.
+- [Permission model](docs/security/permission-model.md) — authority, approval, and sensitive-data rules.
+- [Flagship V1 roadmap](docs/roadmap/flagship-v1.md) — the single canonical roadmap.
+
+## Dependency ownership
+
+Dependencies implement infrastructure; AAO defines product semantics.
+
+| Capability | AAO owns | Current substrate stance |
+| --- | --- | --- |
+| Workflow semantics | Yes | LangGraph.js behind an adapter |
+| Model policy and contracts | Yes | Vercel AI SDK behind an adapter |
+| MCP policy and exposure | Yes | Official MCP TypeScript SDK as connector protocol |
+| Durability semantics | Yes | Backing store deferred |
+| Canonical integrations | Yes | Provider capability adapters |
+| Visualization truth | Yes | xyflow may visualize backend truth later |
+| Authorization | Yes | Implementation deferred |
+| Evaluation | Yes | Implementation deferred |
+| Trace model | Yes | Implementation deferred |
+
+The repository's `packages/substrate-contracts`, `packages/substrate-spikes`, and `experiments` remain Sprint 0A research evidence. They are not production packages or final public contracts. A later sprint must explicitly promote, rewrite, migrate, delete, or archive each concept.
+
+## Operating rules
+
+The source-of-truth hierarchy is: executable contracts and schemas once implemented; canonical ADRs; this overview; domain-specific canonical documents; `AGENTS.md`; README summaries; then experiments and research. Architecture changes require ADR updates. Mock and live execution remain distinct.
+
+## Anti-corruption rules
+
+- Maintain one canonical implementation and contract per concept; do not create duplicate runtime paths without an explicit migration plan.
+- Delete, migrate, or explicitly deprecate superseded code; remove or clearly mark superseded documents as historical.
+- Do not conflate mock and live execution, weaken tests to make implementation pass, or let demo hardcoding leak into reusable core architecture.
+- Keep framework-specific types behind adapter boundaries and prevent company-specific requirements from silently changing core semantics.
+- A correct-looking final response is not evidence of reliable execution; evaluate the workflow, tool use, authorization, state, traces, and artifact where applicable.
+- Do not enable side effects without authorization policy or durable side effects without an idempotency and recovery design.
+- Add no infrastructure without a demonstrated requirement.
+
+## Local-first contract
+
+Current development is local-first: Local Control Center → Local Control Plane → Local AAO Runtime / Worker → Local persistence. External APIs, models, and MCP servers are exercised intentionally. No deployment target is selected; no serverless, Vercel, cloud-infrastructure, or hosted-dependency assumption defines the architecture.
