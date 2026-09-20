@@ -24,7 +24,7 @@ This is evidence for a provisional decision, not production architecture. The on
 
 ### Model layer
 
-`model.test.ts` proves an AAO `ModelExecutor` adapter validates structured output and maps provider failure into `ModelExecutionError`, with no API key. The adapter shape intentionally mirrors a Vercel AI SDK structured-generation call but no live provider was tested. A future spike must test direct provider packages and an OpenAI-compatible local endpoint (for example, Ollama/vLLM) before selecting a production provider adapter. Vercel AI SDK can be used in Node; it does not require Vercel deployment, but its current releases should be checked against the supported Node version at adoption time.
+`model.test.ts` proves an AAO `ModelExecutor` adapter executes the installed Vercel AI SDK `generateText`/`Output.object` path against its deterministic test model, validates structured output, and maps invalid output and provider failure into `ModelExecutionError`, with no API key. No live provider was tested. Future gates cover direct provider packages and an OpenAI-compatible local endpoint (for example, Ollama/vLLM) before selecting a production provider adapter. Vercel AI SDK can be used in Node; it does not require Vercel deployment, but its current releases should be checked against the supported Node version at adoption time.
 
 ### MCP
 
@@ -32,7 +32,7 @@ This is evidence for a provisional decision, not production architecture. The on
 
 ### Durability
 
-`durability.test.ts` uses an in-memory map to demonstrate the AAO-owned `DurableExecutor` contract and persisted run shape: `runId`, status, current step, state, completed operations, and checkpoint. After an interruption/resume, an already-completed operation does not run again. This is not crash-safe persistence or side-effect delivery; an adapter needs a durable store and idempotency keys before real external execution.
+`durability.test.ts` uses an in-memory map to demonstrate the AAO-owned `DurableExecutor` contract and persisted run shape: `runId`, status, current step, state, completed operations, and checkpoint. After an interruption/resume, an operation whose in-memory checkpoint was successfully recorded does not run again. This is not crash-safe persistence, atomic side-effect delivery, or exactly-once execution: a crash after the effect and before the record could replay it. A production adapter needs a durable store, idempotency keys, and a recoverable side-effect contract before real external execution.
 
 ### Integrations
 

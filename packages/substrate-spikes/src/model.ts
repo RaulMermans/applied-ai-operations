@@ -1,27 +1,27 @@
 import type { ModelExecutor, ModelRequest, ModelResult } from "@aao/substrate-contracts";
+import { generateText, Output, type LanguageModel } from "ai";
 import { z } from "zod";
 
 export class ModelExecutionError extends Error {}
 
-export type GenerateStructuredObject = (request: {
-  prompt: string;
-  schemaName: string;
-}) => Promise<unknown>;
-
 /**
- * AAO-facing adapter seam for Vercel AI SDK's generateObject-style calls.
- * It is injectable so this spike can run without model credentials.
+ * AAO-facing adapter over the Vercel AI SDK structured-output API.
+ * AI SDK model types remain inside this substrate adapter.
  */
 export class VercelAiModelAdapter implements ModelExecutor {
   constructor(
-    private readonly generateStructuredObject: GenerateStructuredObject,
+    private readonly model: LanguageModel,
     private readonly resultSchema: z.ZodType,
   ) {}
 
   async execute(request: ModelRequest): Promise<ModelResult> {
     try {
-      const raw = await this.generateStructuredObject(request);
-      const parsed = this.resultSchema.safeParse(raw);
+      const result = await generateText({
+        model: this.model,
+        prompt: request.prompt,
+        output: Output.object({ schema: this.resultSchema, name: request.schemaName }),
+      });
+      const parsed = this.resultSchema.safeParse(result.output);
       if (!parsed.success) {
         throw new ModelExecutionError(`Model returned invalid structured output: ${parsed.error.message}`);
       }

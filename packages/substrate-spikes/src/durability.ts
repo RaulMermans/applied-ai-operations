@@ -43,7 +43,11 @@ export class LocalDurableSpike implements DurableExecutor {
     return structuredClone(run);
   }
 
-  /** Idempotently records an operation before an interruption can lead to a replay. */
+  /**
+   * Prevents a duplicate effect only after this in-memory checkpoint has been
+   * successfully recorded. It does not provide atomic side-effect delivery or
+   * crash-safe exactly-once execution.
+   */
   async executeOnce(runId: string, operation: string, effect: () => void): Promise<DurableRun> {
     const run = await this.getRun(runId);
     if (!run.completedOperations.includes(operation)) {

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { CheckpointError, LocalDurableSpike } from "../src/durability.js";
 
 describe("AAO-owned local durability contract", () => {
-  it("resumes a checkpoint and never repeats a completed operation", async () => {
+  it("does not repeat an operation after its in-memory checkpoint was recorded", async () => {
     const durable = new LocalDurableSpike();
     let sideEffects = 0;
     await durable.start("run-1");
