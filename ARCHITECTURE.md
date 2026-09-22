@@ -8,7 +8,8 @@ The workflow is AAO's primary execution unit. Agents are optional, bounded compo
 flowchart TB
   input[Business users, events, processes, and company software] --> intake[Deterministic intake and workflow selection]
   intake --> spec[AAO workflow specification]
-  spec --> runtime[AAO workflow runtime]
+  spec --> validator[Validator / compiler]
+  validator --> runtime[AAO workflow runtime]
   runtime --> nodes[Deterministic, model, bounded-agent, tool, approval, and evaluator nodes]
   nodes --> governance[Deterministic governance and authorization]
   governance --> approval[Human approval where policy requires]

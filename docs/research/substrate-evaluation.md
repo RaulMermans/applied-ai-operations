@@ -38,6 +38,10 @@ This is evidence for a provisional decision, not production architecture. The on
 
 `integrations.test.ts` binds the same `findQualifiedAccounts` workflow to two fake providers with incompatible provider schemas. Both implement AAO's `CrmCapability.searchAccounts`, producing the same logical result. This validates capability canonicalisation, not a universal vendor data model.
 
+### Lab launcher (deferred)
+
+Sprint 0A reserved `apps/substrate-lab` as a placeholder for a future local experiment launcher UI, but intentionally exercised the substrate evidence through Vitest instead of building one. Sprint 1 removed that placeholder once `apps/` began holding real runnable processes (`apps/control-plane`, `apps/worker`), so `apps/` would not mix a fake application with production process boundaries. A local experiment launcher remains a plausible future tool; it is not scheduled.
+
 ## Integration assessment
 
 Composio's SDK is MIT, but its credential/tool execution model is a hosted-dependency concern. Evaluate only a narrowly scoped, read-only connector behind AAO tool/permission contracts when an actual provider priority exists. Nango's Elastic License and hosted/enterprise positioning make it unsuitable as a default dependency now; it may later serve only as an authenticated-connection implementation, never as AAO's canonical tools or policy layer. Native adapters remain preferable for the first critical providers where stable capability semantics, auditability, and deterministic side effects matter.

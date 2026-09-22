@@ -1,0 +1,15 @@
+{
+  "name": "@aao/control-plane",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@aao/config": "workspace:*",
+    "fastify": "^5.2.1"
+  }
+}

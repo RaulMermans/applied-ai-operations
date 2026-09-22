@@ -8,7 +8,27 @@ AAO is a layer, not an operating system, chatbot, agent marketplace, no-code wor
 
 ## Current status
 
-`ARCHITECTURE_CONTRACT_COMPLETE` — Sprint 0 has frozen the product and architecture contract. The repository is local-first and contains substrate research plus executable research spikes. **The production AAO runtime is not implemented yet.** Sprint 1 will establish the engineering foundation; Sprint 2 will define executable production contracts.
+Sprint 0 architecture contract complete. Sprint 1 engineering foundation complete (`SPRINT_01_ENGINEERING_FOUNDATION_COMPLETE`).
+
+Available:
+
+- a local Control Plane (`apps/control-plane`, Fastify, `/health/live` and `/health/ready`)
+- a local Worker (`apps/worker`, a separate process with a `CREATED → RUNNING → STOPPED` lifecycle)
+- deterministic typed configuration (`packages/config`)
+- an independent build per package/app, run from compiled JavaScript
+- CI mirroring local verification (`typecheck → lint → test → build`)
+
+Not yet implemented:
+
+- production workflow runtime
+- model/agent execution
+- tools/integrations
+- persistence
+- approvals
+- eval runtime
+- Control Center UI
+
+The repository remains local-first. `packages/substrate-contracts`, `packages/substrate-spikes`, and `experiments/` are Sprint 0A research evidence, not production AAO architecture; production code does not depend on them. See [docs/engineering/local-development.md](docs/engineering/local-development.md) to run everything, and [docs/engineering/repository-structure.md](docs/engineering/repository-structure.md) for what exists today.
 
 ## Architecture at a glance
 
@@ -31,10 +51,11 @@ The Sprint 0A evidence remains authoritative for infrastructure selection: LangG
 
 ```sh
 pnpm install --frozen-lockfile
-pnpm typecheck
-pnpm lint
-pnpm test
-pnpm build
+pnpm dev:control-plane   # local Control Plane, http://127.0.0.1:4000
+pnpm dev:worker          # local Worker process
+pnpm check               # typecheck -> lint -> test -> build
 ```
+
+See [docs/engineering/local-development.md](docs/engineering/local-development.md) for the full command reference, configuration, and compiled-build smoke verification.
 
 No deployment target, cloud infrastructure, production model provider, or production runtime is configured. The current `packages/substrate-*` packages and `experiments/` documentation are research evidence, not production AAO architecture.
