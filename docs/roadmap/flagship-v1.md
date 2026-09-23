@@ -8,7 +8,7 @@ This is the single canonical roadmap. It is directional: phases sequence respons
 | --- | --- | --- |
 | Sprint 0 — Product & Architecture Contract | Freeze product, boundaries, governance, lifecycle, substrate ownership, and roadmap. | Complete (`ARCHITECTURE_CONTRACT_COMPLETE`) |
 | Sprint 1 — Engineering Foundation | Establish the local engineering baseline and repository operating foundation. | Complete (`ENGINEERING_FOUNDATION_COMPLETE`) — see [ADR-006](../decisions/ADR-006-local-process-topology-and-engineering-foundation.md) |
-| Sprint 2 — Canonical Domain Contracts | Define executable production contracts for workflows, tools, runs, agents, approvals, traces, and evaluation. | Next |
+| Sprint 2 — Canonical Domain Contracts | Define executable production contracts for workflows, tools, runs, agents, approvals, traces, and evaluation. | Complete (`SPRINT_02_CANONICAL_DOMAIN_CONTRACTS_COMPLETE`) — see [ADR-007](../decisions/ADR-007-canonical-domain-contracts.md) |
 
 ## Phase B — Workflow Runtime
 

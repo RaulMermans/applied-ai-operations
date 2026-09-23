@@ -22,9 +22,25 @@ flowchart TB
   model --> external
 ```
 
+## Canonical domain contracts
+
+`@aao/contracts` (`packages/contracts`) is the canonical, framework-neutral, vendor-neutral semantic boundary for AAO: runtime-validatable Zod schemas, with TypeScript types inferred from them, for Workflow, Node, Edge, Run, State, Checkpoint, Agent, Skill, Model Policy, Tool, Capability, Permission, Policy Decision, Approval, Eval, Trace, Artifact, Capability Pack references, and Company Configuration. The dependency direction is one-way:
+
+```text
+AAO runtime, integrations, governance, evals, packs, deployments
+                              ↓
+                       @aao/contracts
+                              ↓
+                              ✕
+              external frameworks / vendors / providers
+```
+
+See [ADR-007](docs/decisions/ADR-007-canonical-domain-contracts.md) and [domain contracts](docs/architecture/domain-contracts.md) for the full contract inventory, ownership matrix, and what remains deliberately deferred (graph/runtime semantic validation, persistence, execution).
+
 ## Canonical architecture documents
 
 - [Product contract](docs/product/product-contract.md) — product purpose, boundaries, V1 proof, and success criteria.
+- [Domain contracts](docs/architecture/domain-contracts.md) — the canonical `@aao/contracts` inventory and ownership matrix.
 - [System boundaries](docs/architecture/system-boundaries.md) — architectural layers and ownership.
 - [Core vs company](docs/architecture/core-vs-company.md) — portability boundary and configuration responsibilities.
 - [Execution model](docs/architecture/execution-model.md) — workflow-first design, responsibility split, and patterns.
