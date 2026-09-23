@@ -37,10 +37,29 @@ AAO runtime, integrations, governance, evals, packs, deployments
 
 See [ADR-007](docs/decisions/ADR-007-canonical-domain-contracts.md) and [domain contracts](docs/architecture/domain-contracts.md) for the full contract inventory, ownership matrix, and what remains deliberately deferred (graph/runtime semantic validation, persistence, execution).
 
+## Workflow DSL and compiler
+
+`@aao/workflow-dsl` (`packages/workflow-dsl`) authors, parses, schema-validates, semantically validates, and compiles a Workflow before any runtime exists to execute it:
+
+```text
+Workflow Source (YAML/JSON)
+      ↓
+Workflow DSL (parse + canonical schema + semantic graph validation)
+      ↓
+Validator / Compiler
+      ↓
+CompiledWorkflowPlan
+      ↓
+Future Workflow Runtime (not implemented)
+```
+
+`CompiledWorkflowPlan` is a framework-neutral, JSON-safe, deterministic artifact — it is not a runtime, and nothing in this repository executes it yet. See [ADR-008](docs/decisions/ADR-008-workflow-dsl-and-compiler.md) and [workflow DSL](docs/architecture/workflow-dsl.md) for the full pipeline, diagnostic codes, and what remains deliberately deferred (condition evaluation, Node Registry, node config validation, registry existence checks, execution).
+
 ## Canonical architecture documents
 
 - [Product contract](docs/product/product-contract.md) — product purpose, boundaries, V1 proof, and success criteria.
 - [Domain contracts](docs/architecture/domain-contracts.md) — the canonical `@aao/contracts` inventory and ownership matrix.
+- [Workflow DSL](docs/architecture/workflow-dsl.md) — YAML/JSON authoring, parsing, semantic validation, and compilation into a `CompiledWorkflowPlan`.
 - [System boundaries](docs/architecture/system-boundaries.md) — architectural layers and ownership.
 - [Core vs company](docs/architecture/core-vs-company.md) — portability boundary and configuration responsibilities.
 - [Execution model](docs/architecture/execution-model.md) — workflow-first design, responsibility split, and patterns.

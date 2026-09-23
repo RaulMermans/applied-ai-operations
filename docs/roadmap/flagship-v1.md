@@ -14,6 +14,11 @@ This is the single canonical roadmap. It is directional: phases sequence respons
 
 Implement workflow DSL, validation and compiler, node registry, runtime executor, and state/reducers.
 
+| Sprint / outcome | Scope | Status |
+| --- | --- | --- |
+| Sprint 3 — Workflow DSL, Semantic Validation & Compiler | Author workflows as YAML/JSON, validate them against canonical schema plus graph-level semantics (reachability, termination, routing, cycles), and compile a valid workflow into a framework-neutral `CompiledWorkflowPlan`. | Complete (`SPRINT_03_WORKFLOW_DSL_COMPILER_COMPLETE`) — see [ADR-008](../decisions/ADR-008-workflow-dsl-and-compiler.md) |
+| Sprint 4 — Node Registry & Runtime V1 | Node Registry, node-specific config validation, and the first execution runtime over a `CompiledWorkflowPlan`. | Not started |
+
 ## Phase C — AI Layer
 
 Implement model abstraction, capability/model routing, and bounded agent runtime.

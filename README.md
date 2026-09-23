@@ -8,7 +8,7 @@ AAO is a layer, not an operating system, chatbot, agent marketplace, no-code wor
 
 ## Current status
 
-Sprint 0 architecture contract complete. Sprint 1 engineering foundation complete (`SPRINT_01_ENGINEERING_FOUNDATION_COMPLETE`). Sprint 2 canonical domain contracts complete (`SPRINT_02_CANONICAL_DOMAIN_CONTRACTS_COMPLETE`).
+Sprint 0 architecture contract complete. Sprint 1 engineering foundation complete (`SPRINT_01_ENGINEERING_FOUNDATION_COMPLETE`). Sprint 2 canonical domain contracts complete (`SPRINT_02_CANONICAL_DOMAIN_CONTRACTS_COMPLETE`). Sprint 3 workflow DSL and compiler complete (`SPRINT_03_WORKFLOW_DSL_COMPILER_COMPLETE`).
 
 Available:
 
@@ -16,12 +16,14 @@ Available:
 - a local Worker (`apps/worker`, a separate process with a `CREATED → RUNNING → STOPPED` lifecycle)
 - deterministic typed configuration (`packages/config`)
 - canonical, runtime-validatable domain contracts (`packages/contracts`, `@aao/contracts`) for Workflow, Node, Edge, Run, State, Checkpoint, Agent, Skill, Model Policy, Tool, Capability, Permission, Policy Decision, Approval, Eval, Trace, Artifact, Capability Pack references, and Company Configuration — see [ADR-007](docs/decisions/ADR-007-canonical-domain-contracts.md) and [domain contracts](docs/architecture/domain-contracts.md)
+- a Workflow DSL and compiler (`packages/workflow-dsl`, `@aao/workflow-dsl`) that parses YAML/JSON workflow definitions, validates them against `WorkflowSchema`, performs graph-level semantic validation (reachability, termination, routing ambiguity, cycle rejection), and compiles a valid workflow into a framework-neutral `CompiledWorkflowPlan` — see [ADR-008](docs/decisions/ADR-008-workflow-dsl-and-compiler.md) and [workflow DSL](docs/architecture/workflow-dsl.md)
 - an independent build per package/app, run from compiled JavaScript
 - CI mirroring local verification (`typecheck → lint → test → build`)
 
 Not yet implemented:
 
-- production workflow runtime
+- production workflow runtime (a compiled plan is not an executed plan)
+- Node Registry, node-specific config validation, or registry existence checks
 - model/agent execution
 - tools/integrations
 - persistence
@@ -29,7 +31,7 @@ Not yet implemented:
 - eval runtime
 - Control Center UI
 
-AAO does not yet execute production workflows: `@aao/contracts` defines the shapes those systems will use, not the systems themselves.
+AAO can determine whether a workflow definition is structurally and semantically valid enough to execute, but does not yet execute production workflows: `@aao/contracts` and `@aao/workflow-dsl` define and validate the shapes those systems will use, not the systems themselves.
 
 The repository remains local-first. `packages/substrate-contracts`, `packages/substrate-spikes`, and `experiments/` are Sprint 0A research evidence, not production AAO architecture; production code does not depend on them. See [docs/engineering/local-development.md](docs/engineering/local-development.md) to run everything, and [docs/engineering/repository-structure.md](docs/engineering/repository-structure.md) for what exists today.
 

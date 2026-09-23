@@ -1,0 +1,22 @@
+# The smallest valid workflow: one deterministic node, one explicit
+# final_output node, one edge between them. Proves the minimum shape the
+# compiler accepts.
+schemaVersion: 1
+id: examples.minimal
+version: "1.0.0"
+name: Minimal workflow
+description: One deterministic node routing directly to an explicit final output.
+entryNodeId: intake
+nodes:
+  - id: intake
+    kind: deterministic
+    name: Intake
+    config:
+      operation: normalize
+  - id: final
+    kind: final_output
+    name: Final output
+    config: {}
+edges:
+  - sourceNodeId: intake
+    targetNodeId: final

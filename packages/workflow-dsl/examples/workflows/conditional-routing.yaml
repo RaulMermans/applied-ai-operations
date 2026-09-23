@@ -1,0 +1,54 @@
+# Demonstrates conditional branching with an explicit default route: the
+# entry node fans out into two conditional branches plus one unconditional
+# fallback, and every branch converges on an explicit final_output node.
+# Conditions are opaque, provider-neutral JSON — nothing here evaluates them.
+schemaVersion: 1
+id: examples.conditional-routing
+version: "1.0.0"
+name: Conditional routing example
+description: Entry routes on a condition, with an explicit default branch, into a shared final output.
+entryNodeId: intake
+nodes:
+  - id: intake
+    kind: deterministic
+    name: Classify request priority
+    config:
+      operation: classify_priority
+  - id: handle-priority
+    kind: deterministic
+    name: Handle priority request
+    config:
+      operation: expedite
+  - id: handle-standard
+    kind: deterministic
+    name: Handle standard request
+    config:
+      operation: queue_standard
+  - id: handle-default
+    kind: deterministic
+    name: Handle unclassified request
+    config:
+      operation: queue_default
+  - id: final
+    kind: final_output
+    name: Final output
+    config: {}
+edges:
+  - sourceNodeId: intake
+    targetNodeId: handle-priority
+    condition:
+      when: priority_equals
+      value: high
+  - sourceNodeId: intake
+    targetNodeId: handle-standard
+    condition:
+      when: priority_equals
+      value: medium
+  - sourceNodeId: intake
+    targetNodeId: handle-default
+  - sourceNodeId: handle-priority
+    targetNodeId: final
+  - sourceNodeId: handle-standard
+    targetNodeId: final
+  - sourceNodeId: handle-default
+    targetNodeId: final

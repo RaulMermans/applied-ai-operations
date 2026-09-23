@@ -1,0 +1,50 @@
+# Structural shape of a governed operational request: intake -> model
+# reasoning -> a proposed tool action -> required human approval -> explicit
+# final output. Node config is opaque JSON (deferred to the future Node
+# Registry) and capability/tool references are provider-neutral identifiers
+# (e.g. "crm.accounts.update"), never a vendor SDK call. Nothing here
+# executes; this is a structural example, not a runnable workflow.
+schemaVersion: 1
+id: examples.governed-operational-request
+version: "1.0.0"
+name: Governed operational request
+description: Intake, reasoning, a proposed tool action, required approval, then an explicit final output.
+entryNodeId: intake
+nodes:
+  - id: intake
+    kind: deterministic
+    name: Normalize request
+    config:
+      operation: normalize_request
+  - id: reason
+    kind: model
+    name: Reason about the request
+    config: {}
+  - id: propose-action
+    kind: tool
+    name: Propose an account update
+    config:
+      toolRef: crm.accounts.update
+      capabilityRef: crm.accounts.update
+  - id: require-approval
+    kind: approval
+    name: Require human approval
+    config:
+      permissionClasses:
+        - external_side_effect
+  - id: final
+    kind: final_output
+    name: Final output
+    config: {}
+edges:
+  - sourceNodeId: intake
+    targetNodeId: reason
+  - sourceNodeId: reason
+    targetNodeId: propose-action
+  - sourceNodeId: propose-action
+    targetNodeId: require-approval
+  - sourceNodeId: require-approval
+    targetNodeId: final
+requiredCapabilities:
+  - crm.accounts.search
+  - crm.accounts.update

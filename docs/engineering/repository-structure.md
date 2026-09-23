@@ -10,6 +10,7 @@ apps/
 packages/
   config/                  @aao/config — deterministic runtime configuration
   contracts/               @aao/contracts — canonical domain contracts (Sprint 2)
+  workflow-dsl/            @aao/workflow-dsl — workflow authoring, validation, and compiler (Sprint 3)
   substrate-contracts/     research evidence, not production architecture
   substrate-spikes/        research evidence, not production architecture
 
@@ -37,6 +38,10 @@ Deterministic, typed configuration loading for the Control Plane and Worker proc
 
 The canonical, framework-neutral, vendor-neutral production contract package (Sprint 2). Runtime-validatable Zod schemas — with TypeScript types inferred from them — for Workflow, Node, Edge, Run, State, Checkpoint, Agent, Skill, Model Policy, Tool, Capability, Permission, Policy Decision, Approval, Eval, Trace, Artifact, Capability Pack references, and Company Configuration. Its only dependency is `zod`; it does not depend on `apps/*`, `packages/config`, or either `packages/substrate-*` package, and no app currently depends on it — adoption happens only when a real feature requires it. See [ADR-007](../decisions/ADR-007-canonical-domain-contracts.md) and [domain contracts](../architecture/domain-contracts.md).
 
+## `packages/workflow-dsl` — `@aao/workflow-dsl`
+
+The Workflow DSL and compiler (Sprint 3). Parses YAML/JSON workflow source into the canonical `Workflow` shape (via `@aao/contracts`'s `WorkflowSchema`), performs graph-level semantic validation deferred by ADR-007 (node uniqueness, entry/edge reference integrity, reachability, terminal semantics, routing ambiguity, cycle rejection), and compiles a valid workflow into a framework-neutral, JSON-safe, deterministic `CompiledWorkflowPlan`. Its only production dependencies are `@aao/contracts` and `yaml`; it does not depend on LangGraph, Fastify, `apps/*`, or either `packages/substrate-*` package, and no app currently depends on it — there is no Node Registry or runtime to invoke it yet. See [ADR-008](../decisions/ADR-008-workflow-dsl-and-compiler.md) and [workflow DSL](../architecture/workflow-dsl.md).
+
 ## `packages/substrate-contracts` and `packages/substrate-spikes`
 
 Sprint 0A research evidence for the [substrate recommendation](../decisions/ADR-000-substrate-recommendation.md): executable spikes proving LangGraph.js, the Vercel AI SDK, and the MCP TypeScript SDK can sit behind AAO-owned contracts. **They are research evidence, not production AAO architecture.** Production code (`apps/*`, `packages/config`) does not import them. A later sprint will explicitly classify each concept as `PROMOTE`, `REWRITE`, `ARCHIVE`, or `DELETE`.
@@ -54,4 +59,4 @@ Narrative research notes (durability, graph runtime, integrations, MCP, model la
 
 ## Build and typecheck shape
 
-Every runnable package (`packages/config`, `packages/contracts`, `apps/control-plane`, `apps/worker`) and the retained research packages each have their own `tsconfig.json` (typecheck, includes `src` and `test`) and `tsconfig.build.json` (build, excludes `test`, emits to that package's own `dist/`), both extending the shared [`tsconfig.base.json`](../../tsconfig.base.json) at the repository root. Each package builds independently; `pnpm build` runs every package's build script in dependency order (`pnpm -r`), so `@aao/config` compiles before the apps that depend on it. No `dist/` output is committed. See [local-development.md](local-development.md) for the day-to-day commands.
+Every runnable package (`packages/config`, `packages/contracts`, `packages/workflow-dsl`, `apps/control-plane`, `apps/worker`) and the retained research packages each have their own `tsconfig.json` (typecheck, includes `src` and `test`) and `tsconfig.build.json` (build, excludes `test`, emits to that package's own `dist/`), both extending the shared [`tsconfig.base.json`](../../tsconfig.base.json) at the repository root. Each package builds independently; `pnpm build` runs every package's build script in dependency order (`pnpm -r`), so `@aao/config` compiles before the apps that depend on it. No `dist/` output is committed. See [local-development.md](local-development.md) for the day-to-day commands.
