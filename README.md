@@ -8,7 +8,7 @@ AAO is a layer, not an operating system, chatbot, agent marketplace, no-code wor
 
 ## Current status
 
-Sprint 0 architecture contract complete. Sprint 1 engineering foundation complete (`SPRINT_01_ENGINEERING_FOUNDATION_COMPLETE`). Sprint 2 canonical domain contracts complete (`SPRINT_02_CANONICAL_DOMAIN_CONTRACTS_COMPLETE`). Sprint 3 workflow DSL and compiler complete (`SPRINT_03_WORKFLOW_DSL_COMPILER_COMPLETE`).
+Sprint 0 architecture contract complete. Sprint 1 engineering foundation complete (`SPRINT_01_ENGINEERING_FOUNDATION_COMPLETE`). Sprint 2 canonical domain contracts complete (`SPRINT_02_CANONICAL_DOMAIN_CONTRACTS_COMPLETE`). Sprint 3 workflow DSL and compiler complete (`SPRINT_03_WORKFLOW_DSL_COMPILER_COMPLETE`). Sprint 4 Node Registry and Runtime V1 complete (`SPRINT_04_RUNTIME_V1_COMPLETE`).
 
 Available:
 
@@ -17,21 +17,20 @@ Available:
 - deterministic typed configuration (`packages/config`)
 - canonical, runtime-validatable domain contracts (`packages/contracts`, `@aao/contracts`) for Workflow, Node, Edge, Run, State, Checkpoint, Agent, Skill, Model Policy, Tool, Capability, Permission, Policy Decision, Approval, Eval, Trace, Artifact, Capability Pack references, and Company Configuration — see [ADR-007](docs/decisions/ADR-007-canonical-domain-contracts.md) and [domain contracts](docs/architecture/domain-contracts.md)
 - a Workflow DSL and compiler (`packages/workflow-dsl`, `@aao/workflow-dsl`) that parses YAML/JSON workflow definitions, validates them against `WorkflowSchema`, performs graph-level semantic validation (reachability, termination, routing ambiguity, cycle rejection), and compiles a valid workflow into a framework-neutral `CompiledWorkflowPlan` — see [ADR-008](docs/decisions/ADR-008-workflow-dsl-and-compiler.md) and [workflow DSL](docs/architecture/workflow-dsl.md)
+- a Node Registry and deterministic Runtime V1 (`packages/runtime`, `@aao/runtime`) that executes a `CompiledWorkflowPlan`: runtime preflight, sequential unconditional routing, explicit state-patch application, and a structured failure taxonomy — see [ADR-009](docs/decisions/ADR-009-node-registry-and-runtime-v1.md) and [runtime V1](docs/architecture/runtime-v1.md)
 - an independent build per package/app, run from compiled JavaScript
-- CI mirroring local verification (`typecheck → lint → test → build`)
+- CI mirroring local verification (`typecheck → lint → build → test`)
 
 Not yet implemented:
 
-- production workflow runtime (a compiled plan is not an executed plan)
-- Node Registry, node-specific config validation, or registry existence checks
-- model/agent execution
-- tools/integrations
-- persistence
-- approvals
-- eval runtime
+- model, agent, tool, approval, or evaluator node execution (Runtime V1 executes only explicitly registered deterministic/`final_output` executors)
+- conditional routing evaluation
+- integrations (Integration Fabric)
+- persistence, durability, retries, or recovery
+- runtime evals
 - Control Center UI
 
-AAO can determine whether a workflow definition is structurally and semantically valid enough to execute, but does not yet execute production workflows: `@aao/contracts` and `@aao/workflow-dsl` define and validate the shapes those systems will use, not the systems themselves.
+AAO can now execute a validated, deterministic, unconditional workflow through a framework-neutral Node Registry and runtime engine — but Runtime V1 currently executes only explicitly registered safe/deterministic node executors and `final_output` over unconditional workflows. It does not yet execute AI workflows: no model, agent, or tool node has an implementation, and any workflow that reaches one fails a deterministic preflight check rather than partially executing.
 
 The repository remains local-first. `packages/substrate-contracts`, `packages/substrate-spikes`, and `experiments/` are Sprint 0A research evidence, not production AAO architecture; production code does not depend on them. See [docs/engineering/local-development.md](docs/engineering/local-development.md) to run everything, and [docs/engineering/repository-structure.md](docs/engineering/repository-structure.md) for what exists today.
 
@@ -58,7 +57,7 @@ The Sprint 0A evidence remains authoritative for infrastructure selection: LangG
 pnpm install --frozen-lockfile
 pnpm dev:control-plane   # local Control Plane, http://127.0.0.1:4000
 pnpm dev:worker          # local Worker process
-pnpm check               # typecheck -> lint -> test -> build
+pnpm check               # typecheck -> lint -> build -> test
 ```
 
 See [docs/engineering/local-development.md](docs/engineering/local-development.md) for the full command reference, configuration, and compiled-build smoke verification.

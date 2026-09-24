@@ -87,6 +87,8 @@ interface CompiledWorkflowPlan {
 
 The plan is built from a deep JSON clone of the input `Workflow`, so `compileWorkflow` never mutates its caller's object. It contains no `Map`, `Set`, class instance, or function — it is plain, JSON-safe data that survives `JSON.stringify` → `JSON.parse` without semantic loss, and compiling the same workflow repeatedly produces equivalent output (no timestamps, random ids, or environment-dependent values). Equivalent YAML and JSON source documents compile into equivalent plans.
 
+`CompiledWorkflowPlanSchema` (`src/compiled-plan-schema.ts`) is a runtime-validatable Zod schema for this same shape, with `CompiledWorkflowPlan` inferred from it. `compileWorkflow` itself never needs it — it controls every field it writes — but a consumer that receives a plan it did not produce (the Runtime, in `@aao/runtime`) can validate it defensively rather than trusting the TypeScript type alone. This is the reason this package depends on `zod` directly, not only transitively through `@aao/contracts`.
+
 ## Deferred semantics
 
 Explicitly out of scope for this sprint — do not assume any of the following exists yet:

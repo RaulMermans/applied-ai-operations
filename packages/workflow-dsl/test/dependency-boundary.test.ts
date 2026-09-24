@@ -48,16 +48,16 @@ describe("framework and vendor import boundary", () => {
     }
   });
 
-  it("declares only @aao/contracts and yaml as production dependencies", () => {
+  it("declares only @aao/contracts, yaml, and zod as production dependencies", () => {
     const packageJson = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")) as {
       dependencies?: Record<string, string>;
     };
-    expect(Object.keys(packageJson.dependencies ?? {}).sort()).toEqual(["@aao/contracts", "yaml"]);
+    expect(Object.keys(packageJson.dependencies ?? {}).sort()).toEqual(["@aao/contracts", "yaml", "zod"]);
   });
 
-  it("only imports @aao/contracts and yaml as non-relative production dependencies", () => {
+  it("only imports @aao/contracts, yaml, and zod as non-relative production dependencies", () => {
     const importPattern = /^\s*(?:import|export)[^;\n]*\sfrom\s+["']([^"'.][^"']*)["']/gm;
-    const allowed = new Set(["@aao/contracts", "yaml"]);
+    const allowed = new Set(["@aao/contracts", "yaml", "zod"]);
     for (const file of sourceFiles) {
       const codeOnly = stripComments(readFileSync(file, "utf8"));
       for (const match of codeOnly.matchAll(importPattern)) {

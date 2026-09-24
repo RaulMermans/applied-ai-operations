@@ -50,16 +50,33 @@ Validator / Compiler
       ↓
 CompiledWorkflowPlan
       ↓
-Future Workflow Runtime (not implemented)
+Runtime V1 (@aao/runtime — see below)
 ```
 
-`CompiledWorkflowPlan` is a framework-neutral, JSON-safe, deterministic artifact — it is not a runtime, and nothing in this repository executes it yet. See [ADR-008](docs/decisions/ADR-008-workflow-dsl-and-compiler.md) and [workflow DSL](docs/architecture/workflow-dsl.md) for the full pipeline, diagnostic codes, and what remains deliberately deferred (condition evaluation, Node Registry, node config validation, registry existence checks, execution).
+`CompiledWorkflowPlan` is a framework-neutral, JSON-safe, deterministic artifact. See [ADR-008](docs/decisions/ADR-008-workflow-dsl-and-compiler.md) and [workflow DSL](docs/architecture/workflow-dsl.md) for the full pipeline, diagnostic codes, and what remains deliberately deferred (condition evaluation, node config validation, registry existence checks).
+
+## Runtime V1 and Node Registry
+
+`@aao/runtime` (`packages/runtime`) is the first production execution engine over a `CompiledWorkflowPlan`:
+
+```text
+CompiledWorkflowPlan
+      ↓
+Runtime V1 (preflight, sequential unconditional execution, state-patch application)
+      ↓
+Node Registry
+      ↓
+Registered Node Executor (trusted, code-registered — never authored by workflow source)
+```
+
+Runtime V1 executes only unconditional routing with explicitly registered executors; conditional workflows and unsupported node kinds (`model`, `agent`, `tool`, `approval`, `evaluator`) fail a deterministic preflight check before any node executes, rather than partially executing. See [ADR-009](docs/decisions/ADR-009-node-registry-and-runtime-v1.md) and [runtime V1](docs/architecture/runtime-v1.md) for the full pipeline, state semantics, and failure taxonomy, and what remains deliberately deferred (conditional routing, model/agent/tool/approval/evaluator execution, retries, persistence, durability, parallel execution).
 
 ## Canonical architecture documents
 
 - [Product contract](docs/product/product-contract.md) — product purpose, boundaries, V1 proof, and success criteria.
 - [Domain contracts](docs/architecture/domain-contracts.md) — the canonical `@aao/contracts` inventory and ownership matrix.
 - [Workflow DSL](docs/architecture/workflow-dsl.md) — YAML/JSON authoring, parsing, semantic validation, and compilation into a `CompiledWorkflowPlan`.
+- [Runtime V1](docs/architecture/runtime-v1.md) — Node Registry, runtime preflight, deterministic execution, and state/failure semantics.
 - [System boundaries](docs/architecture/system-boundaries.md) — architectural layers and ownership.
 - [Core vs company](docs/architecture/core-vs-company.md) — portability boundary and configuration responsibilities.
 - [Execution model](docs/architecture/execution-model.md) — workflow-first design, responsibility split, and patterns.

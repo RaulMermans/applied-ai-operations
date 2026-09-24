@@ -11,6 +11,7 @@ packages/
   config/                  @aao/config — deterministic runtime configuration
   contracts/               @aao/contracts — canonical domain contracts (Sprint 2)
   workflow-dsl/            @aao/workflow-dsl — workflow authoring, validation, and compiler (Sprint 3)
+  runtime/                 @aao/runtime — Node Registry and Runtime V1 (Sprint 4)
   substrate-contracts/     research evidence, not production architecture
   substrate-spikes/        research evidence, not production architecture
 
@@ -40,7 +41,11 @@ The canonical, framework-neutral, vendor-neutral production contract package (Sp
 
 ## `packages/workflow-dsl` — `@aao/workflow-dsl`
 
-The Workflow DSL and compiler (Sprint 3). Parses YAML/JSON workflow source into the canonical `Workflow` shape (via `@aao/contracts`'s `WorkflowSchema`), performs graph-level semantic validation deferred by ADR-007 (node uniqueness, entry/edge reference integrity, reachability, terminal semantics, routing ambiguity, cycle rejection), and compiles a valid workflow into a framework-neutral, JSON-safe, deterministic `CompiledWorkflowPlan`. Its only production dependencies are `@aao/contracts` and `yaml`; it does not depend on LangGraph, Fastify, `apps/*`, or either `packages/substrate-*` package, and no app currently depends on it — there is no Node Registry or runtime to invoke it yet. See [ADR-008](../decisions/ADR-008-workflow-dsl-and-compiler.md) and [workflow DSL](../architecture/workflow-dsl.md).
+The Workflow DSL and compiler (Sprint 3). Parses YAML/JSON workflow source into the canonical `Workflow` shape (via `@aao/contracts`'s `WorkflowSchema`), performs graph-level semantic validation deferred by ADR-007 (node uniqueness, entry/edge reference integrity, reachability, terminal semantics, routing ambiguity, cycle rejection), and compiles a valid workflow into a framework-neutral, JSON-safe, deterministic `CompiledWorkflowPlan`. Its production dependencies are `@aao/contracts`, `yaml`, and `zod` (the last for `CompiledWorkflowPlanSchema`, a defensive runtime-validatable schema for the plan it produces — see ADR-009); it does not depend on LangGraph, Fastify, `apps/*`, or either `packages/substrate-*` package. See [ADR-008](../decisions/ADR-008-workflow-dsl-and-compiler.md) and [workflow DSL](../architecture/workflow-dsl.md).
+
+## `packages/runtime` — `@aao/runtime`
+
+The Node Registry and Runtime V1 (Sprint 4). Consumes a `CompiledWorkflowPlan` (never parses workflow source itself) and executes it: a constructible, non-global Node Registry; a runtime preflight that rejects conditional routing and missing node executors before any node runs; a deterministic sequential engine that applies validated, JSON-safe state patches and follows the plan's unconditional routing; and a small structured Runtime failure taxonomy. Its production dependencies are `@aao/contracts`, `@aao/workflow-dsl`, and `zod`; it does not depend on LangGraph, the Vercel AI SDK, the MCP SDK, Fastify, `apps/*`, or either `packages/substrate-*` package, and no app currently depends on it — there is no persistence or run-scheduling layer to wire it into yet. See [ADR-009](../decisions/ADR-009-node-registry-and-runtime-v1.md) and [runtime V1](../architecture/runtime-v1.md).
 
 ## `packages/substrate-contracts` and `packages/substrate-spikes`
 
@@ -59,4 +64,4 @@ Narrative research notes (durability, graph runtime, integrations, MCP, model la
 
 ## Build and typecheck shape
 
-Every runnable package (`packages/config`, `packages/contracts`, `packages/workflow-dsl`, `apps/control-plane`, `apps/worker`) and the retained research packages each have their own `tsconfig.json` (typecheck, includes `src` and `test`) and `tsconfig.build.json` (build, excludes `test`, emits to that package's own `dist/`), both extending the shared [`tsconfig.base.json`](../../tsconfig.base.json) at the repository root. Each package builds independently; `pnpm build` runs every package's build script in dependency order (`pnpm -r`), so `@aao/config` compiles before the apps that depend on it. No `dist/` output is committed. See [local-development.md](local-development.md) for the day-to-day commands.
+Every runnable package (`packages/config`, `packages/contracts`, `packages/workflow-dsl`, `packages/runtime`, `apps/control-plane`, `apps/worker`) and the retained research packages each have their own `tsconfig.json` (typecheck, includes `src` and `test`) and `tsconfig.build.json` (build, excludes `test`, emits to that package's own `dist/`), both extending the shared [`tsconfig.base.json`](../../tsconfig.base.json) at the repository root. Each package builds independently; `pnpm build` runs every package's build script in dependency order (`pnpm -r`), so `@aao/config` compiles before the apps that depend on it. No `dist/` output is committed. See [local-development.md](local-development.md) for the day-to-day commands.

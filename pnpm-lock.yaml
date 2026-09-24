@@ -57,6 +57,18 @@ importers:
         specifier: ^3.24.3
         version: 3.25.76
 
+  packages/runtime:
+    dependencies:
+      '@aao/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@aao/workflow-dsl':
+        specifier: workspace:*
+        version: link:../workflow-dsl
+      zod:
+        specifier: ^3.24.3
+        version: 3.25.76
+
   packages/substrate-contracts: {}
 
   packages/substrate-spikes:
@@ -85,6 +97,9 @@ importers:
       yaml:
         specifier: ^2.9.1
         version: 2.9.1
+      zod:
+        specifier: ^3.24.3
+        version: 3.25.76
 
 packages:
 

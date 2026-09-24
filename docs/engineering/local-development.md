@@ -87,7 +87,7 @@ Runs each package's own `tsc -p tsconfig.build.json` in dependency order (`pnpm 
 pnpm check
 ```
 
-Runs `typecheck → lint → test → build`, the same sequence CI runs (see [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)).
+Runs `typecheck → lint → build → test`, the same sequence CI runs (see [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)). Build runs before test because workspace packages resolve each other at runtime through their compiled `dist/` output (`package.json` `"main"`), not their TypeScript source — `pnpm typecheck` alone resolves types via each package's `"types"` field and does not need a prior build, but `pnpm test` alone (without a preceding `pnpm build`) will fail to resolve a cross-package import like `@aao/contracts` or `@aao/workflow-dsl` on a clean checkout.
 
 ## Compiled smoke verification
 

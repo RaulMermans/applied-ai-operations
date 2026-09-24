@@ -17,7 +17,7 @@ Implement workflow DSL, validation and compiler, node registry, runtime executor
 | Sprint / outcome | Scope | Status |
 | --- | --- | --- |
 | Sprint 3 — Workflow DSL, Semantic Validation & Compiler | Author workflows as YAML/JSON, validate them against canonical schema plus graph-level semantics (reachability, termination, routing, cycles), and compile a valid workflow into a framework-neutral `CompiledWorkflowPlan`. | Complete (`SPRINT_03_WORKFLOW_DSL_COMPILER_COMPLETE`) — see [ADR-008](../decisions/ADR-008-workflow-dsl-and-compiler.md) |
-| Sprint 4 — Node Registry & Runtime V1 | Node Registry, node-specific config validation, and the first execution runtime over a `CompiledWorkflowPlan`. | Not started |
+| Sprint 4 — Node Registry & Runtime V1 | Node Registry and the first deterministic execution runtime over a `CompiledWorkflowPlan`: runtime preflight, sequential unconditional routing, explicit state-patch application, and a structured failure taxonomy. | Complete (`SPRINT_04_RUNTIME_V1_COMPLETE`) — see [ADR-009](../decisions/ADR-009-node-registry-and-runtime-v1.md) |
 
 ## Phase C — AI Layer
 

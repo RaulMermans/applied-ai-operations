@@ -5,8 +5,11 @@ on:
     branches: [main]
   pull_request:
 
-# CI is verification only: it typechecks, lints, tests, and builds the
-# repository. It does not deploy, publish, release, or provision anything.
+# CI is verification only: it typechecks, lints, builds, and tests the
+# repository, in that order — build runs before test because workspace
+# packages resolve each other at runtime via their compiled dist/ output
+# (package.json "main"), not their TypeScript source. It does not deploy,
+# publish, release, or provision anything.
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -34,8 +37,8 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      - name: Test
-        run: pnpm test
-
       - name: Build
         run: pnpm build
+
+      - name: Test
+        run: pnpm test

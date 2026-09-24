@@ -1,4 +1,5 @@
-import type { EdgeDefinition, NodeDefinition, NodeId, Workflow } from "@aao/contracts";
+import type { NodeId, Workflow } from "@aao/contracts";
+import type { CompiledWorkflowPlan } from "./compiled-plan-schema.js";
 
 /**
  * V1 authoring formats. Both compile into the same canonical Workflow
@@ -49,14 +50,8 @@ export type WorkflowCompileResult =
  * The framework-neutral, JSON-safe artifact produced once a Workflow has
  * passed parsing, canonical schema validation, and graph semantic
  * validation. No Map/Set/class instances/functions — every field survives
- * JSON.stringify -> JSON.parse without semantic loss.
+ * JSON.stringify -> JSON.parse without semantic loss. The type is inferred
+ * from `CompiledWorkflowPlanSchema` (`compiled-plan-schema.ts`) rather than
+ * hand-maintained separately, matching the pattern `@aao/contracts` uses.
  */
-export interface CompiledWorkflowPlan {
-  schemaVersion: 1;
-  workflow: Workflow;
-  entryNodeId: NodeId;
-  nodesById: Record<NodeId, NodeDefinition>;
-  outgoingEdgesByNode: Record<NodeId, EdgeDefinition[]>;
-  incomingEdgesByNode: Record<NodeId, EdgeDefinition[]>;
-  terminalNodeIds: NodeId[];
-}
+export type { CompiledWorkflowPlan };

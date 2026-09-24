@@ -18,3 +18,4 @@ export { WORKFLOW_DIAGNOSTIC_CODES } from "./diagnostics.js";
 export { parseWorkflowSource } from "./parser.js";
 export { validateWorkflowSemantics } from "./semantic-validator.js";
 export { compileWorkflow, compileWorkflowSource } from "./compiler.js";
+export { CompiledWorkflowPlanSchema } from "./compiled-plan-schema.js";

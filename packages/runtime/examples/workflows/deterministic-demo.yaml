@@ -1,0 +1,33 @@
+# The Runtime V1 proof shape: two deterministic nodes each proposing a
+# literal state patch (interpreted by the test/example "literal patch"
+# executor — see docs/architecture/runtime-v1.md's "Deterministic Node
+# Semantics" note), then an explicit final_output. No company domain, no
+# vendor integration — this exists only to demonstrate end-to-end execution.
+schemaVersion: 1
+id: examples.runtime.deterministic-demo
+version: "1.0.0"
+name: Deterministic Runtime V1 demo
+description: Two deterministic nodes proposing state patches, then an explicit final output.
+entryNodeId: set-value
+nodes:
+  - id: set-value
+    kind: deterministic
+    name: Set value
+    config:
+      statePatch:
+        value: 4
+  - id: set-result
+    kind: deterministic
+    name: Set result
+    config:
+      statePatch:
+        result: 8
+  - id: final
+    kind: final_output
+    name: Final output
+    config: {}
+edges:
+  - sourceNodeId: set-value
+    targetNodeId: set-result
+  - sourceNodeId: set-result
+    targetNodeId: final
