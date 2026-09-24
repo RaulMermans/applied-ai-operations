@@ -24,6 +24,11 @@ Implement workflow DSL, validation and compiler, node registry, runtime executor
 
 Implement model abstraction, capability/model routing, and bounded agent runtime.
 
+| Sprint / outcome | Scope | Status |
+| --- | --- | --- |
+| Sprint 6 — Model Abstraction & Capability Routing | Provider-neutral `@aao/model-runtime`: validated text/structured model requests and results, explicit Model and Model Policy registries, deterministic capability routing (no fallback/retry), a Vercel AI SDK adapter over an injected model, and an explicitly registered `model` node executed by the managed Runtime. | Complete (`SPRINT_06_MODEL_RUNTIME_COMPLETE`) — see [ADR-011](../decisions/ADR-011-model-runtime-and-capability-routing.md) |
+| Sprint 7 — Bounded Agent Runtime | Bounded agents built on top of the managed AAO Runtime and Model Runtime — not bypassing them. | Next |
+
 ## Phase D — Tool Infrastructure
 
 Implement tool registry, authorization middleware, and MCP connector layer.

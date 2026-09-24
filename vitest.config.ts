@@ -22,6 +22,10 @@ export default defineConfig({
     alias: [
       workspaceSourceAlias("@aao/config", "./packages/config/src/index.ts"),
       workspaceSourceAlias("@aao/contracts", "./packages/contracts/src/index.ts"),
+      // Subpath first: a string alias also matches "@aao/model-runtime/..." as a prefix.
+      workspaceSourceAlias("@aao/model-runtime/vercel-ai", "./packages/model-runtime/src/adapters/vercel-ai.ts"),
+      workspaceSourceAlias("@aao/model-runtime", "./packages/model-runtime/src/index.ts"),
+      workspaceSourceAlias("@aao/runtime", "./packages/runtime/src/index.ts"),
       workspaceSourceAlias("@aao/substrate-contracts", "./packages/substrate-contracts/src/index.ts"),
       workspaceSourceAlias("@aao/workflow-dsl", "./packages/workflow-dsl/src/index.ts"),
     ],

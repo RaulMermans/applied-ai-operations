@@ -126,6 +126,8 @@ Two lifecycle invariants are enforced by comparing *instants*, never raw ISO str
 
 Node execution history intentionally carries no timestamps.
 
+A `model` node's `ModelRequest`/`ModelResult` appear in `RunState` (and therefore in snapshots) only because the workflow put them there under explicit top-level keys — Model Runtime keeps no hidden conversation state (see [model runtime](model-runtime.md)).
+
 ## State snapshots and Runtime execution snapshots
 
 `captureStateSnapshot(state, capturedAt)` (`state.ts`) builds a canonical `StateSnapshot` (`@aao/contracts`): a deep clone of `RunState.values`, its `runId` and `revision`, and the given `capturedAt`. It is domain data, not a persistence guarantee.

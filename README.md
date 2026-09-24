@@ -8,7 +8,7 @@ AAO is a layer, not an operating system, chatbot, agent marketplace, no-code wor
 
 ## Current status
 
-Sprint 0 architecture contract complete. Sprint 1 engineering foundation complete (`SPRINT_01_ENGINEERING_FOUNDATION_COMPLETE`). Sprint 2 canonical domain contracts complete (`SPRINT_02_CANONICAL_DOMAIN_CONTRACTS_COMPLETE`). Sprint 3 workflow DSL and compiler complete (`SPRINT_03_WORKFLOW_DSL_COMPILER_COMPLETE`). Sprint 4 Node Registry and Runtime V1 complete (`SPRINT_04_RUNTIME_V1_COMPLETE`). Sprint 5 managed runtime state and lifecycle complete (`SPRINT_05_MANAGED_RUNTIME_STATE_COMPLETE`).
+Sprint 0 architecture contract complete. Sprint 1 engineering foundation complete (`SPRINT_01_ENGINEERING_FOUNDATION_COMPLETE`). Sprint 2 canonical domain contracts complete (`SPRINT_02_CANONICAL_DOMAIN_CONTRACTS_COMPLETE`). Sprint 3 workflow DSL and compiler complete (`SPRINT_03_WORKFLOW_DSL_COMPILER_COMPLETE`). Sprint 4 Node Registry and Runtime V1 complete (`SPRINT_04_RUNTIME_V1_COMPLETE`). Sprint 5 managed runtime state and lifecycle complete (`SPRINT_05_MANAGED_RUNTIME_STATE_COMPLETE`). Sprint 6 model abstraction and capability routing complete (`SPRINT_06_MODEL_RUNTIME_COMPLETE`).
 
 Available:
 
@@ -19,19 +19,24 @@ Available:
 - a Workflow DSL and compiler (`packages/workflow-dsl`, `@aao/workflow-dsl`) that parses YAML/JSON workflow definitions, validates them against `WorkflowSchema`, performs graph-level semantic validation (reachability, termination, routing ambiguity, cycle rejection), and compiles a valid workflow into a framework-neutral `CompiledWorkflowPlan` — see [ADR-008](docs/decisions/ADR-008-workflow-dsl-and-compiler.md) and [workflow DSL](docs/architecture/workflow-dsl.md)
 - a Node Registry and deterministic Runtime V1 (`packages/runtime`, `@aao/runtime`) that executes a `CompiledWorkflowPlan`: runtime preflight, sequential unconditional routing, explicit state-patch application, and a structured failure taxonomy — see [ADR-009](docs/decisions/ADR-009-node-registry-and-runtime-v1.md) and [runtime V1](docs/architecture/runtime-v1.md)
 - managed Runtime state and lifecycle (`@aao/runtime`): an authoritative Run lifecycle (`CREATED → VALIDATING → QUEUED → RUNNING → COMPLETED | FAILED`), an authoritative Node lifecycle, an explicit clock boundary, and safe in-memory execution snapshots at every safe boundary — see [ADR-010](docs/decisions/ADR-010-managed-runtime-state-and-lifecycle.md) and [runtime state management](docs/architecture/runtime-state-management.md)
+- a provider-neutral Model Runtime (`packages/model-runtime`, `@aao/model-runtime`): validated text and structured (JSON Schema) model requests, deterministic model capability routing by declared capabilities and explicit priority, a Vercel AI SDK adapter over an injected model, safe failure normalization, and an explicitly registered `model` node that reads a `ModelRequest` from workflow state and writes a validated `ModelResult` back as a Runtime-managed state patch — see [ADR-011](docs/decisions/ADR-011-model-runtime-and-capability-routing.md) and [model runtime](docs/architecture/model-runtime.md)
 - an independent build per package/app, run from compiled JavaScript
 - CI mirroring local verification (`typecheck → lint → build → test`)
 
 Not yet implemented:
 
-- model, agent, tool, approval, or evaluator node execution (Runtime V1 executes only explicitly registered deterministic/`final_output` executors)
+- Agent Runtime (a model node is exactly one model invocation, not an autonomous agent), and agent, tool, approval, or evaluator node execution
+- tool execution / tool calling, and production MCP integrations
+- authorization runtime and approvals
+- model retries, fallback, adaptive/cost routing, streaming, prompt templating, or any configured live model provider/credentials
 - conditional routing evaluation
 - integrations (Integration Fabric)
 - persistence, durability, retries, recovery, resume, cancellation execution, or approval/retry execution
+- observability/tracing
 - runtime evals
 - Control Center UI
 
-AAO can now execute a validated, deterministic, unconditional workflow through a framework-neutral Node Registry and runtime engine, with a managed, inspectable Run/Node lifecycle and safe execution snapshots at every safe boundary — but Runtime V1 currently executes only explicitly registered safe/deterministic node executors and `final_output` over unconditional workflows. It does not yet execute AI workflows: no model, agent, or tool node has an implementation, and any workflow that reaches one fails a deterministic preflight check rather than partially executing. Runtime snapshots are recovery-ready data structures, not a durable-recovery guarantee — nothing is persisted.
+AAO can now take a declarative workflow through deterministic compilation and managed execution, and execute `model` nodes: deterministic model capability routing, provider-neutral model invocation (via the Vercel AI SDK over an injected model), text/structured output validation, and Runtime-managed state patches. It still executes only unconditional workflows, and only node kinds whose executors the caller registers explicitly; agent, tool, approval, and evaluator nodes have no implementation and fail a deterministic preflight check rather than partially executing. No live model provider is configured — all validation uses deterministic `ai/test` models offline. Runtime snapshots are recovery-ready data structures, not a durable-recovery guarantee — nothing is persisted.
 
 The repository remains local-first. `packages/substrate-contracts`, `packages/substrate-spikes`, and `experiments/` are Sprint 0A research evidence, not production AAO architecture; production code does not depend on them. See [docs/engineering/local-development.md](docs/engineering/local-development.md) to run everything, and [docs/engineering/repository-structure.md](docs/engineering/repository-structure.md) for what exists today.
 

@@ -1,7 +1,7 @@
 import type { EdgeDefinition } from "@aao/contracts";
 import { canonicalJsonStringify } from "@aao/contracts";
 import type { CompiledWorkflowPlan } from "@aao/workflow-dsl";
-import type { NodeRegistry, RuntimeFailure } from "./types.js";
+import type { NodePreflightResult, NodeRegistry, RuntimeFailure } from "./types.js";
 
 /**
  * Runtime V1 preflight: deterministic compatibility checks that must all
@@ -33,6 +33,10 @@ import type { NodeRegistry, RuntimeFailure } from "./types.js";
  * 2. Conditional routing — Runtime V1 does not evaluate `Edge.condition`.
  * 3. Registered node kinds — every node kind that may execute must have a
  *    registered executor.
+ * 4. Node-specific static config — every registered executor that declares
+ *    the optional `validateConfig` hook validates each of its nodes'
+ *    `config`, so a malformed specialized node fails here rather than after
+ *    earlier nodes have already executed.
  */
 export function runPreflight(plan: CompiledWorkflowPlan, registry: NodeRegistry): RuntimeFailure | undefined {
   const integrityFailure = checkPlanIntegrity(plan);
@@ -55,6 +59,9 @@ export function runPreflight(plan: CompiledWorkflowPlan, registry: NodeRegistry)
 
   const executorFailure = checkExecutorsRegistered(plan, registry);
   if (executorFailure) return executorFailure;
+
+  const configFailure = checkNodeConfigs(plan, registry);
+  if (configFailure) return configFailure;
 
   return undefined;
 }
@@ -230,6 +237,32 @@ function checkExecutorsRegistered(plan: CompiledWorkflowPlan, registry: NodeRegi
         nodeId: node.id,
       };
     }
+  }
+  return undefined;
+}
+
+function checkNodeConfigs(plan: CompiledWorkflowPlan, registry: NodeRegistry): RuntimeFailure | undefined {
+  for (const node of Object.values(plan.nodesById)) {
+    const executor = registry.get(node.kind);
+    if (executor?.validateConfig === undefined) continue;
+
+    let verdict: NodePreflightResult | undefined;
+    try {
+      verdict = executor.validateConfig({ node: JSON.parse(JSON.stringify(node)) as typeof node });
+    } catch {
+      // Deliberately generic, like a throwing executor at execution time:
+      // the thrown value is never exposed.
+      verdict = undefined;
+    }
+
+    if (verdict?.ok === true) continue;
+    const issues = verdict !== undefined && Array.isArray(verdict.issues) && verdict.issues.every((issue) => typeof issue === "string") ? verdict.issues : undefined;
+    return {
+      code: "RUNTIME_PREFLIGHT_FAILED",
+      message: `Node "${node.id}" (kind "${node.kind}") has invalid static configuration.`,
+      nodeId: node.id,
+      ...(issues !== undefined ? { details: { issues } } : {}),
+    };
   }
   return undefined;
 }

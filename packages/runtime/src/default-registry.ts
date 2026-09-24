@@ -17,11 +17,12 @@ export const finalOutputExecutor: NodeExecutor = {
 
 /**
  * Builds the only registry Runtime V1 wires up automatically. It contains
- * exactly one genuinely canonical, safe executor (`final_output`) — model,
- * agent, tool, approval, and evaluator executors are deliberately absent
- * until their dedicated implementations exist; a workflow that reaches one
- * of those node kinds fails preflight with `NODE_EXECUTOR_NOT_FOUND` rather
- * than falling through to a fake executor that pretends to succeed.
+ * exactly one genuinely canonical, safe executor (`final_output`). The
+ * `model` executor lives in `@aao/model-runtime` and is never registered
+ * here — callers register it explicitly. Agent, tool, approval, and
+ * evaluator executors do not exist yet. A workflow that reaches an
+ * unregistered node kind fails preflight with `NODE_EXECUTOR_NOT_FOUND`
+ * rather than falling through to a fake executor that pretends to succeed.
  */
 export function createRuntimeV1Registry(): NodeRegistry {
   const registry = createNodeRegistry();

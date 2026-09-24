@@ -12,6 +12,7 @@ packages/
   contracts/               @aao/contracts — canonical domain contracts (Sprint 2)
   workflow-dsl/            @aao/workflow-dsl — workflow authoring, validation, and compiler (Sprint 3)
   runtime/                 @aao/runtime — Node Registry, Runtime V1 (Sprint 4), and managed run state/lifecycle (Sprint 5)
+  model-runtime/           @aao/model-runtime — model contracts, capability routing, AI SDK adapter, model node (Sprint 6)
   substrate-contracts/     research evidence, not production architecture
   substrate-spikes/        research evidence, not production architecture
 
@@ -47,6 +48,10 @@ The Workflow DSL and compiler (Sprint 3). Parses YAML/JSON workflow source into 
 
 The Node Registry, Runtime V1 (Sprint 4), and managed run state/lifecycle (Sprint 5). Consumes a `CompiledWorkflowPlan` (never parses workflow source itself) and executes it as a *managed* run: a constructible, non-global Node Registry; a runtime preflight that rejects conditional routing and missing node executors before any node runs; a deterministic sequential engine that applies validated, JSON-safe state patches and follows the plan's unconditional routing; an authoritative Run lifecycle and Node lifecycle; an explicit clock boundary; safe, in-memory `RuntimeExecutionSnapshot` capture at every safe boundary; and a small structured Runtime failure taxonomy. Its production dependencies are `@aao/contracts`, `@aao/workflow-dsl`, and `zod`; it does not depend on LangGraph, the Vercel AI SDK, the MCP SDK, Fastify, `apps/*`, or either `packages/substrate-*` package, and no app currently depends on it — there is no persistence or run-scheduling layer to wire it into yet. See [ADR-009](../decisions/ADR-009-node-registry-and-runtime-v1.md)/[ADR-010](../decisions/ADR-010-managed-runtime-state-and-lifecycle.md) and [runtime V1](../architecture/runtime-v1.md)/[runtime state management](../architecture/runtime-state-management.md).
 
+## `packages/model-runtime` — `@aao/model-runtime`
+
+The provider-neutral Model Runtime (Sprint 6): `ModelRequest`/`ModelResult`/`ModelFailure` contracts, an explicit Model Registry and Model Policy Registry (canonical `ModelPolicySpec`), a deterministic capability router, the `ModelAdapter` contract, the Vercel AI SDK adapter (exported only from the `@aao/model-runtime/vercel-ai` subpath — the only module importing `ai`), and `createModelNodeExecutor`, the `model` `NodeExecutor`. Production dependencies: `@aao/contracts`, `@aao/runtime`, `ai`, `ajv`, `zod`; no provider SDK, LangGraph, MCP SDK, Fastify, `apps/*`, or `packages/substrate-*`. See [ADR-011](../decisions/ADR-011-model-runtime-and-capability-routing.md) and [model runtime](../architecture/model-runtime.md).
+
 ## `packages/substrate-contracts` and `packages/substrate-spikes`
 
 Sprint 0A research evidence for the [substrate recommendation](../decisions/ADR-000-substrate-recommendation.md): executable spikes proving LangGraph.js, the Vercel AI SDK, and the MCP TypeScript SDK can sit behind AAO-owned contracts. **They are research evidence, not production AAO architecture.** Production code (`apps/*`, `packages/config`) does not import them. A later sprint will explicitly classify each concept as `PROMOTE`, `REWRITE`, `ARCHIVE`, or `DELETE`.
@@ -64,4 +69,4 @@ Narrative research notes (durability, graph runtime, integrations, MCP, model la
 
 ## Build and typecheck shape
 
-Every runnable package (`packages/config`, `packages/contracts`, `packages/workflow-dsl`, `packages/runtime`, `apps/control-plane`, `apps/worker`) and the retained research packages each have their own `tsconfig.json` (typecheck, includes `src` and `test`) and `tsconfig.build.json` (build, excludes `test`, emits to that package's own `dist/`), both extending the shared [`tsconfig.base.json`](../../tsconfig.base.json) at the repository root. Each package builds independently; `pnpm build` runs every package's build script in dependency order (`pnpm -r`), so `@aao/config` compiles before the apps that depend on it. No `dist/` output is committed. See [local-development.md](local-development.md) for the day-to-day commands.
+Every runnable package (`packages/config`, `packages/contracts`, `packages/workflow-dsl`, `packages/runtime`, `packages/model-runtime`, `apps/control-plane`, `apps/worker`) and the retained research packages each have their own `tsconfig.json` (typecheck, includes `src` and `test`) and `tsconfig.build.json` (build, excludes `test`, emits to that package's own `dist/`), both extending the shared [`tsconfig.base.json`](../../tsconfig.base.json) at the repository root. Each package builds independently; `pnpm build` runs every package's build script in dependency order (`pnpm -r`), so `@aao/config` compiles before the apps that depend on it. No `dist/` output is committed. See [local-development.md](local-development.md) for the day-to-day commands.

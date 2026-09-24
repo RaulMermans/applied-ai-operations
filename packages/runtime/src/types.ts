@@ -15,8 +15,24 @@ import type { RuntimeExecutionSnapshot } from "./execution-snapshot.js";
  */
 export interface NodeExecutor {
   kind: NodeKind;
+  /**
+   * Optional, deterministic, side-effect-free static validation of one
+   * node's `config`, called by Runtime preflight for every plan node of this
+   * kind *before any node executes*. Executors that omit it accept any
+   * JSON-safe config (the Runtime V1 default). A thrown error is treated as
+   * a failed validation, never propagated.
+   */
+  validateConfig?(context: NodePreflightContext): NodePreflightResult;
   execute(context: NodeExecutionContext): Promise<NodeExecutionResult>;
 }
+
+/** What `NodeExecutor.validateConfig` sees: a defensive clone of the node definition, and nothing else — no state, registry, or clock. */
+export interface NodePreflightContext {
+  node: NodeDefinition;
+}
+
+/** A static config-validation verdict. `issues` are short, deterministic, JSON-safe descriptions of what is wrong with the node's static config. */
+export type NodePreflightResult = { ok: true } | { ok: false; issues: string[] };
 
 /**
  * Everything an executor currently needs to do its job, and nothing more. No

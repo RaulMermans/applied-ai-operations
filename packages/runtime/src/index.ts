@@ -14,6 +14,8 @@ export type {
   NodeExecutor,
   NodeExecutionContext,
   NodeExecutionResult,
+  NodePreflightContext,
+  NodePreflightResult,
   NodeRegistry,
   RuntimeOptions,
   ExecuteWorkflowRequest,

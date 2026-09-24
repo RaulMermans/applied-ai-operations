@@ -50,7 +50,11 @@ A `CompiledWorkflowPlan` that compiled successfully is not necessarily a plan Ru
 
 ## Unsupported V1 features
 
-Conditional routing, model execution, agent execution, tool execution, approval waitpoints, evaluator execution, retries, replanning, persistence, durability, and parallel execution are all deliberately out of scope. Attempting any of them fails a specific, structured preflight check rather than partially executing.
+Conditional routing, agent execution, tool execution, approval waitpoints, evaluator execution, retries, replanning, persistence, durability, and parallel execution are all deliberately out of scope. Model execution exists since Sprint 6, but outside this package: `@aao/model-runtime` provides a `model` executor that callers register explicitly (see [model runtime](model-runtime.md)); without it, a model node still fails with `NODE_EXECUTOR_NOT_FOUND`. Attempting any of them fails a specific, structured preflight check rather than partially executing.
+
+## Node-specific static config validation
+
+`NodeExecutor` may declare an optional, deterministic, side-effect-free `validateConfig({ node })` hook returning `{ ok: true }` or `{ ok: false, issues }`. Preflight calls it for every plan node (on a defensive clone), after registration checks and before any node executes; a rejection or a throw becomes `RUNTIME_PREFLIGHT_FAILED` (with `details.issues` only when the hook returned string issues — a thrown value is never exposed). Executors that omit the hook accept any JSON-safe config, as before. This is not a plugin lifecycle.
 
 ## Node Registry
 
