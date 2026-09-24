@@ -73,4 +73,18 @@ describe("validateNodeExecutionResult", () => {
     if (result.ok) return;
     expect(result.code).toBe("INVALID_STATE_PATCH");
   });
+
+  it("rejects a non-finite number (NaN/Infinity) inside output", () => {
+    const result = validateNodeExecutionResult({ output: { score: Number.NaN } });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe("INVALID_NODE_RESULT");
+  });
+
+  it("rejects a non-finite number (Infinity) inside statePatch", () => {
+    const result = validateNodeExecutionResult({ statePatch: { total: Number.POSITIVE_INFINITY } });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe("INVALID_STATE_PATCH");
+  });
 });

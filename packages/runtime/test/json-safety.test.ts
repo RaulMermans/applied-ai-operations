@@ -20,6 +20,14 @@ describe("isJsonSafe", () => {
   });
   it("rejects a Map", () => expect(isJsonSafe(new Map())).toBe(false));
   it("rejects a Set", () => expect(isJsonSafe(new Set())).toBe(false));
+
+  it("rejects NaN", () => expect(isJsonSafe(Number.NaN)).toBe(false));
+  it("rejects Infinity", () => expect(isJsonSafe(Number.POSITIVE_INFINITY)).toBe(false));
+  it("rejects -Infinity", () => expect(isJsonSafe(Number.NEGATIVE_INFINITY)).toBe(false));
+  it("rejects a non-finite number nested in an object or array", () => {
+    expect(isJsonSafe({ a: Number.NaN })).toBe(false);
+    expect(isJsonSafe([1, Number.POSITIVE_INFINITY])).toBe(false);
+  });
 });
 
 describe("cloneJsonValue", () => {

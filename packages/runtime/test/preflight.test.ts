@@ -85,4 +85,98 @@ describe("runPreflight", () => {
     expect(failure?.code).toBe("RUNTIME_PREFLIGHT_FAILED");
     expect(failure?.nodeId).toBe("final");
   });
+
+  it("rejects a plan whose nodesById key does not match the node's own id (corrupted plan defense)", () => {
+    const { intake: intakeNode, ...otherNodes } = minimalPlan.nodesById;
+    if (intakeNode === undefined) throw new Error("fixture invariant: minimalPlan has an intake node");
+    const corrupted = { ...minimalPlan, nodesById: { ...otherNodes, relabeled: intakeNode } };
+    const registry = createTestRegistry(literalPatchExecutor, finalOutputExecutor);
+    const failure = runPreflight(corrupted, registry);
+    expect(failure?.code).toBe("RUNTIME_PREFLIGHT_FAILED");
+    expect(failure?.nodeId).toBe("relabeled");
+  });
+
+  it("rejects a plan whose terminalNodeIds references a node that does not exist (corrupted plan defense)", () => {
+    const corrupted = { ...minimalPlan, terminalNodeIds: [...minimalPlan.terminalNodeIds, "does-not-exist"] };
+    const registry = createTestRegistry(literalPatchExecutor, finalOutputExecutor);
+    const failure = runPreflight(corrupted, registry);
+    expect(failure?.code).toBe("RUNTIME_PREFLIGHT_FAILED");
+    expect(failure?.nodeId).toBe("does-not-exist");
+  });
+
+  it("rejects a plan whose outgoingEdgesByNode files an edge under the wrong source node (corrupted plan defense)", () => {
+    const corrupted = {
+      ...minimalPlan,
+      outgoingEdgesByNode: {
+        ...minimalPlan.outgoingEdgesByNode,
+        // "final" is a terminal node in the real plan; smuggling an edge
+        // whose sourceNodeId is "intake" under the "final" key must be
+        // caught even though "intake" itself resolves to a real node.
+        final: [{ sourceNodeId: "intake", targetNodeId: "final" }],
+      },
+    };
+    const registry = createTestRegistry(literalPatchExecutor, finalOutputExecutor);
+    const failure = runPreflight(corrupted, registry);
+    expect(failure?.code).toBe("RUNTIME_PREFLIGHT_FAILED");
+    expect(failure?.nodeId).toBe("final");
+  });
+
+  it("rejects a plan whose outgoingEdgesByNode contains an edge targeting a node that does not exist (corrupted plan defense)", () => {
+    const corrupted = {
+      ...minimalPlan,
+      outgoingEdgesByNode: {
+        ...minimalPlan.outgoingEdgesByNode,
+        intake: [{ sourceNodeId: "intake", targetNodeId: "does-not-exist" }],
+      },
+    };
+    const registry = createTestRegistry(literalPatchExecutor, finalOutputExecutor);
+    const failure = runPreflight(corrupted, registry);
+    expect(failure?.code).toBe("RUNTIME_PREFLIGHT_FAILED");
+    expect(failure?.nodeId).toBe("intake");
+  });
+
+  it("rejects a plan whose incomingEdgesByNode files an edge under the wrong target node (corrupted plan defense)", () => {
+    const corrupted = {
+      ...minimalPlan,
+      incomingEdgesByNode: {
+        ...minimalPlan.incomingEdgesByNode,
+        intake: [{ sourceNodeId: "intake", targetNodeId: "final" }],
+      },
+    };
+    const registry = createTestRegistry(literalPatchExecutor, finalOutputExecutor);
+    const failure = runPreflight(corrupted, registry);
+    expect(failure?.code).toBe("RUNTIME_PREFLIGHT_FAILED");
+    expect(failure?.nodeId).toBe("intake");
+  });
+
+  it("rejects a plan whose incomingEdgesByNode contains an edge sourced from a node that does not exist (corrupted plan defense)", () => {
+    const corrupted = {
+      ...minimalPlan,
+      incomingEdgesByNode: {
+        ...minimalPlan.incomingEdgesByNode,
+        final: [{ sourceNodeId: "does-not-exist", targetNodeId: "final" }],
+      },
+    };
+    const registry = createTestRegistry(literalPatchExecutor, finalOutputExecutor);
+    const failure = runPreflight(corrupted, registry);
+    expect(failure?.code).toBe("RUNTIME_PREFLIGHT_FAILED");
+    expect(failure?.nodeId).toBe("final");
+  });
+
+  it("rejects a plan whose outgoing and incoming edge indexes disagree on the edge set (corrupted plan defense)", () => {
+    const corrupted = {
+      ...minimalPlan,
+      // Adds a phantom incoming edge on "intake" with no corresponding
+      // outgoing edge anywhere in the plan — every per-node check above
+      // passes (the edge itself is well-formed and correctly filed), so
+      // only a whole-plan edge-set comparison can catch this.
+      incomingEdgesByNode: {
+        ...minimalPlan.incomingEdgesByNode,
+        intake: [{ sourceNodeId: "final", targetNodeId: "intake" }],
+      },
+    };
+    const registry = createTestRegistry(literalPatchExecutor, finalOutputExecutor);
+    const failure = runPreflight(corrupted, registry);
+    expect(failure?.code).toBe("RUNTIME_PREFLIGHT_FAILED");
+  });
 });

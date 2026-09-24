@@ -1,3 +1,4 @@
+import type { EdgeDefinition } from "@aao/contracts";
 import type { CompiledWorkflowPlan } from "@aao/workflow-dsl";
 import type { NodeRegistry, RuntimeFailure } from "./types.js";
 
@@ -15,11 +16,19 @@ import type { NodeRegistry, RuntimeFailure } from "./types.js";
  *
  * Order:
  * 1. Compiled plan integrity — cheap defensive checks that the plan is
- *    internally consistent (entry node resolvable, indexes complete, routing
- *    arity matches compiler invariants). The compiler already guarantees
- *    this for a real compiled plan; this protects the Runtime from a
- *    manually constructed or corrupted plan that nonetheless passed the
- *    schema check in `runtime-input-validation.ts`.
+ *    internally consistent before any index on it is trusted: every
+ *    `nodesById` key matches the id of the node it stores, `entryNodeId` and
+ *    every `terminalNodeId` resolve to an existing node, every outgoing
+ *    edge's `sourceNodeId` matches the index it is filed under (and every
+ *    incoming edge's `targetNodeId` matches its own index), every edge's
+ *    source/target resolve to existing nodes, the two edge indexes represent
+ *    the same edge set, and routing arity matches compiler invariants. The
+ *    compiler already guarantees all of this for a real compiled plan; this
+ *    protects the Runtime from a manually constructed or corrupted plan that
+ *    nonetheless passed the schema check in `runtime-input-validation.ts`.
+ *    This does not re-run reachability, cycle, or condition-structure
+ *    validation — those are the compiler's job (see `@aao/workflow-dsl`),
+ *    not the Runtime's.
  * 2. Conditional routing — Runtime V1 does not evaluate `Edge.condition`.
  * 3. Registered node kinds — every node kind that may execute must have a
  *    registered executor.
@@ -50,9 +59,32 @@ export function runPreflight(plan: CompiledWorkflowPlan, registry: NodeRegistry)
 }
 
 function checkPlanIntegrity(plan: CompiledWorkflowPlan): RuntimeFailure | undefined {
+  // `nodesById` keys are the Runtime's only way to resolve a NodeId to a
+  // node; if a key ever disagreed with the node it stores, every later
+  // lookup by that key would silently return the wrong node.
+  for (const [nodeId, node] of Object.entries(plan.nodesById)) {
+    if (node.id !== nodeId) {
+      return {
+        code: "RUNTIME_PREFLIGHT_FAILED",
+        message: `nodesById key "${nodeId}" does not match its node's id "${node.id}".`,
+        nodeId,
+      };
+    }
+  }
+
   const entryNode = plan.nodesById[plan.entryNodeId];
   if (entryNode === undefined) {
     return { code: "RUNTIME_PREFLIGHT_FAILED", message: `entryNodeId "${plan.entryNodeId}" does not resolve to a node in nodesById.` };
+  }
+
+  for (const terminalNodeId of plan.terminalNodeIds) {
+    if (plan.nodesById[terminalNodeId] === undefined) {
+      return {
+        code: "RUNTIME_PREFLIGHT_FAILED",
+        message: `terminalNodeId "${terminalNodeId}" does not resolve to a node in nodesById.`,
+        nodeId: terminalNodeId,
+      };
+    }
   }
 
   for (const nodeId of Object.keys(plan.nodesById)) {
@@ -60,6 +92,40 @@ function checkPlanIntegrity(plan: CompiledWorkflowPlan): RuntimeFailure | undefi
     const incoming = plan.incomingEdgesByNode[nodeId];
     if (outgoing === undefined || incoming === undefined) {
       return { code: "RUNTIME_PREFLIGHT_FAILED", message: `Node "${nodeId}" is missing an edge index entry.`, nodeId };
+    }
+
+    for (const edge of outgoing) {
+      if (edge.sourceNodeId !== nodeId) {
+        return {
+          code: "RUNTIME_PREFLIGHT_FAILED",
+          message: `outgoingEdgesByNode["${nodeId}"] contains an edge whose sourceNodeId is "${edge.sourceNodeId}", not "${nodeId}".`,
+          nodeId,
+        };
+      }
+      if (plan.nodesById[edge.sourceNodeId] === undefined || plan.nodesById[edge.targetNodeId] === undefined) {
+        return {
+          code: "RUNTIME_PREFLIGHT_FAILED",
+          message: `Edge "${edge.sourceNodeId}" -> "${edge.targetNodeId}" in outgoingEdgesByNode["${nodeId}"] references a node that does not exist.`,
+          nodeId,
+        };
+      }
+    }
+
+    for (const edge of incoming) {
+      if (edge.targetNodeId !== nodeId) {
+        return {
+          code: "RUNTIME_PREFLIGHT_FAILED",
+          message: `incomingEdgesByNode["${nodeId}"] contains an edge whose targetNodeId is "${edge.targetNodeId}", not "${nodeId}".`,
+          nodeId,
+        };
+      }
+      if (plan.nodesById[edge.sourceNodeId] === undefined || plan.nodesById[edge.targetNodeId] === undefined) {
+        return {
+          code: "RUNTIME_PREFLIGHT_FAILED",
+          message: `Edge "${edge.sourceNodeId}" -> "${edge.targetNodeId}" in incomingEdgesByNode["${nodeId}"] references a node that does not exist.`,
+          nodeId,
+        };
+      }
     }
   }
 
@@ -76,7 +142,46 @@ function checkPlanIntegrity(plan: CompiledWorkflowPlan): RuntimeFailure | undefi
     }
   }
 
+  // Runs last: every check above anchors a failure to a specific node and is
+  // more actionable than this whole-plan cross-check, so a plan that trips
+  // both reports the more specific failure first.
+  const edgeSetFailure = checkOutgoingIncomingEdgeSetsMatch(plan);
+  if (edgeSetFailure) return edgeSetFailure;
+
   return undefined;
+}
+
+/**
+ * Defensive cross-check, not a re-run of the compiler: the compiler always
+ * pushes the same edge object into both indexes (see
+ * `@aao/workflow-dsl`'s `compiler.ts`), so for a real compiled plan this can
+ * never fail. It exists only to catch a manually corrupted or partially
+ * rebuilt plan where the two indexes have drifted apart — counted by a
+ * simple, deterministic structural key rather than a general deep-equality
+ * or graph-diff routine.
+ */
+function checkOutgoingIncomingEdgeSetsMatch(plan: CompiledWorkflowPlan): RuntimeFailure | undefined {
+  const outgoingCounts = countEdgeKeys(Object.values(plan.outgoingEdgesByNode).flat());
+  const incomingCounts = countEdgeKeys(Object.values(plan.incomingEdgesByNode).flat());
+
+  const sameSize = outgoingCounts.size === incomingCounts.size;
+  const sameCounts = sameSize && [...outgoingCounts].every(([key, count]) => incomingCounts.get(key) === count);
+  if (!sameCounts) {
+    return {
+      code: "RUNTIME_PREFLIGHT_FAILED",
+      message: "outgoingEdgesByNode and incomingEdgesByNode do not represent the same edge set.",
+    };
+  }
+  return undefined;
+}
+
+function countEdgeKeys(edges: EdgeDefinition[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const edge of edges) {
+    const key = `${edge.sourceNodeId}=>${edge.targetNodeId}::${JSON.stringify(edge.condition ?? null)}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
 }
 
 function checkUnconditionalRoutingArity(plan: CompiledWorkflowPlan): RuntimeFailure | undefined {

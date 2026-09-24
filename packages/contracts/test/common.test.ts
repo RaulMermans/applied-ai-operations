@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { JsonObjectSchema, WorkflowIdSchema, entityVersionSchema, isoTimestampSchema, schemaVersionSchema } from "../src/common.js";
+import { JsonObjectSchema, JsonPrimitiveSchema, WorkflowIdSchema, entityVersionSchema, isoTimestampSchema, schemaVersionSchema } from "../src/common.js";
 
 describe("identifierSchema (via WorkflowIdSchema)", () => {
   it.each([
@@ -77,5 +77,28 @@ describe("JsonObjectSchema (JSON-safe values)", () => {
 
   it("rejects undefined at a key", () => {
     expect(JsonObjectSchema.safeParse({ a: undefined }).success).toBe(false);
+  });
+
+  it("rejects non-finite numbers (NaN, Infinity, -Infinity) at any depth", () => {
+    expect(JsonObjectSchema.safeParse({ a: Number.NaN }).success).toBe(false);
+    expect(JsonObjectSchema.safeParse({ a: Number.POSITIVE_INFINITY }).success).toBe(false);
+    expect(JsonObjectSchema.safeParse({ a: Number.NEGATIVE_INFINITY }).success).toBe(false);
+    expect(JsonObjectSchema.safeParse({ nested: { deep: [Number.POSITIVE_INFINITY] } }).success).toBe(false);
+  });
+});
+
+describe("JsonPrimitiveSchema", () => {
+  it("accepts finite numbers, strings, booleans, and null", () => {
+    expect(JsonPrimitiveSchema.safeParse(1).success).toBe(true);
+    expect(JsonPrimitiveSchema.safeParse(-1.5).success).toBe(true);
+    expect(JsonPrimitiveSchema.safeParse("x").success).toBe(true);
+    expect(JsonPrimitiveSchema.safeParse(true).success).toBe(true);
+    expect(JsonPrimitiveSchema.safeParse(null).success).toBe(true);
+  });
+
+  it("rejects NaN, Infinity, and -Infinity — every JsonPrimitive must survive JSON.stringify/parse unchanged", () => {
+    expect(JsonPrimitiveSchema.safeParse(Number.NaN).success).toBe(false);
+    expect(JsonPrimitiveSchema.safeParse(Number.POSITIVE_INFINITY).success).toBe(false);
+    expect(JsonPrimitiveSchema.safeParse(Number.NEGATIVE_INFINITY).success).toBe(false);
   });
 });

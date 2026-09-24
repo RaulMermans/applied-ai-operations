@@ -59,6 +59,8 @@ pnpm test        # run once
 pnpm test:watch  # watch mode
 ```
 
+`pnpm test` is valid on its own from a clean checkout (`pnpm install --frozen-lockfile && pnpm test`, no prior `pnpm build` needed): the root [`vitest.config.ts`](../../vitest.config.ts) aliases each `@aao/*` workspace package straight to its TypeScript source for the Vitest/Vite module graph, rather than relying on `package.json` `"main"` (which points at compiled `dist/` output). This only affects how Vitest resolves imports; `pnpm build`'s output and every package's `"main"`/`"types"` fields are unchanged, and tests always run against current source rather than a possibly stale `dist/`.
+
 ## Typecheck
 
 ```sh
@@ -87,7 +89,7 @@ Runs each package's own `tsc -p tsconfig.build.json` in dependency order (`pnpm 
 pnpm check
 ```
 
-Runs `typecheck → lint → build → test`, the same sequence CI runs (see [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)). Build runs before test because workspace packages resolve each other at runtime through their compiled `dist/` output (`package.json` `"main"`), not their TypeScript source — `pnpm typecheck` alone resolves types via each package's `"types"` field and does not need a prior build, but `pnpm test` alone (without a preceding `pnpm build`) will fail to resolve a cross-package import like `@aao/contracts` or `@aao/workflow-dsl` on a clean checkout.
+Runs `typecheck → lint → build → test`, the same sequence CI runs (see [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)). This ordering verifies the actually-shipped build (compiled apps and packages resolving each other through `dist/`, as they do outside of tests — see "Compiled smoke verification" below), in addition to the tests already having run correctly on their own (see "Tests" above).
 
 ## Compiled smoke verification
 

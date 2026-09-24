@@ -75,10 +75,15 @@ export async function executeWorkflow(request: ExecuteWorkflowRequest): Promise<
     let rawResult: unknown;
     try {
       rawResult = await executor.execute({ runId, node: cloneNodeDefinition(node), state: cloneRunState(state), step });
-    } catch (error) {
+    } catch {
+      // Deliberately generic: the thrown value (Error.message, stack, or any
+      // other shape) is never exposed here. It may originate from a
+      // company-specific or third-party executor and could contain secrets
+      // or internal implementation detail; the public failure carries only
+      // safe, deterministic metadata (code, a fixed message, nodeId, step).
       const failure: RuntimeFailure = {
         code: "NODE_EXECUTION_FAILED",
-        message: `Node "${node.id}" (kind "${node.kind}") threw during execution: ${errorMessage(error)}`,
+        message: `Node "${node.id}" (kind "${node.kind}") threw during execution.`,
         nodeId: node.id,
         step,
       };
@@ -126,8 +131,4 @@ export async function executeWorkflow(request: ExecuteWorkflowRequest): Promise<
 
 function cloneNodeDefinition<T>(node: T): T {
   return JSON.parse(JSON.stringify(node)) as T;
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "unknown error";
 }

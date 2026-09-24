@@ -13,7 +13,8 @@ import type { JsonValue } from "@aao/contracts";
 export function isJsonSafe(value: unknown): value is JsonValue {
   if (value === null) return true;
   const type = typeof value;
-  if (type === "string" || type === "number" || type === "boolean") return true;
+  if (type === "string" || type === "boolean") return true;
+  if (type === "number") return Number.isFinite(value); // rejects NaN, Infinity, -Infinity: none survive JSON.stringify
   if (type !== "object") return false; // rejects function, undefined, symbol, bigint
 
   if (Array.isArray(value)) return value.every(isJsonSafe);

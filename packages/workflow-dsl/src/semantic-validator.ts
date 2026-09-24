@@ -1,4 +1,5 @@
 import type { EdgeDefinition, NodeDefinition, NodeId, Workflow } from "@aao/contracts";
+import { canonicalJsonStringify } from "./canonical-json.js";
 import type { WorkflowDiagnostic } from "./types.js";
 
 /**
@@ -64,14 +65,16 @@ export function validateWorkflowSemantics(workflow: Workflow): WorkflowDiagnosti
     if (sourceExists && targetExists) validEdges.push(edge);
   });
 
-  // 4. Duplicate edges: exact source + target + condition matches (condition
-  // compared by deterministic structural JSON equality). Different
-  // conditions routing to the same target remain valid.
+  // 4. Duplicate edges: exact source + target + condition matches. Condition
+  // semantics are never evaluated — structural equality (via a canonical,
+  // key-sorted JSON form) is used only for duplicate-edge detection, so
+  // `{ a: 1, b: 2 }` and `{ b: 2, a: 1 }` are treated as the same condition
+  // here. Different conditions routing to the same target remain valid.
   const seenEdgeKeys = new Set<string>();
   workflow.edges.forEach((edge, index) => {
     if (!nodesById.has(edge.sourceNodeId) || !nodesById.has(edge.targetNodeId)) return;
 
-    const key = `${edge.sourceNodeId}=>${edge.targetNodeId}::${JSON.stringify(edge.condition ?? null)}`;
+    const key = `${edge.sourceNodeId}=>${edge.targetNodeId}::${canonicalJsonStringify(edge.condition ?? null)}`;
     if (seenEdgeKeys.has(key)) {
       diagnostics.push({
         code: "DUPLICATE_EDGE",
@@ -139,14 +142,30 @@ export function validateWorkflowSemantics(workflow: Workflow): WorkflowDiagnosti
     }
   }
 
-  // 7. Routing semantics: a node with a single outgoing edge (conditional or
-  // not) is always a simple route. A node with multiple outgoing edges must
-  // have at most one unconditional edge, acting as the default/fallback.
+  // 7. Routing semantics: a node with a single unconditional outgoing edge is
+  // a valid simple route, but a single *conditional* outgoing edge has no
+  // fallback and is rejected — a conditional edge can, structurally, fail to
+  // match at runtime, so at least one unconditional default is required
+  // whenever any outgoing edge is conditional. A node with multiple outgoing
+  // edges must have at most one unconditional edge, acting as the
+  // default/fallback.
   for (const nodeId of nodesById.keys()) {
     const outgoing = outgoingByNode.get(nodeId) ?? [];
-    if (outgoing.length < 2) continue;
+    if (outgoing.length === 0) continue; // covered by terminal semantics above
 
     const unconditionalCount = outgoing.filter((edge) => edge.condition === undefined).length;
+
+    if (outgoing.length === 1) {
+      if (unconditionalCount === 0) {
+        diagnostics.push({
+          code: "CONDITIONAL_ROUTE_WITHOUT_DEFAULT",
+          message: `Node "${nodeId}" has a single conditional outgoing edge and no default (unconditional) route.`,
+          nodeId,
+        });
+      }
+      continue;
+    }
+
     if (unconditionalCount > 1) {
       diagnostics.push({
         code: "AMBIGUOUS_ROUTING",

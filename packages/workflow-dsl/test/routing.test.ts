@@ -50,6 +50,22 @@ describe("validateWorkflowSemantics — routing", () => {
     expect(diagnostics).toContainEqual(expect.objectContaining({ code: "AMBIGUOUS_ROUTING", nodeId: "intake" }));
   });
 
+  it("rejects a single conditional outgoing edge with no default route", () => {
+    const workflow = buildWorkflow({
+      entryNodeId: "intake",
+      nodes: [
+        { id: "intake", kind: "deterministic", config: {} },
+        { id: "a", kind: "final_output", config: {} },
+      ],
+      edges: [{ sourceNodeId: "intake", targetNodeId: "a", condition: { when: "a" } }],
+    });
+    const diagnostics = validateWorkflowSemantics(workflow);
+    expect(diagnostics).toContainEqual(
+      expect.objectContaining({ code: "CONDITIONAL_ROUTE_WITHOUT_DEFAULT", nodeId: "intake" }),
+    );
+    expect(diagnostics.some((d) => d.code === "AMBIGUOUS_ROUTING")).toBe(false);
+  });
+
   it("rejects multiple conditional branches with no default route", () => {
     const workflow = buildWorkflow({
       entryNodeId: "intake",
@@ -118,5 +134,23 @@ describe("validateWorkflowSemantics — routing", () => {
     const diagnostics = validateWorkflowSemantics(workflow);
     expect(diagnostics.some((d) => d.code === "DUPLICATE_EDGE")).toBe(false);
     expect(diagnostics).toContainEqual(expect.objectContaining({ code: "CONDITIONAL_ROUTE_WITHOUT_DEFAULT" }));
+  });
+
+  it("treats conditions that differ only in key order as the same condition for duplicate-edge detection", () => {
+    // { a: 1, b: 2 } and { b: 2, a: 1 } must be structurally equivalent here
+    // — condition semantics are never evaluated, only canonical JSON shape.
+    const workflow = buildWorkflow({
+      entryNodeId: "intake",
+      nodes: [
+        { id: "intake", kind: "deterministic", config: {} },
+        { id: "final", kind: "final_output", config: {} },
+      ],
+      edges: [
+        { sourceNodeId: "intake", targetNodeId: "final", condition: { a: 1, b: 2 } },
+        { sourceNodeId: "intake", targetNodeId: "final", condition: { b: 2, a: 1 } },
+      ],
+    });
+    const diagnostics = validateWorkflowSemantics(workflow);
+    expect(diagnostics).toContainEqual(expect.objectContaining({ code: "DUPLICATE_EDGE", edgeIndex: 1 }));
   });
 });

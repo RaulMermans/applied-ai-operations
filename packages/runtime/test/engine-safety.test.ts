@@ -107,7 +107,7 @@ describe("executeWorkflow — safety", () => {
     expect(executeSpy).not.toHaveBeenCalled();
   });
 
-  it("normalizes an executor throwing into NODE_EXECUTION_FAILED without exposing a raw stack trace", async () => {
+  it("normalizes an executor throwing into NODE_EXECUTION_FAILED without exposing a raw stack trace or the error's own message", async () => {
     const throwingExecutor: NodeExecutor = {
       kind: "deterministic",
       async execute() {
@@ -122,6 +122,7 @@ describe("executeWorkflow — safety", () => {
     expect(result.failure.code).toBe("NODE_EXECUTION_FAILED");
     expect(result.failure.nodeId).toBe("intake");
     expect(result.failure.message).not.toMatch(/at Object\.execute|\.ts:\d+:\d+/); // no stack-trace shape
+    expect(result.failure.message).not.toContain("secret internal detail"); // Error.message itself is never exposed
     expect(finalSpy).not.toHaveBeenCalled(); // downstream node never runs after a failure
   });
 
@@ -138,6 +139,50 @@ describe("executeWorkflow — safety", () => {
     if (result.ok) return;
     expect(result.failure.code).toBe("NODE_EXECUTION_FAILED");
     expect(result.failure.message).not.toContain("token-abc");
+  });
+
+  it("redacts obvious secret text from an executor's thrown Error across the entire public failure object", async () => {
+    const secret = "sk-live-super-secret-api-key-do-not-leak-4f9c2b";
+    const throwingExecutor: NodeExecutor = {
+      kind: "deterministic",
+      async execute() {
+        const error = new Error(`upstream call failed with credentials ${secret}`);
+        error.stack = `Error: upstream call failed with credentials ${secret}\n    at fakeInternalModule.ts:42:7`;
+        throw error;
+      },
+    };
+    const registry = createTestRegistry(throwingExecutor, finalOutputExecutor);
+    const result = await executeWorkflow(buildRequest({ runId: "run.throw.secret", plan: minimalPlan, registry }));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+
+    const serializedFailure = JSON.stringify(result.failure);
+    expect(serializedFailure).not.toContain(secret);
+    expect(result.failure.code).toBe("NODE_EXECUTION_FAILED");
+    expect(result.failure.nodeId).toBe("intake");
+    expect(result.failure.step).toBe(1);
+    // Only the documented safe fields are present — no smuggled "stack",
+    // "error", "cause", or similar field carrying the raw thrown value.
+    expect(Object.keys(result.failure).sort()).toEqual(["code", "message", "nodeId", "step"]);
+  });
+
+  it("redacts obvious secret text from a thrown non-Error object across the entire public failure", async () => {
+    const secret = "db-password-hunter2-do-not-leak";
+    const throwingExecutor: NodeExecutor = {
+      kind: "deterministic",
+      async execute() {
+        throw { credentials: { password: secret }, env: { AWS_SECRET_ACCESS_KEY: secret } };
+      },
+    };
+    const registry = createTestRegistry(throwingExecutor, finalOutputExecutor);
+    const result = await executeWorkflow(buildRequest({ runId: "run.throw.secret2", plan: minimalPlan, registry }));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+
+    const serializedFailure = JSON.stringify(result.failure);
+    expect(serializedFailure).not.toContain(secret);
+    expect(serializedFailure).not.toContain("AWS_SECRET_ACCESS_KEY");
+    expect(result.failure.code).toBe("NODE_EXECUTION_FAILED");
   });
 
   it("rejects a malformed executor result as INVALID_NODE_RESULT and does not execute downstream nodes", async () => {
@@ -187,6 +232,12 @@ describe("executeWorkflow — safety", () => {
       incomingEdgesByNode: {
         ...plan.incomingEdgesByNode,
         a: [{ sourceNodeId: "b", targetNodeId: "a" }],
+        // The original b -> final edge no longer exists on the outgoing
+        // side once b's outgoing edge is overridden above; drop its stale
+        // incoming counterpart too so the two indexes still represent the
+        // same edge set and this plan clears preflight to reach the engine's
+        // own maxSteps ceiling, which is what this test exercises.
+        final: [],
       },
     };
     const registry = createTestRegistry(literalPatchExecutor, finalOutputExecutor);
@@ -194,5 +245,49 @@ describe("executeWorkflow — safety", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.failure.code).toBe("MAX_STEPS_EXCEEDED");
+  });
+
+  it("rejects a plan with a corrupted outgoing edge target before executing any node", async () => {
+    const corrupted = {
+      ...minimalPlan,
+      outgoingEdgesByNode: {
+        ...minimalPlan.outgoingEdgesByNode,
+        intake: [{ sourceNodeId: "intake", targetNodeId: "does-not-exist" }],
+      },
+    };
+    const intakeSpy = vi.fn(async () => ({}));
+    const finalSpy = vi.fn(async () => ({}));
+    const registry = createTestRegistry(
+      { kind: "deterministic", execute: intakeSpy },
+      { kind: "final_output", execute: finalSpy },
+    );
+    const result = await executeWorkflow(buildRequest({ runId: "run.corrupt.outgoing", plan: corrupted, registry }));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.failure.code).toBe("RUNTIME_PREFLIGHT_FAILED");
+    expect(intakeSpy).not.toHaveBeenCalled();
+    expect(finalSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects a plan with a corrupted incoming edge index (wrong source) before executing any node", async () => {
+    const corrupted = {
+      ...minimalPlan,
+      incomingEdgesByNode: {
+        ...minimalPlan.incomingEdgesByNode,
+        final: [{ sourceNodeId: "does-not-exist", targetNodeId: "final" }],
+      },
+    };
+    const intakeSpy = vi.fn(async () => ({}));
+    const finalSpy = vi.fn(async () => ({}));
+    const registry = createTestRegistry(
+      { kind: "deterministic", execute: intakeSpy },
+      { kind: "final_output", execute: finalSpy },
+    );
+    const result = await executeWorkflow(buildRequest({ runId: "run.corrupt.incoming", plan: corrupted, registry }));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.failure.code).toBe("RUNTIME_PREFLIGHT_FAILED");
+    expect(intakeSpy).not.toHaveBeenCalled();
+    expect(finalSpy).not.toHaveBeenCalled();
   });
 });

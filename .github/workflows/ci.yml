@@ -6,9 +6,12 @@ on:
   pull_request:
 
 # CI is verification only: it typechecks, lints, builds, and tests the
-# repository, in that order — build runs before test because workspace
-# packages resolve each other at runtime via their compiled dist/ output
-# (package.json "main"), not their TypeScript source. It does not deploy,
+# repository, in that order, matching the canonical "pnpm check" sequence.
+# "pnpm test" alone is also valid on a clean checkout (see
+# docs/engineering/local-development.md) — Vitest resolves workspace
+# packages straight from TypeScript source via vitest.config.ts, not from
+# compiled dist/ output. Running build before test here additionally
+# verifies the actually-shipped compiled output. CI does not deploy,
 # publish, release, or provision anything.
 jobs:
   verify:

@@ -97,7 +97,7 @@ export type ModelPolicyId = z.infer<typeof ModelPolicyIdSchema>;
 // framework/SDK objects. Anywhere a subsystem's content cannot yet be
 // meaningfully typed, it is bounded by JsonValue/JsonObject rather than `any`.
 
-export const JsonPrimitiveSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
+export const JsonPrimitiveSchema = z.union([z.string(), z.number().finite(), z.boolean(), z.null()]);
 export type JsonPrimitive = z.infer<typeof JsonPrimitiveSchema>;
 
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
