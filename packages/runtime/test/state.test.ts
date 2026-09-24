@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RunState } from "@aao/contracts";
-import { applyStatePatch, cloneRunState } from "../src/state.js";
+import { applyStatePatch, captureStateSnapshot, cloneRunState } from "../src/state.js";
 
 function state(revision: number, values: RunState["values"]): RunState {
   return { runId: "test.run", revision, values };
@@ -67,5 +67,25 @@ describe("cloneRunState", () => {
     expect((original.values.nested as { a: number }).a).toBe(1);
     expect(cloned.runId).toBe(original.runId);
     expect(cloned.revision).toBe(original.revision);
+  });
+});
+
+describe("captureStateSnapshot", () => {
+  it("builds a canonical StateSnapshot carrying runId, revision, values, and the given capturedAt", () => {
+    const s = state(2, { a: 1 });
+    const snapshot = captureStateSnapshot(s, "2026-02-01T00:00:00.000Z");
+    expect(snapshot).toEqual({ runId: "test.run", revision: 2, values: { a: 1 }, capturedAt: "2026-02-01T00:00:00.000Z" });
+  });
+
+  it("deep-clones values so a later mutation of the source state cannot reach the snapshot", () => {
+    const s = state(0, { nested: { a: 1 } });
+    const snapshot = captureStateSnapshot(s, "2026-02-01T00:00:00.000Z");
+    (s.values.nested as { a: number }).a = 999;
+    expect((snapshot.values.nested as { a: number }).a).toBe(1);
+  });
+
+  it("rejects a malformed timestamp rather than silently accepting it", () => {
+    const s = state(0, {});
+    expect(() => captureStateSnapshot(s, "not-a-timestamp")).toThrow();
   });
 });

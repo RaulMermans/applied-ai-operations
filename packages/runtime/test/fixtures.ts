@@ -1,6 +1,7 @@
 import type { EdgeDefinition, JsonObject, NodeDefinition, RunState, Workflow } from "@aao/contracts";
 import { compileWorkflow } from "@aao/workflow-dsl";
 import type { CompiledWorkflowPlan } from "@aao/workflow-dsl";
+import type { RuntimeClock } from "../src/clock.js";
 import { finalOutputExecutor } from "../src/default-registry.js";
 import { createNodeRegistry } from "../src/registry.js";
 import type { ExecuteWorkflowRequest, NodeExecutor, NodeRegistry } from "../src/types.js";
@@ -69,5 +70,27 @@ export function buildRequest(overrides: Partial<ExecuteWorkflowRequest> & { runI
     initialState: overrides.initialState ?? buildRunState(overrides.runId),
     registry: overrides.registry ?? createTestRegistry(literalPatchExecutor, finalOutputExecutor),
     ...(overrides.options !== undefined ? { options: overrides.options } : {}),
+  };
+}
+
+/**
+ * A deterministic, test-only `RuntimeClock`: each call to `now()` returns
+ * the next timestamp from a fixed, strictly increasing sequence (one second
+ * apart, starting at `start`), then holds at the last value once exhausted.
+ * Lets lifecycle tests assert exact timestamps and ordering without ever
+ * touching the real wall clock.
+ */
+export function buildTestClock(start = "2026-01-01T00:00:00.000Z"): RuntimeClock & { callCount(): number } {
+  const startMs = new Date(start).getTime();
+  let calls = 0;
+  return {
+    now(): string {
+      const timestamp = new Date(startMs + calls * 1000).toISOString();
+      calls += 1;
+      return timestamp;
+    },
+    callCount(): number {
+      return calls;
+    },
   };
 }

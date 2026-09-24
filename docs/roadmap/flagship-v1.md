@@ -12,12 +12,13 @@ This is the single canonical roadmap. It is directional: phases sequence respons
 
 ## Phase B — Workflow Runtime
 
-Implement workflow DSL, validation and compiler, node registry, runtime executor, and state/reducers.
+Implement workflow DSL, validation and compiler, node registry, runtime executor, Run lifecycle, Node lifecycle, authoritative state management, and safe execution snapshots.
 
 | Sprint / outcome | Scope | Status |
 | --- | --- | --- |
 | Sprint 3 — Workflow DSL, Semantic Validation & Compiler | Author workflows as YAML/JSON, validate them against canonical schema plus graph-level semantics (reachability, termination, routing, cycles), and compile a valid workflow into a framework-neutral `CompiledWorkflowPlan`. | Complete (`SPRINT_03_WORKFLOW_DSL_COMPILER_COMPLETE`) — see [ADR-008](../decisions/ADR-008-workflow-dsl-and-compiler.md) |
 | Sprint 4 — Node Registry & Runtime V1 | Node Registry and the first deterministic execution runtime over a `CompiledWorkflowPlan`: runtime preflight, sequential unconditional routing, explicit state-patch application, and a structured failure taxonomy. | Complete (`SPRINT_04_RUNTIME_V1_COMPLETE`) — see [ADR-009](../decisions/ADR-009-node-registry-and-runtime-v1.md) |
+| Sprint 5 — Managed Run State, Lifecycle & Execution Snapshots | Authoritative Run lifecycle and Node lifecycle, an explicit clock boundary, revisioned state kept as the single source of truth, and safe in-memory execution snapshots at every safe execution boundary — recovery-ready, not durable. | Complete (`SPRINT_05_MANAGED_RUNTIME_STATE_COMPLETE`) — see [ADR-010](../decisions/ADR-010-managed-runtime-state-and-lifecycle.md) |
 
 ## Phase C — AI Layer
 

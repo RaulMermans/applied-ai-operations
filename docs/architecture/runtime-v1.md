@@ -110,7 +110,7 @@ Runtime V1 uses the canonical `RunState` contract (`@aao/contracts`) with the sm
 - `revision` increments by exactly **one** for every accepted state-changing result. A node that returns no patch does **not** increment revision — an unchanged state is not a new state.
 - State handed to an executor is a deep clone (`cloneRunState`); a returned patch is deep-cloned again before merging. Neither the caller's `initialState` nor any earlier snapshot derived from it is ever mutated by a later step.
 
-No reducer registry, deep merge, delete operator, CRDT, conflict resolution, or persistence exists — all deliberately deferred to Sprint 5 (State, Run Lifecycle & Runtime State Management).
+No reducer registry, deep merge, delete operator, CRDT, conflict resolution, or persistence exists — this shallow-patch policy remains deliberate V1 state-management policy (see [runtime state management](runtime-state-management.md) and [ADR-010](../decisions/ADR-010-managed-runtime-state-and-lifecycle.md)), not a placeholder awaiting a later sprint.
 
 ## Execution semantics
 
@@ -130,12 +130,13 @@ Execution starts at `plan.entryNodeId` and walks forward one node at a time: res
 | `INVALID_NODE_RESULT` | An executor's return value is not a plain object with only `statePatch`/`output`, or `output` is not JSON-safe. |
 | `INVALID_STATE_PATCH` | An executor's `statePatch` is not a JSON-safe plain object. |
 | `MAX_STEPS_EXCEEDED` | Execution exceeded the bounded step ceiling. |
+| `INVALID_EXECUTION_SNAPSHOT` | A `RuntimeExecutionSnapshot` (see [runtime state management](runtime-state-management.md)) fails schema validation or is contextually incompatible with a given `CompiledWorkflowPlan` (returned by `validateSnapshotAgainstPlan`, not by `executeWorkflow` itself). |
 
 Every failure is a small, JSON-safe, deterministic object (`code`, `message`, optional `nodeId`/`step`/`details`) — free of stack traces, environment data, or secrets.
 
 ## Execution evidence
 
-Each successful `WorkflowExecutionResult` carries a `history: NodeExecutionRecord[]` — `nodeId`, `kind`, `step`, `status: "SUCCEEDED"`, optional `output`, `stateRevisionBefore`, `stateRevisionAfter`. This is **not** the future canonical AAO Trace: no wall-clock latency, tokens, costs, timestamps, trace ids, or OpenTelemetry data appear here. It exists only so tests and a later tracing/observability layer have deterministic evidence that nodes ran in the expected order with the expected state effect.
+Every `WorkflowExecutionResult` (success or a managed failure) carries `execution.history: NodeExecutionRecord[]` — `nodeId`, `kind`, `step`, `status: "SUCCEEDED" | "FAILED"`, optional `output`, `stateRevisionBefore`, `stateRevisionAfter`. A `FAILED` record's `stateRevisionBefore` always equals `stateRevisionAfter`: no state patch is ever applied from a node that threw or returned an invalid result. This is **not** the future canonical AAO Trace: no wall-clock latency, tokens, costs, timestamps, trace ids, or OpenTelemetry data appear here. It exists only so tests and a later tracing/observability layer have deterministic evidence that nodes ran (or failed to run) in the expected order with the expected state effect. See [runtime state management](runtime-state-management.md) for the full managed execution shape (`RuntimeExecutionState`, Run/Node lifecycle, and safe execution snapshots) this history is now part of.
 
 ## Security boundaries
 
@@ -144,3 +145,5 @@ The Runtime never `eval`s workflow data, executes JavaScript from node `config`,
 ## Future extension
 
 A future model/agent/tool/approval/evaluator executor plugs in by implementing `NodeExecutor` for its kind and registering it against a `NodeRegistry` passed into `executeWorkflow` — no change to `engine.ts`'s orchestration, preflight, or state-application logic is required. Conditional routing, retries, persistence, and durable checkpointing are expected to extend the preflight/engine boundary in later sprints rather than replace it. See [ADR-009](../decisions/ADR-009-node-registry-and-runtime-v1.md) for what is deliberately deferred and why.
+
+`executeWorkflow` is now a *managed* execution: it builds and returns an authoritative `RuntimeExecutionState` (Run lifecycle, Node lifecycle, revisioned state, execution history) and a safe `RuntimeExecutionSnapshot` at every safe boundary, rather than only a final result. See [runtime state management](runtime-state-management.md) and [ADR-010](../decisions/ADR-010-managed-runtime-state-and-lifecycle.md) for the full model this section's pipeline now executes inside of.

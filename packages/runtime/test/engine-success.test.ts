@@ -8,7 +8,7 @@ describe("executeWorkflow — successful execution", () => {
     const result = await executeWorkflow(buildRequest({ runId: "run.single", plan: minimalPlan }));
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.run.status).toBe("COMPLETED");
+    expect(result.execution.run.status).toBe("COMPLETED");
   });
 
   it("routes deterministic -> deterministic -> final_output, applying each state patch in order", async () => {
@@ -30,8 +30,8 @@ describe("executeWorkflow — successful execution", () => {
     const result = await executeWorkflow(request);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.run.output).toEqual({ value: 4, result: 8 });
-    expect(result.run.state.values).toEqual({ value: 4, result: 8 });
+    expect(result.output).toEqual({ value: 4, result: 8 });
+    expect(result.execution.state.values).toEqual({ value: 4, result: 8 });
   });
 
   it("returns final_output's output as RunState.values by default", async () => {
@@ -39,7 +39,7 @@ describe("executeWorkflow — successful execution", () => {
     const result = await executeWorkflow(request);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.run.output).toEqual({ a: 1 });
+    expect(result.output).toEqual({ a: 1 });
   });
 
   it("executes nodes in deterministic order matching the compiled routing", async () => {
@@ -62,8 +62,9 @@ describe("executeWorkflow — successful execution", () => {
     const result = await executeWorkflow(buildRequest({ runId: "run.order", plan }));
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.run.history.map((record) => record.nodeId)).toEqual(["a", "b", "c", "final"]);
-    expect(result.run.history.map((record) => record.step)).toEqual([1, 2, 3, 4]);
+    expect(result.execution.history.map((record) => record.nodeId)).toEqual(["a", "b", "c", "final"]);
+    expect(result.execution.history.map((record) => record.step)).toEqual([1, 2, 3, 4]);
+    expect(result.execution.history.every((record) => record.status === "SUCCEEDED")).toBe(true);
   });
 
   it("supports a single-node plan whose entry node is itself final_output", async () => {
@@ -72,15 +73,15 @@ describe("executeWorkflow — successful execution", () => {
     const result = await executeWorkflow(buildRequest({ runId: "run.solo", plan, registry }));
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.run.history).toHaveLength(1);
+    expect(result.execution.history).toHaveLength(1);
   });
 
   it("marks the run COMPLETED and returns the caller-provided runId unchanged", async () => {
     const result = await executeWorkflow(buildRequest({ runId: "run.identity" }));
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.run.runId).toBe("run.identity");
-    expect(result.run.status).toBe("COMPLETED");
+    expect(result.execution.run.runId).toBe("run.identity");
+    expect(result.execution.run.status).toBe("COMPLETED");
   });
 
   it("executes the literalPatchExecutor fixture only for nodes with a statePatch, matching the general deterministic-executor pattern", async () => {
@@ -100,8 +101,8 @@ describe("executeWorkflow — successful execution", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     // No patch from "no-op" -> revision stays at 0 through that node.
-    expect(result.run.history[0]?.stateRevisionBefore).toBe(0);
-    expect(result.run.history[0]?.stateRevisionAfter).toBe(0);
-    expect(result.run.state.values).toEqual({ a: 1 });
+    expect(result.execution.history[0]?.stateRevisionBefore).toBe(0);
+    expect(result.execution.history[0]?.stateRevisionAfter).toBe(0);
+    expect(result.execution.state.values).toEqual({ a: 1 });
   });
 });

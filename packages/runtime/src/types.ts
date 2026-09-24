@@ -1,5 +1,8 @@
-import type { JsonObject, JsonValue, NodeDefinition, NodeId, NodeKind, RunId, RunState } from "@aao/contracts";
+import type { JsonObject, JsonValue, NodeDefinition, NodeId, NodeKind, RunId, RunRecord, RunState } from "@aao/contracts";
 import type { CompiledWorkflowPlan } from "@aao/workflow-dsl";
+import type { RuntimeClock } from "./clock.js";
+import type { NodeStatusMap } from "./node-lifecycle.js";
+import type { RuntimeExecutionSnapshot } from "./execution-snapshot.js";
 
 // --- Node Registry ----------------------------------------------------------
 
@@ -65,6 +68,13 @@ export interface RuntimeOptions {
    * runtime bugs — Workflow Compiler V1 already rejects cycles.
    */
   maxSteps?: number;
+  /**
+   * The Runtime's explicit time boundary (see `clock.ts`). Every Run
+   * lifecycle timestamp and snapshot `capturedAt` comes from this clock.
+   * Defaults to a real system clock (`createSystemClock()`); tests inject a
+   * deterministic one so lifecycle timestamps are assertable.
+   */
+  clock?: RuntimeClock;
 }
 
 /**
@@ -88,25 +98,37 @@ export interface ExecuteWorkflowRequest {
  * Minimal, JSON-safe, per-node execution evidence. This is *not* the future
  * canonical AAO Trace — no wall-clock latency, tokens, costs, timestamps,
  * trace ids, or OpenTelemetry. It exists so tests and a later tracing layer
- * have deterministic evidence that nodes ran in the expected order with the
- * expected state effect.
+ * have deterministic evidence that nodes ran (or failed to run) in the
+ * expected order with the expected state effect. A `FAILED` record's
+ * `stateRevisionBefore`/`stateRevisionAfter` are always equal: no state
+ * patch is ever applied from a node that threw or returned an invalid
+ * result, so a failed node never advances the revision.
  */
 export interface NodeExecutionRecord {
   nodeId: NodeId;
   kind: NodeKind;
   step: number;
-  status: "SUCCEEDED";
+  status: "SUCCEEDED" | "FAILED";
   output?: JsonValue;
   stateRevisionBefore: number;
   stateRevisionAfter: number;
 }
 
-/** The successful, completed shape of one Runtime V1 execution. */
-export interface RuntimeRunResult {
-  runId: RunId;
-  status: "COMPLETED";
+/**
+ * The Runtime-owned, JSON-safe managed execution state for one Run — the
+ * single authoritative representation `docs/architecture/runtime-state-management.md`
+ * describes. `run` is the sole source of Run lifecycle truth (`RunRecord`,
+ * from `@aao/contracts`); `nodeStatusesById` is the sole source of Node
+ * lifecycle truth; `state` is the sole source of authoritative workflow
+ * data. Deliberately excludes the Node Registry, executors, the clock, and
+ * any other live Runtime dependency — those are inputs to execution, not
+ * part of its serializable state.
+ */
+export interface RuntimeExecutionState {
+  run: RunRecord;
   state: RunState;
-  output: JsonValue | undefined;
+  nodeStatusesById: NodeStatusMap;
+  step: number;
   history: NodeExecutionRecord[];
 }
 
@@ -123,7 +145,8 @@ export type RuntimeFailureCode =
   | "NODE_EXECUTION_FAILED"
   | "INVALID_NODE_RESULT"
   | "INVALID_STATE_PATCH"
-  | "MAX_STEPS_EXCEEDED";
+  | "MAX_STEPS_EXCEEDED"
+  | "INVALID_EXECUTION_SNAPSHOT";
 
 export interface RuntimeFailure {
   code: RuntimeFailureCode;
@@ -137,6 +160,17 @@ export interface RuntimeFailure {
  * The Runtime's public result shape. Expected failures (bad input, preflight
  * rejection, an executor throwing, a malformed result) are values, never
  * exceptions — only unexpected internal invariant violations may still
- * throw.
+ * throw. `RunRecord.status` (inside `execution.run`) is the sole source of
+ * lifecycle truth — there is no separate top-level `status` field to drift
+ * out of sync with it (see ADR-010).
+ *
+ * A request rejected by `validateRuntimeInput` (`INVALID_RUNTIME_INPUT`)
+ * carries no `execution`/`latestSnapshot`: the request could not be trusted
+ * enough to construct a `RunRecord` in the first place. Every failure after
+ * that point (preflight, node execution, malformed result, step ceiling)
+ * carries both, so a failure is always inspectable at its last safe
+ * execution boundary.
  */
-export type WorkflowExecutionResult = { ok: true; run: RuntimeRunResult } | { ok: false; failure: RuntimeFailure };
+export type WorkflowExecutionResult =
+  | { ok: true; execution: RuntimeExecutionState; output?: JsonValue; latestSnapshot: RuntimeExecutionSnapshot }
+  | { ok: false; failure: RuntimeFailure; execution?: RuntimeExecutionState; latestSnapshot?: RuntimeExecutionSnapshot };

@@ -1,4 +1,5 @@
 import type { EdgeDefinition } from "@aao/contracts";
+import { canonicalJsonStringify } from "@aao/contracts";
 import type { CompiledWorkflowPlan } from "@aao/workflow-dsl";
 import type { NodeRegistry, RuntimeFailure } from "./types.js";
 
@@ -178,7 +179,12 @@ function checkOutgoingIncomingEdgeSetsMatch(plan: CompiledWorkflowPlan): Runtime
 function countEdgeKeys(edges: EdgeDefinition[]): Map<string, number> {
   const counts = new Map<string, number>();
   for (const edge of edges) {
-    const key = `${edge.sourceNodeId}=>${edge.targetNodeId}::${JSON.stringify(edge.condition ?? null)}`;
+    // Canonical (key-sorted) JSON, not raw JSON.stringify: two structurally
+    // equal conditions with keys in a different order (e.g. {"a":1,"b":2} vs
+    // {"b":2,"a":1}) must fingerprint identically here, matching
+    // @aao/workflow-dsl's own duplicate-edge fingerprinting in
+    // semantic-validator.ts (see ADR-010, Sprint 4 carryover).
+    const key = `${edge.sourceNodeId}=>${edge.targetNodeId}::${canonicalJsonStringify(edge.condition ?? null)}`;
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
   return counts;

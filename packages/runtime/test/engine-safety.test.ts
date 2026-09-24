@@ -205,10 +205,49 @@ describe("executeWorkflow — safety", () => {
     expect(result.failure.code).toBe("INVALID_STATE_PATCH");
   });
 
-  it("stops with MAX_STEPS_EXCEEDED rather than looping forever if forced past the ceiling", async () => {
+  it("stops with MAX_STEPS_EXCEEDED when a legitimate plan's step count exceeds a caller-configured ceiling", async () => {
+    // A perfectly valid, non-cyclic 6-node chain — no plan corruption at
+    // all. This exercises a caller deliberately budgeting fewer steps than
+    // the workflow actually needs (e.g. a defensive per-run cap), the
+    // realistic way MAX_STEPS_EXCEEDED is expected to trigger.
+    const plan = compileOrThrow(
+      buildWorkflow({
+        entryNodeId: "a",
+        nodes: [
+          { id: "a", kind: "deterministic", config: {} },
+          { id: "b", kind: "deterministic", config: {} },
+          { id: "c", kind: "deterministic", config: {} },
+          { id: "d", kind: "deterministic", config: {} },
+          { id: "final", kind: "final_output", config: {} },
+        ],
+        edges: [
+          { sourceNodeId: "a", targetNodeId: "b" },
+          { sourceNodeId: "b", targetNodeId: "c" },
+          { sourceNodeId: "c", targetNodeId: "d" },
+          { sourceNodeId: "d", targetNodeId: "final" },
+        ],
+      }),
+    );
+    const registry = createTestRegistry(literalPatchExecutor, finalOutputExecutor);
+    const result = await executeWorkflow(buildRequest({ runId: "run.step-ceiling", plan, registry, options: { maxSteps: 2 } }));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.failure.code).toBe("MAX_STEPS_EXCEEDED");
+    // The last safe boundary (after step 2: "a" and "b" both ran, and "c"
+    // became READY as the next node to execute) is preserved, not corrupted.
+    expect(result.execution?.nodeStatusesById.a).toBe("SUCCEEDED");
+    expect(result.execution?.nodeStatusesById.b).toBe("SUCCEEDED");
+    expect(result.execution?.nodeStatusesById.c).toBe("READY");
+    expect(result.execution?.nodeStatusesById.d).toBe("PENDING");
+    expect(result.execution?.run.status).toBe("FAILED");
+  });
+
+  it("rejects a plan whose routing revisits an already-executed node mid-execution as plan corruption, rather than looping or crashing", async () => {
     // Two deterministic nodes ping-ponging via a manually corrupted routing
-    // table — the compiler would never produce a cycle, so this exercises
-    // the defensive ceiling directly against a hand-built plan.
+    // table — Workflow Compiler V1 would never produce a cycle, so this
+    // exercises the defensive re-entry check directly against a hand-built
+    // plan; the authoritative Node lifecycle (SUCCEEDED is terminal for V1)
+    // makes this detectable before any step-ceiling logic is even reached.
     const plan = compileOrThrow(
       buildWorkflow({
         entryNodeId: "a",
@@ -232,11 +271,6 @@ describe("executeWorkflow — safety", () => {
       incomingEdgesByNode: {
         ...plan.incomingEdgesByNode,
         a: [{ sourceNodeId: "b", targetNodeId: "a" }],
-        // The original b -> final edge no longer exists on the outgoing
-        // side once b's outgoing edge is overridden above; drop its stale
-        // incoming counterpart too so the two indexes still represent the
-        // same edge set and this plan clears preflight to reach the engine's
-        // own maxSteps ceiling, which is what this test exercises.
         final: [],
       },
     };
@@ -244,7 +278,8 @@ describe("executeWorkflow — safety", () => {
     const result = await executeWorkflow(buildRequest({ runId: "run.cyclic", plan: cyclicPlan, registry, options: { maxSteps: 6 } }));
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.failure.code).toBe("MAX_STEPS_EXCEEDED");
+    expect(result.failure.code).toBe("RUNTIME_PREFLIGHT_FAILED");
+    expect(result.execution?.run.status).toBe("FAILED");
   });
 
   it("rejects a plan with a corrupted outgoing edge target before executing any node", async () => {

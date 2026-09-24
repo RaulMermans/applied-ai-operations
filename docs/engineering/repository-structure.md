@@ -11,7 +11,7 @@ packages/
   config/                  @aao/config — deterministic runtime configuration
   contracts/               @aao/contracts — canonical domain contracts (Sprint 2)
   workflow-dsl/            @aao/workflow-dsl — workflow authoring, validation, and compiler (Sprint 3)
-  runtime/                 @aao/runtime — Node Registry and Runtime V1 (Sprint 4)
+  runtime/                 @aao/runtime — Node Registry, Runtime V1 (Sprint 4), and managed run state/lifecycle (Sprint 5)
   substrate-contracts/     research evidence, not production architecture
   substrate-spikes/        research evidence, not production architecture
 
@@ -45,7 +45,7 @@ The Workflow DSL and compiler (Sprint 3). Parses YAML/JSON workflow source into 
 
 ## `packages/runtime` — `@aao/runtime`
 
-The Node Registry and Runtime V1 (Sprint 4). Consumes a `CompiledWorkflowPlan` (never parses workflow source itself) and executes it: a constructible, non-global Node Registry; a runtime preflight that rejects conditional routing and missing node executors before any node runs; a deterministic sequential engine that applies validated, JSON-safe state patches and follows the plan's unconditional routing; and a small structured Runtime failure taxonomy. Its production dependencies are `@aao/contracts`, `@aao/workflow-dsl`, and `zod`; it does not depend on LangGraph, the Vercel AI SDK, the MCP SDK, Fastify, `apps/*`, or either `packages/substrate-*` package, and no app currently depends on it — there is no persistence or run-scheduling layer to wire it into yet. See [ADR-009](../decisions/ADR-009-node-registry-and-runtime-v1.md) and [runtime V1](../architecture/runtime-v1.md).
+The Node Registry, Runtime V1 (Sprint 4), and managed run state/lifecycle (Sprint 5). Consumes a `CompiledWorkflowPlan` (never parses workflow source itself) and executes it as a *managed* run: a constructible, non-global Node Registry; a runtime preflight that rejects conditional routing and missing node executors before any node runs; a deterministic sequential engine that applies validated, JSON-safe state patches and follows the plan's unconditional routing; an authoritative Run lifecycle and Node lifecycle; an explicit clock boundary; safe, in-memory `RuntimeExecutionSnapshot` capture at every safe boundary; and a small structured Runtime failure taxonomy. Its production dependencies are `@aao/contracts`, `@aao/workflow-dsl`, and `zod`; it does not depend on LangGraph, the Vercel AI SDK, the MCP SDK, Fastify, `apps/*`, or either `packages/substrate-*` package, and no app currently depends on it — there is no persistence or run-scheduling layer to wire it into yet. See [ADR-009](../decisions/ADR-009-node-registry-and-runtime-v1.md)/[ADR-010](../decisions/ADR-010-managed-runtime-state-and-lifecycle.md) and [runtime V1](../architecture/runtime-v1.md)/[runtime state management](../architecture/runtime-state-management.md).
 
 ## `packages/substrate-contracts` and `packages/substrate-spikes`
 

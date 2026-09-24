@@ -12,3 +12,5 @@ These terms have separate responsibilities and must not be conflated.
 | Logs / Traces | Operational execution evidence | Lifecycle events, calls, retries, approvals, errors | Not business state; sensitive data is not copied indiscriminately. |
 
 AAO owns state, checkpoint, run persistence, interruption recovery, and persisted-operation semantics. Underlying storage remains replaceable. Before durable external actions, implementation must establish idempotency keys and a recoverable side-effect design. No exactly-once semantics are claimed.
+
+`@aao/runtime` implements the in-memory half of this boundary: an authoritative `RunState` per run and a safe, in-memory `RuntimeExecutionSnapshot` captured only between Nodes (never mid-execution). See [runtime state management](runtime-state-management.md) and [ADR-010](../decisions/ADR-010-managed-runtime-state-and-lifecycle.md). A `RuntimeExecutionSnapshot` is recovery-*ready* data, not a `CheckpointRecord` — nothing is durably persisted yet.

@@ -163,6 +163,45 @@ describe("runPreflight", () => {
     expect(failure?.nodeId).toBe("final");
   });
 
+  it("treats reordered condition keys in outgoing vs incoming edge indexes as the same edge (canonical JSON fingerprint, not raw JSON.stringify — Sprint 4 carryover fix)", () => {
+    const plan = compileOrThrow(
+      buildWorkflow({
+        entryNodeId: "intake",
+        nodes: [
+          { id: "intake", kind: "deterministic", config: {} },
+          { id: "branch-a", kind: "deterministic", config: {} },
+          { id: "branch-b", kind: "deterministic", config: {} },
+          { id: "final", kind: "final_output", config: {} },
+        ],
+        edges: [
+          { sourceNodeId: "intake", targetNodeId: "branch-a", condition: { when: "x", scope: "y" } },
+          { sourceNodeId: "intake", targetNodeId: "branch-b" },
+          { sourceNodeId: "branch-a", targetNodeId: "final" },
+          { sourceNodeId: "branch-b", targetNodeId: "final" },
+        ],
+      }),
+    );
+    // Manually rebuilds the incoming index entry for "branch-a" with the
+    // same condition but reordered keys — structurally identical, textually
+    // different. A raw JSON.stringify fingerprint would wrongly treat this
+    // as a different edge and report RUNTIME_PREFLIGHT_FAILED from the
+    // outgoing/incoming edge-set cross-check before conditional routing is
+    // ever checked.
+    const corrupted = {
+      ...plan,
+      incomingEdgesByNode: {
+        ...plan.incomingEdgesByNode,
+        "branch-a": [{ sourceNodeId: "intake", targetNodeId: "branch-a", condition: { scope: "y", when: "x" } }],
+      },
+    };
+    const registry = createTestRegistry(literalPatchExecutor, finalOutputExecutor);
+    const failure = runPreflight(corrupted, registry);
+    // Fails only because Runtime V1 doesn't evaluate conditions (checked
+    // after plan-integrity) — proving the edge-set fingerprint comparison
+    // itself passed despite the reordered keys.
+    expect(failure?.code).toBe("CONDITIONAL_ROUTING_UNSUPPORTED");
+  });
+
   it("rejects a plan whose outgoing and incoming edge indexes disagree on the edge set (corrupted plan defense)", () => {
     const corrupted = {
       ...minimalPlan,

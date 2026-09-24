@@ -1,4 +1,4 @@
-import type { JsonObject, RunState } from "@aao/contracts";
+import { StateSnapshotSchema, isoTimestampSchema, type JsonObject, type RunState, type StateSnapshot } from "@aao/contracts";
 import { cloneJsonValue } from "./json-safety.js";
 
 /**
@@ -34,4 +34,30 @@ export function applyStatePatch(state: RunState, patch: JsonObject | undefined):
 /** A defensive deep clone of a `RunState`, used before handing state to an executor so it cannot corrupt authoritative state through a shared reference. */
 export function cloneRunState(state: RunState): RunState {
   return { runId: state.runId, revision: state.revision, values: cloneJsonValue(state.values) };
+}
+
+/**
+ * Builds a canonical, immutable `StateSnapshot` capturing `state` at
+ * `capturedAt`. A `StateSnapshot` is domain data, not a persistence
+ * guarantee — see `docs/architecture/state-memory-durability.md` and
+ * `docs/architecture/runtime-state-management.md`. `capturedAt` always comes
+ * from the Runtime clock boundary (`RuntimeClock`), never `new Date()`
+ * directly, and is validated against the canonical ISO timestamp contract
+ * before it is trusted.
+ */
+export function captureStateSnapshot(state: RunState, capturedAt: string): StateSnapshot {
+  if (!isoTimestampSchema.safeParse(capturedAt).success) {
+    throw new Error(`captureStateSnapshot: "${capturedAt}" is not a valid ISO timestamp.`);
+  }
+  const snapshot: StateSnapshot = {
+    runId: state.runId,
+    revision: state.revision,
+    values: cloneJsonValue(state.values),
+    capturedAt,
+  };
+  const validated = StateSnapshotSchema.safeParse(snapshot);
+  if (!validated.success) {
+    throw new Error("captureStateSnapshot: produced a StateSnapshot that fails canonical validation.");
+  }
+  return validated.data;
 }

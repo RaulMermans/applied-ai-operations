@@ -46,7 +46,7 @@ describe("executeWorkflow — integrity", () => {
     const result = await executeWorkflow(buildRequest({ runId: "run.history-integrity", plan }));
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.run.history.map((record) => [record.stateRevisionBefore, record.stateRevisionAfter])).toEqual([
+    expect(result.execution.history.map((record) => [record.stateRevisionBefore, record.stateRevisionAfter])).toEqual([
       [0, 1],
       [1, 2],
       [2, 2],

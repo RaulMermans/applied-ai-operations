@@ -52,6 +52,8 @@ export {
   type JsonObject,
 } from "./common.js";
 
+export { canonicalJsonStringify } from "./json.js";
+
 export {
   PermissionClassSchema,
   PermissionClassesSchema,
