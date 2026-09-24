@@ -121,6 +121,37 @@ describe("transitionRunRecord", () => {
   });
 });
 
+describe("transitionRunRecord temporal monotonicity", () => {
+  function runAt(updatedAt: string) {
+    return { ...createRunRecord({ runId: "run.t", workflowId: "wf.t", workflowVersion: "1.0.0" }, { now: () => updatedAt }) };
+  }
+
+  it("accepts a later timestamp", () => {
+    const next = transitionRunRecord(runAt("2026-09-24T10:00:00Z"), "VALIDATING", "2026-09-24T10:00:01Z");
+    expect(next.updatedAt).toBe("2026-09-24T10:00:01Z");
+  });
+
+  it("accepts an equal timestamp", () => {
+    const next = transitionRunRecord(runAt("2026-09-24T10:00:00Z"), "VALIDATING", "2026-09-24T10:00:00Z");
+    expect(next.status).toBe("VALIDATING");
+  });
+
+  it("accepts the same instant written with a different UTC offset", () => {
+    const next = transitionRunRecord(runAt("2026-09-24T10:00:00Z"), "VALIDATING", "2026-09-24T12:00:00+02:00");
+    expect(next.updatedAt).toBe("2026-09-24T12:00:00+02:00");
+  });
+
+  it("rejects an earlier instant, even when its raw string sorts later", () => {
+    const run = runAt("2026-09-24T10:00:00Z");
+    expect(() => transitionRunRecord(run, "VALIDATING", "2026-09-24T09:59:59Z")).toThrow(/backwards/);
+    expect(() => transitionRunRecord(run, "VALIDATING", "2026-09-24T11:30:00+02:00")).toThrow(/backwards/);
+  });
+
+  it("still rejects a malformed timestamp through canonical validation", () => {
+    expect(() => transitionRunRecord(runAt("2026-09-24T10:00:00Z"), "VALIDATING", "2026-09-24 10:00")).toThrow(/not a valid ISO timestamp/);
+  });
+});
+
 describe("setCurrentNodeId", () => {
   it("sets currentNodeId immutably", () => {
     const clock = buildTestClock();

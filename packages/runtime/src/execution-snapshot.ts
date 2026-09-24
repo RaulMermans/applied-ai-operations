@@ -2,6 +2,7 @@ import { z } from "zod";
 import { NodeIdSchema, NodeStatusSchema, RunRecordSchema, StateSnapshotSchema } from "@aao/contracts";
 import type { CompiledWorkflowPlan } from "@aao/workflow-dsl";
 import { captureStateSnapshot } from "./state.js";
+import { compareIsoInstants } from "./timestamps.js";
 import type { RuntimeExecutionState, RuntimeFailure } from "./types.js";
 
 /**
@@ -15,6 +16,11 @@ import type { RuntimeExecutionState, RuntimeFailure } from "./types.js";
  * it contains no Runtime dependency (no registry, executor, or clock) —
  * only JSON-safe data built from the same canonical schemas
  * `RuntimeExecutionState` uses.
+ *
+ * Temporal coherence: a snapshot must not claim to have been captured
+ * before the latest Run lifecycle transition it represents, so
+ * `stateSnapshot.capturedAt` must be the same instant as, or later than,
+ * `run.updatedAt` (compared as instants, not raw strings).
  */
 export const RuntimeExecutionSnapshotSchema = z
   .object({
@@ -24,7 +30,16 @@ export const RuntimeExecutionSnapshotSchema = z
     nodeStatusesById: z.record(NodeIdSchema, NodeStatusSchema),
     step: z.number().int().nonnegative(),
   })
-  .strict();
+  .strict()
+  .superRefine((snapshot, ctx) => {
+    if (compareIsoInstants(snapshot.stateSnapshot.capturedAt, snapshot.run.updatedAt) < 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["stateSnapshot", "capturedAt"],
+        message: "stateSnapshot.capturedAt must not be earlier than run.updatedAt.",
+      });
+    }
+  });
 export type RuntimeExecutionSnapshot = z.infer<typeof RuntimeExecutionSnapshotSchema>;
 
 /**
@@ -53,6 +68,12 @@ export function captureExecutionSnapshot(execution: RuntimeExecutionState, captu
     nodeStatusesById: { ...execution.nodeStatusesById },
     step: execution.step,
   };
+
+  if (compareIsoInstants(capturedAt, execution.run.updatedAt) < 0) {
+    throw new Error(
+      `captureExecutionSnapshot: capturedAt "${capturedAt}" is earlier than run.updatedAt "${execution.run.updatedAt}"; a snapshot cannot predate the lifecycle transition it represents.`,
+    );
+  }
 
   const validated = RuntimeExecutionSnapshotSchema.safeParse(snapshot);
   if (!validated.success) {

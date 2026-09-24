@@ -115,7 +115,16 @@ interface RuntimeClock {
 }
 ```
 
-`createSystemClock()` is the production implementation (`new Date().toISOString()`). `RuntimeOptions.clock` lets a caller — in practice, tests — inject a deterministic one, so `run-lifecycle.test.ts`, `execution-snapshot.test.ts`, and `managed-execution.test.ts` can assert exact `createdAt`/`updatedAt`/`capturedAt` values and ordering without touching real wall-clock time. Every timestamp minted this way is validated against `@aao/contracts`'s canonical `isoTimestampSchema` before it enters a `RunRecord` or `StateSnapshot` — a malformed clock output can never silently enter a canonical record.
+`createSystemClock()` is the production implementation (wall-clock `Date.now()` as ISO, held monotonic per clock instance so an NTP step backwards never produces an earlier instant). `RuntimeOptions.clock` lets a caller — in practice, tests — inject a deterministic one, so `run-lifecycle.test.ts`, `execution-snapshot.test.ts`, and `managed-execution.test.ts` can assert exact `createdAt`/`updatedAt`/`capturedAt` values and ordering without touching real wall-clock time. Every timestamp minted this way is validated against `@aao/contracts`'s canonical `isoTimestampSchema` before it enters a `RunRecord` or `StateSnapshot` — a malformed clock output can never silently enter a canonical record.
+
+### Temporal integrity
+
+Two lifecycle invariants are enforced by comparing *instants*, never raw ISO strings (`timestamps.ts`, `compareIsoInstants`), so `2026-09-24T10:00:00Z` and `2026-09-24T12:00:00+02:00` are treated as the same moment:
+
+- **Monotonic Run time** — `transitionRunRecord` requires the next `updatedAt` to be the same instant as, or later than, the previous one. An earlier instant throws: it is an internal lifecycle invariant (a broken clock or caller), not a `RuntimeFailure` code.
+- **Snapshot coherence** — a `RuntimeExecutionSnapshot` must satisfy `stateSnapshot.capturedAt >= run.updatedAt`. `captureExecutionSnapshot` throws on violation, and `RuntimeExecutionSnapshotSchema` rejects such a snapshot, so `validateSnapshotAgainstPlan` reports `INVALID_EXECUTION_SNAPSHOT`.
+
+Node execution history intentionally carries no timestamps.
 
 ## State snapshots and Runtime execution snapshots
 

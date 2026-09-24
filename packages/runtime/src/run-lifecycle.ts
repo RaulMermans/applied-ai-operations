@@ -1,5 +1,6 @@
 import { isoTimestampSchema, type EntityVersion, type NodeId, type RunId, type RunRecord, type RunStatus, type WorkflowId } from "@aao/contracts";
 import type { RuntimeClock } from "./clock.js";
+import { compareIsoInstants } from "./timestamps.js";
 
 /**
  * The canonical Run lifecycle frozen by `docs/architecture/runtime-lifecycle.md`.
@@ -65,12 +66,22 @@ export function createRunRecord(params: { runId: RunId; workflowId: WorkflowId; 
  * Runtime clock boundary, never computed here). Throws
  * `IllegalRunTransitionError` for any transition `isLegalRunTransition`
  * rejects, including any transition attempted out of a terminal status.
+ *
+ * Lifecycle time is monotonic: the new `updatedAt` must be the same instant
+ * as, or later than, the previous one — compared as instants (see
+ * `compareIsoInstants`), never as raw strings, so an equivalent timestamp
+ * written with a different UTC offset is accepted. A backwards timestamp is
+ * a Runtime invariant violation (a broken clock or caller), so it throws
+ * rather than becoming a `RuntimeFailure` value.
  */
 export function transitionRunRecord(run: RunRecord, nextStatus: RunStatus, timestamp: string): RunRecord {
   if (!isLegalRunTransition(run.status, nextStatus)) {
     throw new IllegalRunTransitionError(run.status, nextStatus);
   }
   assertValidTimestamp(timestamp, "transitionRunRecord");
+  if (compareIsoInstants(timestamp, run.updatedAt) < 0) {
+    throw new Error(`transitionRunRecord: "${timestamp}" is earlier than the run's current updatedAt "${run.updatedAt}"; Run lifecycle time must not move backwards.`);
+  }
   return { ...run, status: nextStatus, updatedAt: timestamp };
 }
 

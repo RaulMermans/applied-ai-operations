@@ -16,6 +16,21 @@ describe("createSystemClock", () => {
     const second = clock.now();
     expect(second >= first).toBe(true);
   });
+
+  it("holds at the latest instant if wall-clock time steps backwards", () => {
+    const clock = createSystemClock();
+    const realNow = Date.now;
+    try {
+      Date.now = () => Date.parse("2026-09-24T10:00:05.000Z");
+      expect(clock.now()).toBe("2026-09-24T10:00:05.000Z");
+      Date.now = () => Date.parse("2026-09-24T10:00:01.000Z");
+      expect(clock.now()).toBe("2026-09-24T10:00:05.000Z");
+      Date.now = () => Date.parse("2026-09-24T10:00:06.000Z");
+      expect(clock.now()).toBe("2026-09-24T10:00:06.000Z");
+    } finally {
+      Date.now = realNow;
+    }
+  });
 });
 
 describe("buildTestClock (fixture)", () => {

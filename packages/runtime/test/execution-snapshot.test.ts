@@ -55,6 +55,38 @@ describe("captureExecutionSnapshot", () => {
   });
 });
 
+describe("snapshot temporal coherence (capturedAt >= run.updatedAt)", () => {
+  // buildRunningExecution's last lifecycle transition is at 2026-01-01T00:00:03.000Z.
+  const RUN_UPDATED_AT = "2026-01-01T00:00:03.000Z";
+
+  it("accepts capturedAt equal to run.updatedAt", () => {
+    const execution = buildRunningExecution();
+    expect(execution.run.updatedAt).toBe(RUN_UPDATED_AT);
+    expect(captureExecutionSnapshot(execution, RUN_UPDATED_AT).stateSnapshot.capturedAt).toBe(RUN_UPDATED_AT);
+  });
+
+  it("accepts capturedAt later than run.updatedAt", () => {
+    expect(() => captureExecutionSnapshot(buildRunningExecution(), "2026-01-01T00:00:04.000Z")).not.toThrow();
+  });
+
+  it("accepts an equivalent instant written with a different UTC offset", () => {
+    expect(() => captureExecutionSnapshot(buildRunningExecution(), "2026-01-01T02:00:03.000+02:00")).not.toThrow();
+  });
+
+  it("rejects capturedAt earlier than run.updatedAt at capture time", () => {
+    expect(() => captureExecutionSnapshot(buildRunningExecution(), "2026-01-01T00:00:02.999Z")).toThrow(/earlier than run.updatedAt/);
+    // Sorts later as a raw string, but is an earlier instant (2025-12-31T23:30:00Z).
+    expect(() => captureExecutionSnapshot(buildRunningExecution(), "2026-01-01T00:30:00+01:00")).toThrow(/earlier than run.updatedAt/);
+  });
+
+  it("rejects a structurally valid snapshot whose capturedAt predates run.updatedAt, via the schema", () => {
+    const snapshot = captureExecutionSnapshot(buildRunningExecution(), RUN_UPDATED_AT);
+    const tampered = { ...snapshot, stateSnapshot: { ...snapshot.stateSnapshot, capturedAt: "2026-01-01T00:00:02.000Z" } };
+    expect(RuntimeExecutionSnapshotSchema.safeParse(tampered).success).toBe(false);
+    expect(validateSnapshotAgainstPlan(tampered, minimalPlan)?.code).toBe("INVALID_EXECUTION_SNAPSHOT");
+  });
+});
+
 describe("validateSnapshotAgainstPlan", () => {
   it("accepts a snapshot that matches its originating plan", () => {
     const execution = buildRunningExecution();

@@ -13,11 +13,19 @@ export interface RuntimeClock {
   now(): string;
 }
 
-/** The production clock: real wall-clock time, ISO-8601 with an explicit offset. */
+/**
+ * The production clock: real wall-clock time, ISO-8601 with an explicit
+ * offset. Wall-clock time can step backwards (e.g. an NTP correction), but
+ * Run lifecycle time must be monotonic (see `transitionRunRecord`), so each
+ * clock instance never returns an instant earlier than one it already
+ * returned — it holds at the latest value until real time catches up.
+ */
 export function createSystemClock(): RuntimeClock {
+  let latestMs = Number.NEGATIVE_INFINITY;
   return {
     now(): string {
-      return new Date().toISOString();
+      latestMs = Math.max(latestMs, Date.now());
+      return new Date(latestMs).toISOString();
     },
   };
 }
