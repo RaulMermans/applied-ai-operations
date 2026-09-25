@@ -1,6 +1,6 @@
 # Tool runtime
 
-`@aao/tool-runtime` (`packages/tool-runtime`, Sprint 8) executes explicitly registered, schema-validated, locally trusted Tools through one deterministic boundary. It refuses permission classes AAO is not yet safe to execute and reports every expected failure as a machine-readable value. See [ADR-013](../decisions/ADR-013-tool-registry-and-safe-execution-boundary.md).
+`@aao/tool-runtime` (`packages/tool-runtime`, Sprint 8) executes explicitly registered, schema-validated, locally trusted Tools through one deterministic boundary. It refuses permission classes AAO is not yet safe to execute, requires a host-attested Authorization Context for every execution (Sprint 9), and reports every expected failure as a machine-readable value. See [ADR-013](../decisions/ADR-013-tool-registry-and-safe-execution-boundary.md), [ADR-014](../decisions/ADR-014-authorization-and-permission-enforcement.md), and [authorization](authorization.md).
 
 ## Contracts
 
@@ -10,8 +10,8 @@ RegisteredTool                         { spec: ToolSpec, handler: ToolHandler },
 ToolRef                                { id, version }, exact
 ToolExecutionRequest                   { schemaVersion: 1, toolExecutionId (caller-owned), toolRef, input: JsonValue }
 ToolResult                             { schemaVersion: 1, toolExecutionId, toolRef, output: JsonValue }
-ToolFailure                            { code, message, toolExecutionId?, toolRef?, handlerFailureCode?, unsupportedPermissionClasses?, issues? }
-ToolExecutionResult                    { ok: true, result: ToolResult } | { ok: false, failure: ToolFailure }
+ToolFailure                            { code, message, toolExecutionId?, toolRef?, handlerFailureCode?, unsupportedPermissionClasses?, authorizationReasonCode?, issues? }
+ToolExecutionResult                    { ok: true, result: ToolResult, authorization: ALLOW decision } | { ok: false, failure: ToolFailure }
 ```
 
 `ToolSpec` is not duplicated or extended. Executable code exists only in `RegisteredTool.handler`, which lives in Runtime configuration and never appears in a request, result, failure, or workflow state.
@@ -25,6 +25,8 @@ Tool Registry            exact id + version                                     
         ↓
 Permission support gate  every class ∈ { read_only, write_draft }                            → TOOL_PERMISSION_UNSUPPORTED
         ↓
+Authorization            host context required; authorize() over ToolSpec.permissionClasses   → TOOL_AUTHORIZATION_REQUIRED
+        ↓                                                                                    → TOOL_AUTHORIZATION_DENIED (+ authorizationReasonCode)
 Input schema validation  compiled ToolSpec.inputSchema                                       → TOOL_INPUT_SCHEMA_MISMATCH
         ↓
 Trusted Tool Handler     at most once; throw/reject → generic failure                        → TOOL_EXECUTION_FAILED
@@ -34,15 +36,17 @@ Output validation        strict result shape, then JSON-safety                  
 ToolExecutionResult      { ok: true, result: ToolResult }
 ```
 
-Entry point: `executeTool({ request, tools })`. It is the only Tool execution implementation. The Tool Node, future governed Agent Tool use, and future MCP adapters all call it.
+Entry point: `executeTool({ request, tools, authorizationContext })`. It is the only Tool execution implementation and the only exported path that invokes a registered handler. The Tool Node, future governed Agent Tool use, and future MCP adapters all call it.
 
 ## Workflow path
 
 ```text
 Workflow tool Node        config: { toolRef, inputStateKey, resultStateKey } (top-level keys only, must differ)
       ↓
-Generic AAO Runtime       caller registers createToolNodeExecutor({ tools }) explicitly;
-      ↓                   preflight: config schema, exact Tool registered, permission support (no state read, no handler call)
+Generic AAO Runtime       caller registers createToolNodeExecutor({ tools, resolveAuthorizationContext }) explicitly;
+      ↓                   preflight: config schema, exact Tool registered, permission support (no state read, no handler call, no authorization)
+Host resolver             resolveAuthorizationContext({ runId, nodeId, toolRef }) → AuthorizationContext (throw/undefined → TOOL_AUTHORIZATION_REQUIRED)
+      ↓
 Tool Runtime              executeTool({ toolExecutionId: deriveToolExecutionId(runId, nodeId), toolRef, input: state[inputStateKey] })
       ↓
 Tool Handler              once
@@ -83,7 +87,7 @@ Sprint 8 carries `ToolSpec.capabilityRef` but does not resolve it: there is no C
 
 ## Registry
 
-`createToolRegistry()` returns an isolated instance: no global singleton, no filesystem scanning, and no dynamic import. `register({ spec, handler })` checks JSON safety and `ToolSpecSchema`, requires `handler.execute`, rejects a duplicate `id@version`, and compiles both schemas. Any failure throws, because these are programming errors in trusted host code. `get(ref)` is version-exact and returns a fresh spec clone. The stored spec and compiled schemas come from a private clone, so no caller reference can mutate registry state. Registration captures the handler's `execute` function (bound to the original object) into a frozen registry-owned handler, and compiled schemas are frozen wrappers around a closure-private Ajv validator. Reassigning `execute` on the original handler, or `handler.execute` / `inputSchema.validate` / `outputSchema.validate` on a lookup result, cannot change what later `executeTool` calls run or enforce. Registration order does not matter.
+`createToolRegistry()` returns an isolated instance: no global singleton, no filesystem scanning, and no dynamic import. `register({ spec, handler })` checks JSON safety and `ToolSpecSchema`, requires `handler.execute`, rejects a duplicate `id@version`, and compiles both schemas. Any failure throws, because these are programming errors in trusted host code. The public surface is inspection only: `getSpec(ref)` is version-exact and returns a fresh spec clone, and `has(ref)` checks presence. Neither exposes the handler or a validator; executable bindings live in a module-private `WeakMap` that only `executeTool` resolves, and the registry object is frozen. The stored spec and compiled schemas come from a private clone, so no caller reference can mutate registry state. Registration captures the handler's `execute` function (bound to the original object) into a frozen registry-owned handler, and compiled schemas are frozen wrappers around a closure-private Ajv validator. The stored spec is deep-frozen. Reassigning `execute` on the original handler cannot change what later `executeTool` calls run or enforce. Registration order does not matter.
 
 ## JSON Schema policy
 
@@ -102,7 +106,7 @@ Input-mismatch `issues` are Ajv messages with the instance path and never the of
 
 `read_only` and `write_draft` are supported. `external_side_effect`, `destructive`, and `sensitive_data` are refused. **All** of a Tool's classes must be supported. Only `write_draft` metadata is supported; no draft writer exists.
 
-**Registered ≠ authorized.** See [permission model](../security/permission-model.md). The gate says which Tool kinds this runtime version can execute. It says nothing about who may invoke them.
+**Registered ≠ supported ≠ authorized.** See [permission model](../security/permission-model.md). The gate says which Tool kinds this runtime version can execute and runs before authorization, so no grant can enable an unsupported class. Who may invoke a supported Tool is decided by `@aao/authorization` ([authorization](authorization.md)).
 
 ## Handler contract
 

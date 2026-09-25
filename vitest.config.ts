@@ -20,6 +20,7 @@ function workspaceSourceAlias(packageName: string, relativeEntry: string) {
 export default defineConfig({
   resolve: {
     alias: [
+      workspaceSourceAlias("@aao/authorization", "./packages/authorization/src/index.ts"),
       workspaceSourceAlias("@aao/agent-runtime", "./packages/agent-runtime/src/index.ts"),
       workspaceSourceAlias("@aao/config", "./packages/config/src/index.ts"),
       workspaceSourceAlias("@aao/contracts", "./packages/contracts/src/index.ts"),

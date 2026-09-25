@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { JsonObject } from "@aao/contracts";
 import { executeTool } from "../src/executor.js";
 import { ToolExecutionRequestSchema, ToolFailureSchema, ToolResultSchema, type ToolExecutionResult, type ToolHandlerResult } from "../src/types.js";
-import { LOOKUP_REF, SECRET, buildRequest, buildToolSpec, lookupWorld } from "./fixtures.js";
+import { LOOKUP_REF, SECRET, buildRequest, buildToolSpec, lookupWorld, SUPPORTED_GRANTS } from "./fixtures.js";
 
 function expectFailure(outcome: ToolExecutionResult) {
   if (outcome.ok) throw new Error(`expected failure, got ${JSON.stringify(outcome.result)}`);
@@ -17,7 +17,7 @@ function expectSuccess(outcome: ToolExecutionResult) {
 describe("executeTool — success", () => {
   it("validates, invokes the handler exactly once, validates output, and returns a JSON-safe ToolResult", async () => {
     const { tools, handler } = lookupWorld();
-    const result = expectSuccess(await executeTool({ request: buildRequest(), tools }));
+    const result = expectSuccess(await executeTool({ request: buildRequest(), tools, authorizationContext: SUPPORTED_GRANTS }));
     expect(result).toEqual({ schemaVersion: 1, toolExecutionId: "exec.tool.1", toolRef: { ...LOOKUP_REF }, output: { items: ["alpha-result"] } });
     expect(handler.calls).toEqual([{ toolExecutionId: "exec.tool.1", tool: { ...LOOKUP_REF }, input: { query: "alpha" } }]);
     expect(ToolResultSchema.parse(JSON.parse(JSON.stringify(result)))).toEqual(result);
@@ -31,29 +31,29 @@ describe("executeTool — success", () => {
         return { ok: true, output: { items: [] } };
       },
     });
-    expectSuccess(await executeTool({ request, tools }));
+    expectSuccess(await executeTool({ request, tools, authorizationContext: SUPPORTED_GRANTS }));
     expect(request.input).toEqual({ query: "alpha" });
   });
 
   it("the result does not alias handler output", async () => {
     const shared = { items: ["alpha-result"] };
     const { tools } = lookupWorld({ respond: () => ({ ok: true, output: shared }) });
-    const result = expectSuccess(await executeTool({ request: buildRequest(), tools }));
+    const result = expectSuccess(await executeTool({ request: buildRequest(), tools, authorizationContext: SUPPORTED_GRANTS }));
     shared.items.push("late");
     expect(result.output).toEqual({ items: ["alpha-result"] });
   });
 
   it("is deterministic for the same request, registry, and deterministic handler", async () => {
     const { tools } = lookupWorld();
-    const first = await executeTool({ request: buildRequest(), tools });
-    const second = await executeTool({ request: buildRequest(), tools });
+    const first = await executeTool({ request: buildRequest(), tools, authorizationContext: SUPPORTED_GRANTS });
+    const second = await executeTool({ request: buildRequest(), tools, authorizationContext: SUPPORTED_GRANTS });
     expect(second).toEqual(first);
   });
 
   it("keeps no memory between calls", async () => {
     const { tools, handler } = lookupWorld();
-    await executeTool({ request: buildRequest({ toolExecutionId: "exec.a", input: { query: "one" } }), tools });
-    await executeTool({ request: buildRequest({ toolExecutionId: "exec.b", input: { query: "two" } }), tools });
+    await executeTool({ request: buildRequest({ toolExecutionId: "exec.a", input: { query: "one" } }), tools, authorizationContext: SUPPORTED_GRANTS });
+    await executeTool({ request: buildRequest({ toolExecutionId: "exec.b", input: { query: "two" } }), tools, authorizationContext: SUPPORTED_GRANTS });
     expect(handler.calls.map((call) => call.input)).toEqual([{ query: "one" }, { query: "two" }]);
     expect(handler.calls[1]).not.toHaveProperty("history");
   });
@@ -83,7 +83,7 @@ describe("executeTool — request validation", () => {
     ["-Infinity input", buildRequest({ input: { count: Number.NEGATIVE_INFINITY } })],
   ])("%s → INVALID_TOOL_REQUEST; handler never called", async (_label, request) => {
     const { tools, handler } = lookupWorld();
-    const failure = expectFailure(await executeTool({ request, tools }));
+    const failure = expectFailure(await executeTool({ request, tools, authorizationContext: SUPPORTED_GRANTS }));
     expect(failure.code).toBe("INVALID_TOOL_REQUEST");
     expect(handler.calls).toHaveLength(0);
     expect(ToolFailureSchema.parse(JSON.parse(JSON.stringify(failure)))).toEqual(failure);
@@ -97,7 +97,7 @@ describe("executeTool — request validation", () => {
   it("unregistered Tool or version → TOOL_NOT_FOUND; no \"latest\" resolution", async () => {
     const { tools, handler } = lookupWorld();
     for (const toolRef of [{ id: "local.missing", version: "1.0.0" }, { id: LOOKUP_REF.id, version: "latest" }, { id: LOOKUP_REF.id, version: "1.0" }]) {
-      const failure = expectFailure(await executeTool({ request: buildRequest({ toolRef }), tools }));
+      const failure = expectFailure(await executeTool({ request: buildRequest({ toolRef }), tools, authorizationContext: SUPPORTED_GRANTS }));
       expect(failure).toEqual({ code: "TOOL_NOT_FOUND", message: `Tool "${toolRef.id}" version "${toolRef.version}" is not registered.`, toolExecutionId: "exec.tool.1", toolRef });
     }
     expect(handler.calls).toHaveLength(0);
@@ -129,7 +129,7 @@ describe("executeTool — input schema", () => {
     ["null input", null, "(root): must be object"],
   ])("%s → TOOL_INPUT_SCHEMA_MISMATCH before the handler; zero calls", async (_label, input, issue) => {
     const { tools, handler } = lookupWorld();
-    const failure = expectFailure(await executeTool({ request: buildRequest({ input }), tools }));
+    const failure = expectFailure(await executeTool({ request: buildRequest({ input }), tools, authorizationContext: SUPPORTED_GRANTS }));
     expect(failure).toEqual({
       code: "TOOL_INPUT_SCHEMA_MISMATCH",
       message: "Tool input does not match the Tool's inputSchema.",
@@ -142,23 +142,23 @@ describe("executeTool — input schema", () => {
 
   it("enforces nested object schemas", async () => {
     const { tools, handler } = lookupWorld({ spec: { inputSchema: NESTED_INPUT } });
-    expect(expectFailure(await executeTool({ request: buildRequest({ input: { query: "a", filter: { limit: 0 } } }), tools })).issues).toEqual(["/filter/limit: must be >= 1"]);
-    expect(expectFailure(await executeTool({ request: buildRequest({ input: { query: "a", filter: { limit: 1, tags: [1] } } }), tools })).issues).toEqual(["/filter/tags/0: must be string"]);
-    expect(expectFailure(await executeTool({ request: buildRequest({ input: { query: "a", filter: { limit: 1, x: 1 } } }), tools })).code).toBe("TOOL_INPUT_SCHEMA_MISMATCH");
+    expect(expectFailure(await executeTool({ request: buildRequest({ input: { query: "a", filter: { limit: 0 } } }), tools, authorizationContext: SUPPORTED_GRANTS })).issues).toEqual(["/filter/limit: must be >= 1"]);
+    expect(expectFailure(await executeTool({ request: buildRequest({ input: { query: "a", filter: { limit: 1, tags: [1] } } }), tools, authorizationContext: SUPPORTED_GRANTS })).issues).toEqual(["/filter/tags/0: must be string"]);
+    expect(expectFailure(await executeTool({ request: buildRequest({ input: { query: "a", filter: { limit: 1, x: 1 } } }), tools, authorizationContext: SUPPORTED_GRANTS })).code).toBe("TOOL_INPUT_SCHEMA_MISMATCH");
     expect(handler.calls).toHaveLength(0);
-    expectSuccess(await executeTool({ request: buildRequest({ input: { query: "a", filter: { limit: 2, tags: ["t"] } } }), tools }));
+    expectSuccess(await executeTool({ request: buildRequest({ input: { query: "a", filter: { limit: 2, tags: ["t"] } } }), tools, authorizationContext: SUPPORTED_GRANTS }));
     expect(handler.calls).toHaveLength(1);
   });
 
   it("an input-mismatch report never echoes input values", async () => {
     const { tools } = lookupWorld({ spec: { inputSchema: { type: "object", properties: { query: { type: "string", maxLength: 3 } } } } });
-    const failure = expectFailure(await executeTool({ request: buildRequest({ input: { query: SECRET } }), tools }));
+    const failure = expectFailure(await executeTool({ request: buildRequest({ input: { query: SECRET } }), tools, authorizationContext: SUPPORTED_GRANTS }));
     expect(JSON.stringify(failure)).not.toContain("secret");
   });
 
   it("allows additional properties when the Tool's schema does", async () => {
     const { tools } = lookupWorld({ spec: { inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] } } });
-    expectSuccess(await executeTool({ request: buildRequest({ input: { query: "alpha", extra: true } }), tools }));
+    expectSuccess(await executeTool({ request: buildRequest({ input: { query: "alpha", extra: true } }), tools, authorizationContext: SUPPORTED_GRANTS }));
   });
 });
 
@@ -170,7 +170,7 @@ describe("executeTool — handler output", () => {
     ["wrong top-level type", { ok: true, output: ["alpha-result"] }],
   ])("%s → TOOL_OUTPUT_SCHEMA_MISMATCH after exactly one call; nothing returned as success", async (_label, response) => {
     const { tools, handler } = lookupWorld({ respond: () => response as ToolHandlerResult });
-    const failure = expectFailure(await executeTool({ request: buildRequest(), tools }));
+    const failure = expectFailure(await executeTool({ request: buildRequest(), tools, authorizationContext: SUPPORTED_GRANTS }));
     expect(failure).toEqual({ code: "TOOL_OUTPUT_SCHEMA_MISMATCH", message: "Tool output does not match the Tool's outputSchema.", toolExecutionId: "exec.tool.1", toolRef: { ...LOOKUP_REF } });
     expect(handler.calls).toHaveLength(1);
     expect(JSON.stringify(failure)).not.toMatch(/Bearer|headers/);
@@ -189,7 +189,7 @@ describe("executeTool — handler output", () => {
     ["missing output", { ok: true }],
   ])("%s → INVALID_TOOL_RESULT (before output schema validation)", async (_label, response) => {
     const { tools, handler } = lookupWorld({ respond: () => response as ToolHandlerResult });
-    const failure = expectFailure(await executeTool({ request: buildRequest(), tools }));
+    const failure = expectFailure(await executeTool({ request: buildRequest(), tools, authorizationContext: SUPPORTED_GRANTS }));
     expect(failure.code).toBe("INVALID_TOOL_RESULT");
     expect(handler.calls).toHaveLength(1);
   });
@@ -207,7 +207,7 @@ describe("executeTool — handler output", () => {
     ["failure carrying an Error", { ok: false, code: new Error(SECRET) }],
   ])("malformed handler result (%s) → INVALID_TOOL_RESULT; nothing of it is exposed", async (_label, response) => {
     const { tools } = lookupWorld({ respond: () => response as ToolHandlerResult });
-    const failure = expectFailure(await executeTool({ request: buildRequest(), tools }));
+    const failure = expectFailure(await executeTool({ request: buildRequest(), tools, authorizationContext: SUPPORTED_GRANTS }));
     expect(failure).toEqual({ code: "INVALID_TOOL_RESULT", message: "Tool handler returned a malformed result.", toolExecutionId: "exec.tool.1", toolRef: { ...LOOKUP_REF } });
     expect(JSON.stringify(failure)).not.toMatch(/secret|cookie|internal\.example/i);
   });
@@ -216,7 +216,7 @@ describe("executeTool — handler output", () => {
 describe("executeTool — handler failure", () => {
   it("an explicit safe handler failure → TOOL_EXECUTION_FAILED + handlerFailureCode; exactly one call, no retry", async () => {
     const { tools, handler } = lookupWorld({ respond: () => ({ ok: false, code: "NOT_FOUND" }) });
-    const failure = expectFailure(await executeTool({ request: buildRequest(), tools }));
+    const failure = expectFailure(await executeTool({ request: buildRequest(), tools, authorizationContext: SUPPORTED_GRANTS }));
     expect(failure).toEqual({
       code: "TOOL_EXECUTION_FAILED",
       message: 'Tool "local.lookup" version "1.0.0" handler reported a failure.',
@@ -234,7 +234,7 @@ describe("executeTool — handler failure", () => {
     ["a string", () => { throw SECRET; }],
   ])("a handler throwing %s → generic TOOL_EXECUTION_FAILED, fully redacted, exactly one call", async (_label, thrower) => {
     const { tools, handler } = lookupWorld({ respond: thrower });
-    const failure = expectFailure(await executeTool({ request: buildRequest(), tools }));
+    const failure = expectFailure(await executeTool({ request: buildRequest(), tools, authorizationContext: SUPPORTED_GRANTS }));
     expect(failure).toEqual({ code: "TOOL_EXECUTION_FAILED", message: 'Tool "local.lookup" version "1.0.0" handler failed.', toolExecutionId: "exec.tool.1", toolRef: { ...LOOKUP_REF } });
     expect(failure).not.toHaveProperty("handlerFailureCode");
     expect(handler.calls).toHaveLength(1);
@@ -243,7 +243,7 @@ describe("executeTool — handler failure", () => {
 
   it("a rejected promise is redacted the same way", async () => {
     const { tools } = lookupWorld({ respond: () => Promise.reject(new Error(SECRET)) });
-    const failure = expectFailure(await executeTool({ request: buildRequest(), tools }));
+    const failure = expectFailure(await executeTool({ request: buildRequest(), tools, authorizationContext: SUPPORTED_GRANTS }));
     expect(failure.code).toBe("TOOL_EXECUTION_FAILED");
     expect(JSON.stringify(failure)).not.toContain("secret");
   });
@@ -257,9 +257,9 @@ describe("executeTool — handler failure", () => {
         return { ok: true, output: { items: ["second"] } };
       },
     });
-    expectFailure(await executeTool({ request: buildRequest(), tools }));
+    expectFailure(await executeTool({ request: buildRequest(), tools, authorizationContext: SUPPORTED_GRANTS }));
     expect(handler.calls).toHaveLength(1);
-    expectSuccess(await executeTool({ request: buildRequest({ toolExecutionId: "exec.tool.2" }), tools }));
+    expectSuccess(await executeTool({ request: buildRequest({ toolExecutionId: "exec.tool.2" }), tools, authorizationContext: SUPPORTED_GRANTS }));
     expect(handler.calls).toHaveLength(2);
   });
 });
@@ -270,12 +270,12 @@ describe("serialization", () => {
     expect(ToolExecutionRequestSchema.parse(JSON.parse(JSON.stringify(request)))).toEqual(request);
 
     const { tools } = lookupWorld();
-    const success = await executeTool({ request, tools });
+    const success = await executeTool({ request, tools, authorizationContext: SUPPORTED_GRANTS });
     expect(JSON.parse(JSON.stringify(success))).toEqual(success);
     expect(JSON.stringify(success)).not.toMatch(/handler|execute|inputSchema|outputSchema/);
 
     const failed = lookupWorld({ respond: () => ({ ok: false, code: "RATE_LIMITED" }) });
-    const failure = await executeTool({ request, tools: failed.tools });
+    const failure = await executeTool({ request, tools: failed.tools, authorizationContext: SUPPORTED_GRANTS });
     expect(JSON.parse(JSON.stringify(failure))).toEqual(failure);
     expect(!failure.ok && ToolFailureSchema.parse(JSON.parse(JSON.stringify(failure.failure)))).toEqual(!failure.ok && failure.failure);
   });

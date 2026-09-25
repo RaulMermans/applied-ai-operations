@@ -74,8 +74,8 @@ describe("@aao/tool-runtime dependency boundary", () => {
     expect(codeOnly).not.toMatch(/from\s+["']ai["']/);
   });
 
-  it("every source module imports only @aao/contracts, @aao/runtime, ajv, zod, and node:crypto", () => {
-    const allowed = new Set(["@aao/contracts", "@aao/runtime", "ajv", "zod", "node:crypto"]);
+  it("every source module imports only @aao/authorization, @aao/contracts, @aao/runtime, ajv, zod, and node:crypto", () => {
+    const allowed = new Set(["@aao/authorization", "@aao/contracts", "@aao/runtime", "ajv", "zod", "node:crypto"]);
     for (const file of sourceFiles) {
       for (const specifier of importSpecifiers(file)) {
         expect(allowed.has(specifier), `${relative(srcDir, file)} imports unexpected module "${specifier}"`).toBe(true);
@@ -92,7 +92,7 @@ describe("@aao/tool-runtime dependency boundary", () => {
 
   it("declares exactly the expected production dependencies", () => {
     const packageJson = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
-    expect(Object.keys(packageJson.dependencies ?? {}).sort()).toEqual(["@aao/contracts", "@aao/runtime", "ajv", "zod"]);
+    expect(Object.keys(packageJson.dependencies ?? {}).sort()).toEqual(["@aao/authorization", "@aao/contracts", "@aao/runtime", "ajv", "zod"]);
     expect(Object.keys(packageJson.devDependencies ?? {}).sort()).toEqual(["@aao/workflow-dsl"]);
   });
 
@@ -102,6 +102,29 @@ describe("@aao/tool-runtime dependency boundary", () => {
       expect(codeOnly).not.toMatch(/retry|backoff|fallback|setTimeout|Promise\.race|AbortController|sqlite|postgres|redis|globalThis/i);
       // Registries are created by factories; no module-level Map/Set/array holds Tool state.
       expect(codeOnly).not.toMatch(/^(?:export\s+)?(?:const|let|var)\s+\w+\s*=\s*new\s+(?:Map|Set)\b/m);
+      // No authorization verdict is cached or remembered.
+      expect(codeOnly).not.toMatch(/cache|memo/i);
+    }
+  });
+
+  it("the only module-level collection is registry.ts's WeakMap keying private bindings by registry instance", () => {
+    const moduleLevel = sourceFiles.flatMap((file) => [...stripComments(readFileSync(file, "utf8")).matchAll(/^(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*new\s+(\w+)/gm)].map((match) => `${relative(srcDir, file)}:${match[1]}:${match[2]}`));
+    expect(moduleLevel).toEqual(["registry.ts:bindingsByRegistry:WeakMap"]);
+  });
+
+  it("produces no console logging (authorization contexts are never logged)", () => {
+    for (const file of sourceFiles) expect(stripComments(readFileSync(file, "utf8"))).not.toMatch(/console\./);
+  });
+
+  it("the Agent Runtime still cannot reach the Tool Runtime or Authorization", () => {
+    const agentPackage = JSON.parse(readFileSync(join(packageRoot, "..", "agent-runtime", "package.json"), "utf8")) as { dependencies?: Record<string, string> };
+    expect(Object.keys(agentPackage.dependencies ?? {})).not.toContain("@aao/tool-runtime");
+    for (const file of listTsFiles(join(packageRoot, "..", "agent-runtime", "src"))) expect(stripComments(readFileSync(file, "utf8"))).not.toMatch(/@aao\/tool-runtime|@aao\/authorization/);
+  });
+
+  it("the generic Runtime stays authorization-unaware", () => {
+    for (const file of listTsFiles(join(packageRoot, "..", "runtime", "src"))) {
+      expect(stripComments(readFileSync(file, "utf8"))).not.toMatch(/@aao\/authorization|@aao\/tool-runtime|grantedPermissionClasses|AuthorizationContext|PERMISSION_NOT_GRANTED/);
     }
   });
 

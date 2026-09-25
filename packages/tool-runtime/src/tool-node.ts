@@ -2,9 +2,10 @@ import { z } from "zod";
 import { identifierSchema, type JsonObject } from "@aao/contracts";
 import type { NodeExecutor, NodePreflightResult } from "@aao/runtime";
 import { deriveToolExecutionId } from "./execution-id.js";
+import type { AuthorizationContext } from "@aao/authorization";
 import { executeTool, type ToolRuntimeDependencies } from "./executor.js";
 import { checkToolPermissionSupport } from "./permissions.js";
-import { ToolRefSchema } from "./types.js";
+import { ToolRefSchema, type ToolRef } from "./types.js";
 
 /**
  * Static, JSON-safe `tool` node config. State keys are *top-level*
@@ -12,7 +13,9 @@ import { ToolRefSchema } from "./types.js";
  * code. `inputStateKey` holds the Tool input; a successful `ToolResult` is
  * proposed under `resultStateKey`. The handler, schemas, and permission
  * classes are deliberately absent: they belong to the registered Tool, not
- * to workflow source.
+ * to workflow source. So is every form of authority (grants, permissions,
+ * `allow`, ...): strict parsing rejects any such field, because authority
+ * comes only from the host's `resolveAuthorizationContext`.
  */
 export const ToolNodeConfigSchema = z
   .object({
@@ -31,6 +34,29 @@ export type ToolNodeConfig = z.infer<typeof ToolNodeConfigSchema>;
 export const TOOL_NODE_FAILURE_NAMESPACE = "tool";
 
 /**
+ * The only facts a host resolver receives to locate the authority it has
+ * already attested for this execution: which Run, which node, which Tool.
+ * Never workflow state, Tool input, or node config beyond `toolRef`.
+ */
+export interface ToolAuthorizationTarget {
+  readonly runId: string;
+  readonly nodeId: string;
+  readonly toolRef: Readonly<ToolRef>;
+}
+
+/**
+ * Trusted host boundary: returns the host-attested `AuthorizationContext`
+ * for one Tool Node execution (or `undefined` if none exists, which fails
+ * closed). Tests inject a static resolver; a real host might consult its own
+ * session or identity layer. AAO does no lookup of its own.
+ */
+export type ResolveToolAuthorizationContext = (target: ToolAuthorizationTarget) => AuthorizationContext | undefined | Promise<AuthorizationContext | undefined>;
+
+export interface ToolNodeDependencies extends ToolRuntimeDependencies {
+  resolveAuthorizationContext: ResolveToolAuthorizationContext;
+}
+
+/**
  * Bridges the Tool Runtime into the generic workflow Runtime as a `tool`
  * `NodeExecutor`. Callers register it explicitly; `@aao/runtime` registers
  * nothing tool-related, so without it a `tool` node still fails preflight
@@ -39,24 +65,34 @@ export const TOOL_NODE_FAILURE_NAMESPACE = "tool";
  * Preflight (`validateConfig`) proves, before any node runs, that the config
  * is well-formed, the exact Tool version is registered (so its schemas
  * compiled), and every permission class it requires is supported by Tool
- * Runtime V1. It never inspects runtime state values or calls a handler.
+ * Runtime V1. It never inspects runtime state values, calls a handler, or
+ * decides authorization — authority is dynamic, per execution.
  *
- * Execution reads `RunState.values[inputStateKey]`, calls the canonical
- * `executeTool` once, and either proposes exactly one state patch
+ * Execution obtains the host-attested Authorization Context from
+ * `resolveAuthorizationContext` (never from workflow state or config), reads
+ * `RunState.values[inputStateKey]`, calls the canonical `executeTool` once —
+ * which authorizes before input validation or the handler — and either
+ * proposes exactly one state patch
  * (`{ [resultStateKey]: ToolResult }`, applied by the Runtime) or returns a
  * safe executor failure `{ namespace: "tool", code: <ToolFailureCode> }`
  * with no patch at all. It never mutates workflow state.
  */
-export function createToolNodeExecutor(dependencies: ToolRuntimeDependencies): NodeExecutor {
+export function createToolNodeExecutor(dependencies: ToolNodeDependencies): NodeExecutor {
+  // No implicit context: a Tool Node without a trusted resolver is a host programming error.
+  if (typeof dependencies?.resolveAuthorizationContext !== "function") {
+    throw new Error("createToolNodeExecutor requires a resolveAuthorizationContext function.");
+  }
+  const { tools, resolveAuthorizationContext } = dependencies;
+
   function validate(config: JsonObject): { ok: true; config: ToolNodeConfig } | { ok: false; issues: string[] } {
     const parsed = ToolNodeConfigSchema.safeParse(config);
     if (!parsed.success) {
       return { ok: false, issues: parsed.error.issues.map((issue) => `${issue.path.join(".") || "(config)"}: ${issue.message}`) };
     }
     const { toolRef } = parsed.data;
-    const tool = dependencies.tools.get(toolRef);
-    if (tool === undefined) return { ok: false, issues: [`toolRef: TOOL_NOT_FOUND: tool "${toolRef.id}" version "${toolRef.version}" is not registered`] };
-    const support = checkToolPermissionSupport(tool.spec);
+    const spec = tools.getSpec(toolRef);
+    if (spec === undefined) return { ok: false, issues: [`toolRef: TOOL_NOT_FOUND: tool "${toolRef.id}" version "${toolRef.version}" is not registered`] };
+    const support = checkToolPermissionSupport(spec);
     if (!support.supported) {
       return { ok: false, issues: [`toolRef: TOOL_PERMISSION_UNSUPPORTED: tool "${toolRef.id}" version "${toolRef.version}" requires unsupported permission classes: ${support.unsupported.join(", ")}`] };
     }
@@ -77,13 +113,23 @@ export function createToolNodeExecutor(dependencies: ToolRuntimeDependencies): N
       // registry changed mid-run or the Runtime skipped preflight.
       if (!verdict.ok) throw new Error("Tool node config is invalid.");
       const { toolRef, inputStateKey, resultStateKey } = verdict.config;
+      const fail = (code: string) => ({ ok: false as const, failure: { namespace: TOOL_NODE_FAILURE_NAMESPACE, code } });
+
+      let authorizationContext: AuthorizationContext | undefined;
+      try {
+        authorizationContext = await resolveAuthorizationContext(Object.freeze({ runId: context.runId, nodeId: context.node.id, toolRef: Object.freeze({ ...toolRef }) }));
+      } catch {
+        // Never expose or parse the thrown value: the context could not be resolved.
+        return fail("TOOL_AUTHORIZATION_REQUIRED");
+      }
 
       // The input is whatever the workflow state holds; `executeTool`
       // validates it (a missing value is INVALID_TOOL_REQUEST, a
       // non-conforming one TOOL_INPUT_SCHEMA_MISMATCH) like any untrusted request.
       const request = { schemaVersion: 1, toolExecutionId: deriveToolExecutionId(context.runId, context.node.id), toolRef, input: context.state.values[inputStateKey] };
-      const outcome = await executeTool({ request, ...dependencies });
-      if (!outcome.ok) return { ok: false, failure: { namespace: TOOL_NODE_FAILURE_NAMESPACE, code: outcome.failure.code } };
+      const outcome = await executeTool({ request, tools, authorizationContext: authorizationContext as AuthorizationContext });
+      // Only the Tool failure code goes upward; the authorization reason stays with direct callers.
+      if (!outcome.ok) return fail(outcome.failure.code);
       return { ok: true, statePatch: { [resultStateKey]: outcome.result } };
     },
   };

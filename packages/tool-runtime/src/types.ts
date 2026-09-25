@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AuthorizationDenialReasonCodeSchema, type AuthorizationAllow } from "@aao/authorization";
 import { JsonValueSchema, PermissionClassSchema, ToolIdSchema, entityVersionSchema, identifierSchema, type JsonValue, type ToolSpec } from "@aao/contracts";
 
 // --- Tool reference -----------------------------------------------------------
@@ -104,6 +105,8 @@ export const TOOL_FAILURE_CODES = [
   "INVALID_TOOL_REQUEST",
   "TOOL_NOT_FOUND",
   "TOOL_PERMISSION_UNSUPPORTED",
+  "TOOL_AUTHORIZATION_REQUIRED",
+  "TOOL_AUTHORIZATION_DENIED",
   "TOOL_INPUT_SCHEMA_MISMATCH",
   "TOOL_EXECUTION_FAILED",
   "TOOL_OUTPUT_SCHEMA_MISMATCH",
@@ -118,7 +121,9 @@ export type ToolFailureCode = z.infer<typeof ToolFailureCodeSchema>;
  * present only on `TOOL_EXECUTION_FAILED` when the handler *returned* a
  * bounded failure code; a thrown handler yields no code and nothing of the
  * thrown value. `unsupportedPermissionClasses` names what the V1 support
- * gate refused.
+ * gate refused. `authorizationReasonCode` is present only on
+ * `TOOL_AUTHORIZATION_DENIED`: the evaluator's safe reason code, for direct
+ * callers — the Tool Node reports only the Tool failure code upward.
  */
 export const ToolFailureSchema = z
   .object({
@@ -128,9 +133,16 @@ export const ToolFailureSchema = z
     toolRef: ToolRefSchema.optional(),
     handlerFailureCode: HandlerFailureCodeSchema.optional(),
     unsupportedPermissionClasses: z.array(PermissionClassSchema).optional(),
+    authorizationReasonCode: AuthorizationDenialReasonCodeSchema.optional(),
     issues: z.array(z.string()).optional(),
   })
   .strict();
 export type ToolFailure = z.infer<typeof ToolFailureSchema>;
 
-export type ToolExecutionResult = { ok: true; result: ToolResult } | { ok: false; failure: ToolFailure };
+/**
+ * On success, `authorization` is the ALLOW decision that admitted this
+ * execution: bounded evidence (principal id, required permission classes,
+ * whether an Agent ceiling applied) for later tracing and evaluation. It is
+ * not part of `ToolResult`, so it never enters workflow state.
+ */
+export type ToolExecutionResult = { ok: true; result: ToolResult; authorization: AuthorizationAllow } | { ok: false; failure: ToolFailure };

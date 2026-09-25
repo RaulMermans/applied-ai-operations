@@ -1,8 +1,9 @@
 import { z } from "zod";
+import { authorize, type AuthorizationContext } from "@aao/authorization";
 import type { JsonValue } from "@aao/contracts";
 import { isJsonSafe } from "@aao/runtime";
 import { checkToolPermissionSupport } from "./permissions.js";
-import type { ToolRegistry } from "./registry.js";
+import { resolveToolBinding, type ToolRegistry } from "./registry.js";
 import { HandlerFailureCodeSchema, ToolExecutionRequestSchema, ToolResultSchema, type ToolExecutionResult, type ToolFailure, type ToolRef } from "./types.js";
 
 export interface ToolRuntimeDependencies {
@@ -12,6 +13,13 @@ export interface ToolRuntimeDependencies {
 export interface ExecuteToolParams extends ToolRuntimeDependencies {
   /** Untrusted: validated before anything else happens. */
   request: unknown;
+  /**
+   * Required, host-attested authority for this execution. There is no
+   * default: a missing context fails `TOOL_AUTHORIZATION_REQUIRED`, a
+   * malformed one `TOOL_AUTHORIZATION_DENIED` (`INVALID_AUTHORIZATION_CONTEXT`).
+   * It is a separate parameter, never read from `request.input`.
+   */
+  authorizationContext: AuthorizationContext;
 }
 
 /** The only handler result shapes accepted. Strict: any extra field (message, stack, details, headers, ...) is rejected, never carried. */
@@ -24,10 +32,15 @@ const HandlerResultSchema = z.discriminatedUnion("ok", [
  * The single canonical Tool execution path:
  *
  *   ToolExecutionRequest → Tool Registry → permission support gate
- *     → inputSchema → trusted handler → JSON safety → outputSchema → ToolResult
+ *     → authorization → inputSchema → trusted handler → JSON safety
+ *     → outputSchema → ToolResult
  *
  * Nothing reaches the handler unless the request, the Tool, its permission
- * classes, and its input all check out; nothing is returned as success
+ * classes, the caller's authority, and its input all check out. The support
+ * gate runs before authorization (a Tool this runtime version cannot run is
+ * `TOOL_PERMISSION_UNSUPPORTED` whatever the grants), and authorization runs
+ * before input validation (an unauthorized caller learns nothing about the
+ * Tool's input contract); nothing is returned as success
  * unless the output is JSON-safe and matches `outputSchema`. The handler is
  * invoked **at most once**: no retry, no fallback Tool, no replay, no
  * timeout race (Sprint 8 has no cooperative cancellation to make one
@@ -52,7 +65,7 @@ export async function executeTool(params: ExecuteToolParams): Promise<ToolExecut
   const toolRef: ToolRef = { id: request.toolRef.id, version: request.toolRef.version };
   const failWith = (failure: Omit<ToolFailure, "toolExecutionId" | "toolRef">) => fail({ ...failure, toolExecutionId, toolRef: { ...toolRef } });
 
-  const tool = params.tools.get(toolRef);
+  const tool = resolveToolBinding(params.tools, toolRef);
   if (tool === undefined) {
     return failWith({ code: "TOOL_NOT_FOUND", message: `Tool "${toolRef.id}" version "${toolRef.version}" is not registered.` });
   }
@@ -63,6 +76,26 @@ export async function executeTool(params: ExecuteToolParams): Promise<ToolExecut
       code: "TOOL_PERMISSION_UNSUPPORTED",
       message: `Tool "${toolRef.id}" version "${toolRef.version}" requires permission classes Tool Runtime V1 does not execute.`,
       unsupportedPermissionClasses: support.unsupported,
+    });
+  }
+
+  // Authorization: the one canonical evaluator, over the registered spec's
+  // requirements and the host-attested context only.
+  if (params.authorizationContext === undefined || params.authorizationContext === null) {
+    return failWith({ code: "TOOL_AUTHORIZATION_REQUIRED", message: `Tool "${toolRef.id}" version "${toolRef.version}" requires an authorization context.` });
+  }
+  const authorization = authorize({
+    schemaVersion: 1,
+    action: "tool.execute",
+    resource: { type: "tool", id: toolRef.id, version: toolRef.version },
+    requiredPermissionClasses: [...tool.spec.permissionClasses],
+    context: params.authorizationContext,
+  });
+  if (authorization.decision !== "ALLOW") {
+    return failWith({
+      code: "TOOL_AUTHORIZATION_DENIED",
+      message: `Tool "${toolRef.id}" version "${toolRef.version}" execution is not authorized.`,
+      authorizationReasonCode: authorization.reasonCode,
     });
   }
 
@@ -103,7 +136,7 @@ export async function executeTool(params: ExecuteToolParams): Promise<ToolExecut
   const result = ToolResultSchema.safeParse({ schemaVersion: 1, toolExecutionId, toolRef: { ...toolRef }, output: clone(output) });
   // Every field was validated above; a failure here is a Tool Runtime bug.
   if (!result.success) throw new Error("Tool Runtime produced a result that fails ToolResultSchema.");
-  return { ok: true, result: result.data };
+  return { ok: true, result: result.data, authorization };
 }
 
 function clone<T extends JsonValue>(value: T): T {

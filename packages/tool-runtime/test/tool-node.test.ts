@@ -3,8 +3,8 @@ import type { NodeDefinition, PermissionClass } from "@aao/contracts";
 import { compileWorkflow } from "@aao/workflow-dsl";
 import { createNodeRegistry, createRuntimeV1Registry, executeWorkflow, finalOutputExecutor, validateSnapshotAgainstPlan, type NodeExecutor } from "@aao/runtime";
 import { deriveToolExecutionId } from "../src/execution-id.js";
-import { createToolNodeExecutor } from "../src/tool-node.js";
-import { LOOKUP_REF, lookupWorld, maxLengthId } from "./fixtures.js";
+import { createToolNodeExecutor, type ResolveToolAuthorizationContext, type ToolAuthorizationTarget } from "../src/tool-node.js";
+import { LOOKUP_REF, SECRET, SUPPORTED_GRANTS, authContext, lookupWorld, maxLengthId } from "./fixtures.js";
 
 function clock() {
   let calls = 0;
@@ -35,8 +35,13 @@ function planWith(toolConfig: NodeDefinition["config"], toolNodeId = "lookup") {
 
 const GOOD_CONFIG = { toolRef: { ...LOOKUP_REF }, inputStateKey: "lookupInput", resultStateKey: "lookupResult" };
 
-function setup(options: Parameters<typeof lookupWorld>[0] = {}) {
+function setup(options: Parameters<typeof lookupWorld>[0] = {}, resolve: ResolveToolAuthorizationContext = () => SUPPORTED_GRANTS) {
   const world = lookupWorld(options);
+  const resolverCalls: ToolAuthorizationTarget[] = [];
+  const resolveAuthorizationContext: ResolveToolAuthorizationContext = (target) => {
+    resolverCalls.push(target);
+    return resolve(target);
+  };
   const prepareCalls: string[] = [];
   const prepare: NodeExecutor = {
     kind: "deterministic",
@@ -47,9 +52,9 @@ function setup(options: Parameters<typeof lookupWorld>[0] = {}) {
   };
   const registry = createNodeRegistry();
   registry.register(prepare);
-  registry.register(createToolNodeExecutor({ tools: world.tools }));
+  registry.register(createToolNodeExecutor({ tools: world.tools, resolveAuthorizationContext }));
   registry.register(finalOutputExecutor);
-  return { ...world, registry, prepareCalls };
+  return { ...world, registry, prepareCalls, resolverCalls };
 }
 
 const initialState = { runId: "run.tool", revision: 0, values: { lookupInput: { query: "alpha" } } };
@@ -64,6 +69,13 @@ describe("tool node — preflight", () => {
     ["template as state key", { ...GOOD_CONFIG, resultStateKey: "{{result}}" }],
     ["unknown field (inline handler)", { ...GOOD_CONFIG, handler: "import('./evil.js')" }],
     ["unknown field (permission override)", { ...GOOD_CONFIG, permissionClasses: ["read_only"] }],
+    ["authority in config (permissions)", { ...GOOD_CONFIG, permissions: ["read_only"] }],
+    ["authority in config (grants)", { ...GOOD_CONFIG, grants: ["read_only"] }],
+    ["authority in config (grantedPermissionClasses)", { ...GOOD_CONFIG, grantedPermissionClasses: ["read_only"] }],
+    ["authority in config (actorPermissions)", { ...GOOD_CONFIG, actorPermissions: ["read_only"] }],
+    ["authority in config (agentPermissions)", { ...GOOD_CONFIG, agentPermissions: ["read_only"] }],
+    ["authority in config (authorization)", { ...GOOD_CONFIG, authorization: { principal: { id: "root", type: "system" } } }],
+    ["authority in config (allow)", { ...GOOD_CONFIG, allow: true }],
     ["unregistered tool", { ...GOOD_CONFIG, toolRef: { id: "local.missing", version: "1.0.0" } }],
     ["unregistered tool version", { ...GOOD_CONFIG, toolRef: { id: LOOKUP_REF.id, version: "2.0.0" } }],
     ["external_side_effect tool", GOOD_CONFIG, { spec: { permissionClasses: ["external_side_effect"] } }],
@@ -71,13 +83,15 @@ describe("tool node — preflight", () => {
     ["sensitive_data tool", GOOD_CONFIG, { spec: { permissionClasses: ["sensitive_data"] } }],
     ["read_only + sensitive_data tool", GOOD_CONFIG, { spec: { permissionClasses: ["read_only", "sensitive_data"] } }],
   ])("%s → RUNTIME_PREFLIGHT_FAILED; zero workflow nodes execute; zero handler calls", async (_label, config, worldOptions) => {
-    const { registry, handler, prepareCalls } = setup(worldOptions);
+    const { registry, handler, prepareCalls, resolverCalls } = setup(worldOptions);
     const result = await executeWorkflow({ runId: "run.tool", plan: planWith(config), initialState, registry, options: { clock: clock() } });
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.failure).toMatchObject({ code: "RUNTIME_PREFLIGHT_FAILED", nodeId: "lookup" });
     expect(prepareCalls).toEqual([]);
     expect(handler.calls).toEqual([]);
+    // Authorization is dynamic: preflight never resolves or decides it.
+    expect(resolverCalls).toEqual([]);
     expect(result.execution?.run.status).toBe("FAILED");
     expect(result.execution?.nodeStatusesById).toEqual({ prepare: "PENDING", lookup: "PENDING", final: "PENDING" });
     expect(result.execution?.state).toEqual(initialState);
@@ -150,6 +164,80 @@ describe("tool node — execution", () => {
     expect(handler.calls).toEqual([]);
     expect(result.execution?.state).toEqual(badState);
     expect(result.execution?.nodeStatusesById).toEqual({ prepare: "SUCCEEDED", lookup: "FAILED", final: "PENDING" });
+  });
+});
+
+describe("tool node — authorization", () => {
+  async function run(resolve: ResolveToolAuthorizationContext, values: Record<string, unknown> = initialState.values) {
+    const world = setup({}, resolve);
+    const plan = planWith(GOOD_CONFIG);
+    const state = { runId: "run.tool", revision: 0, values } as typeof initialState;
+    const result = await executeWorkflow({ runId: "run.tool", plan, initialState: state, registry: world.registry, options: { clock: clock() } });
+    return { ...world, plan, state, result };
+  }
+
+  it("requires a trusted resolver at construction (no implicit context)", () => {
+    const { tools } = lookupWorld();
+    expect(() => createToolNodeExecutor({ tools } as never)).toThrow(/resolveAuthorizationContext/);
+    expect(() => createToolNodeExecutor({ tools, resolveAuthorizationContext: SUPPORTED_GRANTS } as never)).toThrow(/resolveAuthorizationContext/);
+  });
+
+  it("calls the resolver once per execution with only { runId, nodeId, toolRef } — never state, input, or config", async () => {
+    const { resolverCalls, result } = await run(() => authContext(["read_only"]));
+    expect(result.ok).toBe(true);
+    expect(resolverCalls).toEqual([{ runId: "run.tool", nodeId: "lookup", toolRef: { ...LOOKUP_REF } }]);
+    expect(Object.isFrozen(resolverCalls[0])).toBe(true);
+    expect(Object.isFrozen(resolverCalls[0]!.toolRef)).toBe(true);
+  });
+
+  it("an async resolver works", async () => {
+    const { handler, result } = await run(async () => authContext(["read_only"]));
+    expect(result.ok).toBe(true);
+    expect(handler.calls).toHaveLength(1);
+  });
+
+  it.each<[string, ResolveToolAuthorizationContext, string]>([
+    ["no grant", () => authContext([]), "TOOL_AUTHORIZATION_DENIED"],
+    ["resolver returns undefined", () => undefined, "TOOL_AUTHORIZATION_REQUIRED"],
+    ["resolver returns a malformed context", () => ({ ...authContext(["read_only"]), allowAll: true }) as never, "TOOL_AUTHORIZATION_DENIED"],
+    ["resolver throws", () => {
+      throw new Error(SECRET);
+    }, "TOOL_AUTHORIZATION_REQUIRED"],
+    ["resolver rejects", () => Promise.reject({ token: SECRET }), "TOOL_AUTHORIZATION_REQUIRED"],
+  ])("%s → node FAILED with { tool, %s }; handler 0; Run FAILED; state unchanged; snapshot valid; nothing leaked", async (_label, resolve, code) => {
+    const { handler, plan, state, result } = await run(resolve);
+    expect(!result.ok && result.failure).toEqual({
+      code: "NODE_EXECUTION_FAILED",
+      message: 'Node "lookup" (kind "tool") reported an executor failure.',
+      nodeId: "lookup",
+      step: 2,
+      executorFailure: { namespace: "tool", code },
+    });
+    expect(handler.calls).toEqual([]);
+    expect(result.execution?.run.status).toBe("FAILED");
+    expect(result.execution?.nodeStatusesById).toEqual({ prepare: "SUCCEEDED", lookup: "FAILED", final: "PENDING" });
+    expect(result.execution?.state).toEqual(state);
+    expect(result.latestSnapshot?.stateSnapshot).toMatchObject({ revision: 0 });
+    expect(validateSnapshotAgainstPlan(result.latestSnapshot, plan)).toBeUndefined();
+    expect(JSON.stringify(result)).not.toMatch(/secret|token|internal\.example|PERMISSION_NOT_GRANTED|INVALID_AUTHORIZATION_CONTEXT|user\.alice/i);
+  });
+
+  it("workflow state cannot self-authorize: grant-shaped values in state have no effect", async () => {
+    const values = {
+      lookupInput: { query: "alpha" },
+      grantedPermissionClasses: ["read_only", "write_draft"],
+      authorizationContext: authContext(["read_only", "write_draft"]),
+      principal: { id: "root", type: "system" },
+    };
+    const { handler, result } = await run(() => authContext([]), values);
+    expect(!result.ok && result.failure.executorFailure).toEqual({ namespace: "tool", code: "TOOL_AUTHORIZATION_DENIED" });
+    expect(handler.calls).toEqual([]);
+  });
+
+  it("unauthorized + invalid input in state → authorization denial, not TOOL_INPUT_SCHEMA_MISMATCH", async () => {
+    const { handler, result } = await run(() => authContext([]), { lookupInput: { query: 42 } });
+    expect(!result.ok && result.failure.executorFailure).toEqual({ namespace: "tool", code: "TOOL_AUTHORIZATION_DENIED" });
+    expect(handler.calls).toEqual([]);
   });
 });
 

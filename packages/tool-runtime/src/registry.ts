@@ -4,14 +4,45 @@ import { compileToolSchema, type CompiledToolSchema } from "./schema-validator.j
 import type { RegisteredTool, ToolHandler, ToolRef } from "./types.js";
 
 /**
- * A registered Tool as the Tool Runtime resolves it: a defensive clone of
- * the canonical spec, plus the execution behavior captured once at
- * registration — the handler's `execute` function and the compiled
- * input/output schemas. The resolved object and the captured behavior are
- * frozen: a lookup can be inspected but never used to replace what future
- * `executeTool` calls run or enforce.
+ * Explicit, constructible, isolated Tool Registry. No global singleton, no
+ * filesystem scanning, no dynamic imports, no workflow-controlled code
+ * loading: every instance starts empty and is populated only by trusted
+ * calling code. Tools are keyed by canonical `ToolSpec` identity (`id` +
+ * `version`), so versions coexist and lookup is exact.
+ *
+ * The public surface is inspection only: register a Tool, read a clone of
+ * its canonical spec, check presence. It never hands out the executable
+ * handler or the compiled validators, so metadata lookup cannot become a
+ * path around `executeTool` and its support gate, authorization, and schema
+ * enforcement.
+ *
+ * Registered ≠ supported ≠ authorized. Registration proves trusted code
+ * implements the Tool and its schemas are enforceable; whether this runtime
+ * version may execute it is the support gate (`permissions.ts`), and whether
+ * a given principal may invoke it is `@aao/authorization`.
  */
-export interface ResolvedTool {
+export interface ToolRegistry {
+  /**
+   * Validates the canonical `ToolSpec`, compiles `inputSchema` and
+   * `outputSchema` under the strict V1 JSON Schema policy, captures the
+   * handler's `execute` function, and stores a defensive clone. Throws on a
+   * malformed spec, a missing handler, an unenforceable schema, or a
+   * duplicate `id@version` — all programming errors in trusted host code,
+   * discovered at registration rather than at first invocation.
+   */
+  readonly register: (tool: RegisteredTool) => void;
+  /** Version-exact lookup of the canonical spec: a fresh clone, so callers cannot mutate registry state through it. */
+  readonly getSpec: (ref: ToolRef) => ToolSpec | undefined;
+  /** Version-exact presence check. */
+  readonly has: (ref: ToolRef) => boolean;
+}
+
+/**
+ * The registry-private execution binding for one Tool: the stored spec plus
+ * the behavior captured once at registration. Frozen; reachable only
+ * through `resolveToolBinding`, which `index.ts` does not export.
+ */
+export interface ToolBinding {
   readonly spec: ToolSpec;
   readonly handler: Readonly<ToolHandler>;
   readonly inputSchema: CompiledToolSchema;
@@ -19,37 +50,15 @@ export interface ResolvedTool {
 }
 
 /**
- * Explicit, constructible, isolated Tool Registry. No global singleton, no
- * filesystem scanning, no dynamic imports, no workflow-controlled code
- * loading: every instance starts empty and is populated only by trusted
- * calling code. Tools are keyed by canonical `ToolSpec` identity (`id` +
- * `version`), so versions coexist and lookup is exact.
- *
- * Registered ≠ authorized. Registration proves trusted code implements the
- * Tool and its schemas are enforceable; it does not mean Tool Runtime V1 may
- * execute it (see `permissions.ts`), nor that any actor may invoke it.
+ * Module-private: each registry's bindings, keyed by the registry object
+ * itself. Not global Tool state — an entry exists only for a registry some
+ * caller created, and disappears with it.
  */
-export interface ToolRegistry {
-  /**
-   * Validates the canonical `ToolSpec`, compiles `inputSchema` and
-   * `outputSchema` under the strict V1 JSON Schema policy, and stores a
-   * defensive clone. Throws on a malformed spec, a missing handler, an
-   * unenforceable schema, or a duplicate `id@version` — all programming
-   * errors in trusted host code, discovered at registration rather than at
-   * first invocation.
-   */
-  register(tool: RegisteredTool): void;
-  /**
-   * Version-exact lookup. The returned spec is a fresh clone and the rest is
-   * frozen registry-owned behavior: callers cannot mutate registry state, the
-   * captured handler, or schema enforcement through it.
-   */
-  get(ref: ToolRef): ResolvedTool | undefined;
-}
+const bindingsByRegistry = new WeakMap<ToolRegistry, Map<string, ToolBinding>>();
 
 export function createToolRegistry(): ToolRegistry {
-  const tools = new Map<string, ResolvedTool>();
-  return {
+  const tools = new Map<string, ToolBinding>();
+  const registry: ToolRegistry = Object.freeze({
     register(tool: RegisteredTool): void {
       const parsed = isJsonSafe(tool?.spec) ? ToolSpecSchema.safeParse(tool.spec) : undefined;
       if (parsed === undefined || !parsed.success) throw new Error("ToolRegistry: spec is not a JSON-safe canonical ToolSpec.");
@@ -66,13 +75,30 @@ export function createToolRegistry(): ToolRegistry {
       const outputSchema = compileToolSchema(cloneSpec(spec).outputSchema);
       if (!outputSchema.ok) throw new Error(`ToolRegistry: tool "${spec.id}" version "${spec.version}" has an unsupported outputSchema: ${outputSchema.issues.join("; ")}`);
 
-      tools.set(key, Object.freeze({ spec, handler: captureHandler(tool.handler), inputSchema: inputSchema.schema, outputSchema: outputSchema.schema }));
+      tools.set(key, Object.freeze({ spec: deepFreeze(spec), handler: captureHandler(tool.handler), inputSchema: inputSchema.schema, outputSchema: outputSchema.schema }));
     },
-    get(ref: ToolRef): ResolvedTool | undefined {
+    getSpec(ref: ToolRef): ToolSpec | undefined {
       const tool = tools.get(toolKey(ref));
-      return tool === undefined ? undefined : Object.freeze({ ...tool, spec: cloneSpec(tool.spec) });
+      return tool === undefined ? undefined : cloneSpec(tool.spec);
     },
-  };
+    has(ref: ToolRef): boolean {
+      return tools.has(toolKey(ref));
+    },
+  });
+  bindingsByRegistry.set(registry, tools);
+  return registry;
+}
+
+/**
+ * Tool Runtime-internal: the frozen execution binding for `ref`, or
+ * `undefined` if not registered. Only `executeTool` calls this; it is not
+ * part of the package's public API. A registry not created by
+ * `createToolRegistry` is a host programming error and throws.
+ */
+export function resolveToolBinding(registry: ToolRegistry, ref: ToolRef): ToolBinding | undefined {
+  const tools = bindingsByRegistry.get(registry);
+  if (tools === undefined) throw new Error("Tool Runtime requires a ToolRegistry created by createToolRegistry().");
+  return tools.get(toolKey(ref));
 }
 
 /**
@@ -85,6 +111,15 @@ export function createToolRegistry(): ToolRegistry {
 function captureHandler(handler: ToolHandler): Readonly<ToolHandler> {
   const execute = handler.execute.bind(handler);
   return Object.freeze({ execute });
+}
+
+/** Freezes a private JSON clone all the way down, so the stored spec cannot drift from what was compiled. */
+function deepFreeze<T>(value: T): T {
+  if (typeof value === "object" && value !== null) {
+    for (const child of Object.values(value)) deepFreeze(child);
+    Object.freeze(value);
+  }
+  return value;
 }
 
 function toolKey(ref: { id: string; version: string }): string {

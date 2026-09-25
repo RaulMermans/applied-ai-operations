@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { PermissionClass } from "@aao/contracts";
 import { executeTool } from "../src/executor.js";
 import { SUPPORTED_TOOL_PERMISSION_CLASSES, checkToolPermissionSupport } from "../src/permissions.js";
-import { buildRequest, lookupWorld } from "./fixtures.js";
+import { SUPPORTED_GRANTS, buildRequest, lookupWorld } from "./fixtures.js";
 
 /**
  * The Tool Runtime V1 permission *support gate*. This is not actor
@@ -30,7 +30,7 @@ describe("permission support gate", () => {
 
   it.each<[PermissionClass[]]>([[["read_only"]], [["write_draft"]], [["read_only", "write_draft"]]])("direct executeTool runs a %j Tool", async (permissionClasses) => {
     const { tools, handler } = lookupWorld({ spec: { permissionClasses } });
-    const outcome = await executeTool({ request: buildRequest(), tools });
+    const outcome = await executeTool({ request: buildRequest(), tools, authorizationContext: SUPPORTED_GRANTS });
     expect(outcome.ok).toBe(true);
     expect(handler.calls).toHaveLength(1);
   });
@@ -39,7 +39,7 @@ describe("permission support gate", () => {
     "direct executeTool refuses a registered %j Tool with TOOL_PERMISSION_UNSUPPORTED and zero handler calls",
     async (permissionClasses) => {
       const { tools, handler } = lookupWorld({ spec: { permissionClasses } });
-      const outcome = await executeTool({ request: buildRequest(), tools });
+      const outcome = await executeTool({ request: buildRequest(), tools, authorizationContext: SUPPORTED_GRANTS });
       expect(outcome).toEqual({
         ok: false,
         failure: {
@@ -56,7 +56,7 @@ describe("permission support gate", () => {
 
   it("the gate runs before input validation: even invalid input reports the permission failure, never reaching the handler", async () => {
     const { tools, handler } = lookupWorld({ spec: { permissionClasses: ["destructive"] } });
-    const outcome = await executeTool({ request: buildRequest({ input: { wrong: true } }), tools });
+    const outcome = await executeTool({ request: buildRequest({ input: { wrong: true } }), tools, authorizationContext: SUPPORTED_GRANTS });
     expect(!outcome.ok && outcome.failure.code).toBe("TOOL_PERMISSION_UNSUPPORTED");
     expect(handler.calls).toHaveLength(0);
   });

@@ -1,11 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PermissionClass } from "@aao/contracts";
+import * as authorization from "@aao/authorization";
 import { compileWorkflowSource } from "@aao/workflow-dsl";
 import { RuntimeExecutionSnapshotSchema, createNodeRegistry, executeWorkflow, finalOutputExecutor, validateSnapshotAgainstPlan, type NodeExecutor } from "@aao/runtime";
 import { deriveToolExecutionId } from "../src/execution-id.js";
 import { createToolNodeExecutor } from "../src/tool-node.js";
 import { ToolResultSchema, type ToolHandlerResult } from "../src/types.js";
-import { LOOKUP_REF, SECRET, lookupWorld } from "./fixtures.js";
+import { LOOKUP_REF, SECRET, SUPPORTED_GRANTS, authContext, lookupWorld } from "./fixtures.js";
+
+// Observe (never replace) the canonical evaluator, to assert the decision the real path produced.
+vi.mock("@aao/authorization", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@aao/authorization")>();
+  return { ...actual, authorize: vi.fn(actual.authorize) };
+});
+const authorizeSpy = vi.mocked(authorization.authorize);
+beforeEach(() => authorizeSpy.mockClear());
 
 /**
  * Real production path, no network, no credentials, no mocked plans:
@@ -47,7 +56,10 @@ function testClock() {
   return { now: () => new Date(Date.UTC(2026, 8, 25, 14, 0, calls++)).toISOString() };
 }
 
-function run(runId: string, options: { input?: unknown; permissionClasses?: PermissionClass[]; respond?: (input: unknown) => ToolHandlerResult } = {}) {
+function run(
+  runId: string,
+  options: { input?: unknown; permissionClasses?: PermissionClass[]; respond?: (input: unknown) => ToolHandlerResult; authorizationContext?: authorization.AuthorizationContext } = {},
+) {
   const plan = compile();
   const world = lookupWorld({
     ...(options.permissionClasses !== undefined ? { spec: { permissionClasses: options.permissionClasses } } : {}),
@@ -55,7 +67,15 @@ function run(runId: string, options: { input?: unknown; permissionClasses?: Perm
   });
   // A spy that counts *every* workflow node execution, independent of Tool handler counting.
   const nodeExecutions: string[] = [];
-  const toolNode = createToolNodeExecutor({ tools: world.tools });
+  const resolverCalls: unknown[] = [];
+  const toolNode = createToolNodeExecutor({
+    tools: world.tools,
+    // The trusted host boundary: a static resolver standing in for the host's own attested session.
+    resolveAuthorizationContext: (target) => {
+      resolverCalls.push(target);
+      return options.authorizationContext ?? SUPPORTED_GRANTS;
+    },
+  });
   const spiedToolNode: NodeExecutor = {
     ...toolNode,
     async execute(context) {
@@ -73,7 +93,7 @@ function run(runId: string, options: { input?: unknown; permissionClasses?: Perm
     },
   });
   const initialState = { runId, revision: 0, values: { lookupInput: (options.input ?? { query: "alpha" }) as never } };
-  return { plan, handler: world.handler, nodeExecutions, initialState, result: executeWorkflow({ runId, plan, initialState, registry, options: { clock: testClock() } }) };
+  return { plan, handler: world.handler, nodeExecutions, resolverCalls, initialState, result: executeWorkflow({ runId, plan, initialState, registry, options: { clock: testClock() } }) };
 }
 
 describe("Tool workflow E2E: YAML → compiler → Runtime → Tool Node → Tool Runtime → handler", () => {
@@ -190,4 +210,77 @@ describe("Tool workflow E2E: YAML → compiler → Runtime → Tool Node → Too
       expect(result.execution?.state).toEqual(initialState);
     },
   );
+
+  it("authorized success: host context → authorization ALLOW → one handler call → state patch → final_output → COMPLETED", async () => {
+    const principal = authContext(["read_only"], { principalId: "user.operator" });
+    const { plan, handler, nodeExecutions, resolverCalls, result: pending } = run("run.tool.authorized", { authorizationContext: principal });
+    const result = await pending;
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(resolverCalls).toEqual([{ runId: "run.tool.authorized", nodeId: "lookup", toolRef: { ...LOOKUP_REF } }]);
+    expect(authorizeSpy).toHaveBeenCalledTimes(1);
+    expect(authorizeSpy.mock.calls[0]![0]).toMatchObject({ action: "tool.execute", resource: { type: "tool", id: "local.lookup", version: "1.0.0" }, requiredPermissionClasses: ["read_only"], context: principal });
+    expect(authorizeSpy.mock.results[0]!.value).toEqual({ schemaVersion: 1, decision: "ALLOW", principalId: "user.operator", requiredPermissionClasses: ["read_only"], agentCeilingApplied: false });
+    expect(handler.calls).toHaveLength(1);
+    expect(nodeExecutions).toEqual(["lookup", "final"]);
+    expect(result.execution.nodeStatusesById).toEqual({ lookup: "SUCCEEDED", final: "SUCCEEDED" });
+    expect(result.execution.run.status).toBe("COMPLETED");
+    expect(result.execution.state.revision).toBe(1);
+    expect(ToolResultSchema.parse(result.execution.state.values.lookupResult)).toEqual({
+      schemaVersion: 1,
+      toolExecutionId: deriveToolExecutionId("run.tool.authorized", "lookup"),
+      toolRef: { ...LOOKUP_REF },
+      output: { items: ["alpha-result"] },
+    });
+    // Authorization evidence is not written into workflow state or snapshots.
+    expect(JSON.stringify(result.latestSnapshot)).not.toMatch(/user\.operator|grantedPermissionClasses|ALLOW/);
+    expect(validateSnapshotAgainstPlan(result.latestSnapshot, plan)).toBeUndefined();
+    expect(RuntimeExecutionSnapshotSchema.parse(JSON.parse(JSON.stringify(result.latestSnapshot)))).toEqual(result.latestSnapshot);
+  });
+
+  it("authorization denied: read_only Tool, principal grants only write_draft → TOOL_AUTHORIZATION_DENIED; handler 0; Run FAILED; state unchanged", async () => {
+    const { plan, handler, nodeExecutions, initialState, result: pending } = run("run.tool.denied", { authorizationContext: authContext(["write_draft"]) });
+    const result = await pending;
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(authorizeSpy.mock.results[0]!.value).toMatchObject({ decision: "DENY", reasonCode: "PERMISSION_NOT_GRANTED", requiredPermissionClasses: ["read_only"] });
+    expect(handler.calls).toHaveLength(0);
+    expect(nodeExecutions).toEqual(["lookup"]);
+    expect(result.failure).toEqual({
+      code: "NODE_EXECUTION_FAILED",
+      message: 'Node "lookup" (kind "tool") reported an executor failure.',
+      nodeId: "lookup",
+      step: 1,
+      executorFailure: { namespace: "tool", code: "TOOL_AUTHORIZATION_DENIED" },
+    });
+    // The generic Runtime never sees the authorization reason.
+    expect(JSON.stringify(result)).not.toContain("PERMISSION_NOT_GRANTED");
+    expect(result.execution?.run.status).toBe("FAILED");
+    expect(result.execution?.nodeStatusesById).toEqual({ lookup: "FAILED", final: "PENDING" });
+    expect(result.execution?.state).toEqual(initialState);
+    expect(result.execution?.history).toEqual([{ nodeId: "lookup", kind: "tool", step: 1, status: "FAILED", stateRevisionBefore: 0, stateRevisionAfter: 0 }]);
+    expect(result.latestSnapshot?.stateSnapshot).toMatchObject({ revision: 0 });
+    expect(validateSnapshotAgainstPlan(result.latestSnapshot, plan)).toBeUndefined();
+    expect(RuntimeExecutionSnapshotSchema.parse(JSON.parse(JSON.stringify(result.latestSnapshot)))).toEqual(result.latestSnapshot);
+  });
+
+  it("unsupported permission: an external_side_effect Tool with a context claiming external_side_effect still fails (support cannot be overridden by authority)", async () => {
+    const { handler, nodeExecutions, resolverCalls, initialState, result: pending } = run("run.tool.unsupported", {
+      permissionClasses: ["external_side_effect"],
+      authorizationContext: authContext(["read_only", "write_draft", "external_side_effect"]),
+    });
+    const result = await pending;
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.failure).toMatchObject({ code: "RUNTIME_PREFLIGHT_FAILED", nodeId: "lookup" });
+    expect(result.failure.details).toEqual({ issues: ['toolRef: TOOL_PERMISSION_UNSUPPORTED: tool "local.lookup" version "1.0.0" requires unsupported permission classes: external_side_effect'] });
+    expect(authorizeSpy).not.toHaveBeenCalled();
+    expect(resolverCalls).toEqual([]);
+    expect(nodeExecutions).toEqual([]);
+    expect(handler.calls).toEqual([]);
+    expect(result.execution?.state).toEqual(initialState);
+  });
 });

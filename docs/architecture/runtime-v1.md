@@ -149,7 +149,7 @@ Every `WorkflowExecutionResult` (success or a managed failure) carries `executio
 
 ## Security boundaries
 
-The Runtime never `eval`s workflow data, executes JavaScript from node `config`, dynamically imports user-specified modules, executes shell commands, reads arbitrary filesystem paths, invokes external APIs, or reads credentials. Node `config` is inert JSON data until a trusted, code-registered executor interprets it; the Node Registry itself is code-controlled and workflow authors cannot register executors. Runtime V1 performs no side effects of any kind (no email, CRM, file, API, or calendar mutation) — there is no authorization/approval infrastructure yet to gate them.
+The Runtime never `eval`s workflow data, executes JavaScript from node `config`, dynamically imports user-specified modules, executes shell commands, reads arbitrary filesystem paths, invokes external APIs, or reads credentials. Node `config` is inert JSON data until a trusted, code-registered executor interprets it; the Node Registry itself is code-controlled and workflow authors cannot register executors. Runtime V1 performs no side effects of any kind (no email, CRM, file, API, or calendar mutation). Tool authorization exists since Sprint 9, outside this package (`@aao/authorization`, enforced by `@aao/tool-runtime`), but there is no approval infrastructure, and side-effecting Tool classes stay unsupported.
 
 ## Future extension
 

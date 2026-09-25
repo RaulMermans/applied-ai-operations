@@ -67,6 +67,15 @@ importers:
         specifier: ^7.0.107
         version: 7.0.107(zod@3.25.76)
 
+  packages/authorization:
+    dependencies:
+      '@aao/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      zod:
+        specifier: ^3.24.3
+        version: 3.25.76
+
   packages/config:
     dependencies:
       zod:
@@ -135,6 +144,9 @@ importers:
 
   packages/tool-runtime:
     dependencies:
+      '@aao/authorization':
+        specifier: workspace:*
+        version: link:../authorization
       '@aao/contracts':
         specifier: workspace:*
         version: link:../contracts

@@ -103,10 +103,20 @@ It reuses canonical `AgentSpec` plus a runtime binding (instructions, `maxIterat
 `@aao/tool-runtime` (`packages/tool-runtime`) is the Tool execution boundary, a distinct Core subsystem bridged into the workflow Runtime as an explicitly registered `tool` node:
 
 ```text
-ToolExecutionRequest → Tool Registry → permission support gate → inputSchema → trusted handler → output JSON safety + outputSchema → ToolResult
+ToolExecutionRequest → Tool Registry → permission support gate → authorization → inputSchema → trusted handler → output JSON safety + outputSchema → ToolResult
 ```
 
-It reuses canonical `ToolSpec` plus a trusted handler binding, an explicit version-exact Tool Registry that compiles both JSON Schemas with strict Ajv at registration (fail closed), and one `executeTool` path that invokes a handler at most once (no retry, fallback, or timeout race), redacts thrown errors, and preserves only a bounded handler failure code. Tool Runtime V1 executes only Tools whose permission classes are all `read_only`/`write_draft`; `external_side_effect`, `destructive`, and `sensitive_data` fail closed, including in Tool Node preflight. That gate is not authorization: registered ≠ authorized. There is no MCP, Integration Fabric, credentials, Agent Tool use, or persistence. See [ADR-013](docs/decisions/ADR-013-tool-registry-and-safe-execution-boundary.md) and [tool runtime](docs/architecture/tool-runtime.md).
+It reuses canonical `ToolSpec` plus a trusted handler binding, an explicit version-exact Tool Registry that compiles both JSON Schemas with strict Ajv at registration (fail closed), and one `executeTool` path that invokes a handler at most once (no retry, fallback, or timeout race), redacts thrown errors, and preserves only a bounded handler failure code. Tool Runtime V1 executes only Tools whose permission classes are all `read_only`/`write_draft`; `external_side_effect`, `destructive`, and `sensitive_data` fail closed, including in Tool Node preflight. That gate is not authorization: registered ≠ supported ≠ authorized. The public Tool Registry is inspection-only, so `executeTool` is the only path to a registered handler. There is no MCP, Integration Fabric, credentials, Agent Tool use, or persistence. See [ADR-013](docs/decisions/ADR-013-tool-registry-and-safe-execution-boundary.md) and [tool runtime](docs/architecture/tool-runtime.md).
+
+## Authorization
+
+`@aao/authorization` (`packages/authorization`) is the deterministic Authorization Boundary, enforced inside every `executeTool`:
+
+```text
+host-attested AuthorizationContext → Tool permission requirements → Agent ceiling (if present) → authorize() → ALLOW / DENY + reason code
+```
+
+The rule is `required ⊆ principal grants` and, with an Agent, `required ⊆ grants ∩ agent ceiling`. There is no permission hierarchy, superuser, default allow, policy language, or model involvement. AAO does not authenticate; the host attests the principal. Missing or malformed context fails closed, the support gate runs first, and authorization runs before input validation. The workflow `tool` node gets its context from a host resolver, never from workflow state or config; the generic Runtime stays authorization-unaware. See [ADR-014](docs/decisions/ADR-014-authorization-and-permission-enforcement.md) and [authorization](docs/architecture/authorization.md).
 
 ## Canonical architecture documents
 
@@ -118,6 +128,7 @@ It reuses canonical `ToolSpec` plus a trusted handler binding, an explicit versi
 - [Model runtime](docs/architecture/model-runtime.md) — model request/result contracts, capability routing, the AI SDK adapter boundary, and the model node.
 - [Agent runtime](docs/architecture/agent-runtime.md) — bounded Agent registry, limits, deterministic controller, decision contract, iteration evidence, and the agent node.
 - [Tool runtime](docs/architecture/tool-runtime.md) — Tool Registry, JSON Schema policy, permission support gate, handler contract, and the tool node.
+- [Authorization](docs/architecture/authorization.md) — host-attested Authorization Context, the deterministic evaluator, Agent ceiling, and enforcement inside `executeTool`.
 - [System boundaries](docs/architecture/system-boundaries.md) — architectural layers and ownership.
 - [Core vs company](docs/architecture/core-vs-company.md) — portability boundary and configuration responsibilities.
 - [Execution model](docs/architecture/execution-model.md) — workflow-first design, responsibility split, and patterns.
@@ -139,7 +150,7 @@ Dependencies implement infrastructure; AAO defines product semantics.
 | Durability semantics | Yes | Backing store deferred |
 | Canonical integrations | Yes | Provider capability adapters |
 | Visualization truth | Yes | xyflow may visualize backend truth later |
-| Authorization | Yes | Implementation deferred |
+| Authorization | Yes | `@aao/authorization`, no external dependency (Sprint 9) |
 | Evaluation | Yes | Implementation deferred |
 | Trace model | Yes | Implementation deferred |
 

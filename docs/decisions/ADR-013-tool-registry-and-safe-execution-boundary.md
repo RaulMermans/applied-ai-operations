@@ -1,6 +1,6 @@
 # ADR-013: Tool Registry & Safe Tool Execution Boundary
 
-Status: accepted
+Status: accepted (amended by [ADR-014](ADR-014-authorization-and-permission-enforcement.md): `executeTool` now requires an Authorization Context and authorizes after the support gate; `ToolRegistry.get` is replaced by the inspection-only `getSpec`/`has`)
 
 ## Context
 

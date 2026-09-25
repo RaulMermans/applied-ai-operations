@@ -15,6 +15,7 @@ packages/
   model-runtime/           @aao/model-runtime — model contracts, capability routing, AI SDK adapter, model node (Sprint 6)
   agent-runtime/           @aao/agent-runtime — bounded Agent registry, controller, decision contract, agent node (Sprint 7)
   tool-runtime/            @aao/tool-runtime — Tool Registry, safe Tool execution boundary, tool node (Sprint 8)
+  authorization/           @aao/authorization — Authorization Context, deterministic permission evaluator (Sprint 9)
   substrate-contracts/     research evidence, not production architecture
   substrate-spikes/        research evidence, not production architecture
 
@@ -60,7 +61,11 @@ The bounded Agent Runtime (Sprint 7): `RegisteredAgent` bindings (canonical `Age
 
 ## `packages/tool-runtime` — `@aao/tool-runtime`
 
-The Tool Runtime (Sprint 8): `RegisteredTool` bindings (canonical `ToolSpec` + trusted handler), an explicit version-exact `ToolRegistry` that compiles Tool JSON Schemas with strict Ajv at registration, the V1 permission support gate, the canonical `executeTool` path, deterministic workflow-owned Tool execution ids, and `createToolNodeExecutor`, the `tool` `NodeExecutor`. Production dependencies: `@aao/contracts`, `@aao/runtime`, `ajv`, `zod`; `@aao/workflow-dsl` is test-only. It never imports the AI SDK, a provider or vendor SDK, MCP, LangGraph, Fastify, `@aao/model-runtime`, `@aao/agent-runtime`, `apps/*`, or `packages/substrate-*`. See [ADR-013](../decisions/ADR-013-tool-registry-and-safe-execution-boundary.md) and [tool runtime](../architecture/tool-runtime.md).
+The Tool Runtime (Sprint 8): `RegisteredTool` bindings (canonical `ToolSpec` + trusted handler), an explicit version-exact `ToolRegistry` that compiles Tool JSON Schemas with strict Ajv at registration, the V1 permission support gate, the canonical `executeTool` path, deterministic workflow-owned Tool execution ids, and `createToolNodeExecutor`, the `tool` `NodeExecutor`. Since Sprint 9 every execution is authorized through `@aao/authorization`, and the public registry is inspection-only. Production dependencies: `@aao/authorization`, `@aao/contracts`, `@aao/runtime`, `ajv`, `zod`; `@aao/workflow-dsl` is test-only. It never imports the AI SDK, a provider or vendor SDK, MCP, LangGraph, Fastify, `@aao/model-runtime`, `@aao/agent-runtime`, `apps/*`, or `packages/substrate-*`. See [ADR-013](../decisions/ADR-013-tool-registry-and-safe-execution-boundary.md) and [tool runtime](../architecture/tool-runtime.md).
+
+## `packages/authorization` — `@aao/authorization`
+
+The Authorization Boundary (Sprint 9): strict `AuthorizationContext`, `AuthorizationRequest`, and `AuthorizationDecision` contracts, the pure `authorize()` evaluator, and `agentAuthorityFromSpec`. Production dependencies: `@aao/contracts`, `zod`. It imports no Runtime package, AI SDK, MCP, provider SDK, Fastify, or `apps/*`. See [ADR-014](../decisions/ADR-014-authorization-and-permission-enforcement.md) and [authorization](../architecture/authorization.md).
 
 ## `packages/substrate-contracts` and `packages/substrate-spikes`
 
@@ -79,4 +84,4 @@ Narrative research notes (durability, graph runtime, integrations, MCP, model la
 
 ## Build and typecheck shape
 
-Every runnable package (`packages/config`, `packages/contracts`, `packages/workflow-dsl`, `packages/runtime`, `packages/model-runtime`, `packages/agent-runtime`, `packages/tool-runtime`, `apps/control-plane`, `apps/worker`) and the retained research packages each have their own `tsconfig.json` (typecheck, includes `src` and `test`) and `tsconfig.build.json` (build, excludes `test`, emits to that package's own `dist/`), both extending the shared [`tsconfig.base.json`](../../tsconfig.base.json) at the repository root. Each package builds independently; `pnpm build` runs every package's build script in dependency order (`pnpm -r`), so `@aao/config` compiles before the apps that depend on it. No `dist/` output is committed. See [local-development.md](local-development.md) for the day-to-day commands.
+Every runnable package (`packages/config`, `packages/contracts`, `packages/workflow-dsl`, `packages/runtime`, `packages/model-runtime`, `packages/agent-runtime`, `packages/tool-runtime`, `packages/authorization`, `apps/control-plane`, `apps/worker`) and the retained research packages each have their own `tsconfig.json` (typecheck, includes `src` and `test`) and `tsconfig.build.json` (build, excludes `test`, emits to that package's own `dist/`), both extending the shared [`tsconfig.base.json`](../../tsconfig.base.json) at the repository root. Each package builds independently; `pnpm build` runs every package's build script in dependency order (`pnpm -r`), so `@aao/config` compiles before the apps that depend on it. No `dist/` output is committed. See [local-development.md](local-development.md) for the day-to-day commands.

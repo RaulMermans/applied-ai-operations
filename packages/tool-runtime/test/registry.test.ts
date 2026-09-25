@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { JsonObject } from "@aao/contracts";
-import { createToolRegistry } from "../src/registry.js";
+import { createToolRegistry, resolveToolBinding } from "../src/registry.js";
 import { LOOKUP_REF, buildToolSpec, spyHandler } from "./fixtures.js";
 
 describe("Tool Registry", () => {
@@ -8,37 +8,36 @@ describe("Tool Registry", () => {
     const registry = createToolRegistry();
     const handler = spyHandler();
     registry.register({ spec: buildToolSpec(), handler });
-    const resolved = registry.get(LOOKUP_REF);
-    expect(resolved?.spec).toEqual(buildToolSpec());
-    // Registered behavior, not object identity: the registry holds its own captured handler.
-    expect(resolved?.handler).not.toBe(handler);
-    expect(typeof resolved?.handler.execute).toBe("function");
-    expect(registry.get({ id: LOOKUP_REF.id, version: "1.0.1" })).toBeUndefined();
-    expect(registry.get({ id: LOOKUP_REF.id, version: "1" })).toBeUndefined();
-    expect(registry.get({ id: "local.lookup2", version: "1.0.0" })).toBeUndefined();
+    expect(registry.getSpec(LOOKUP_REF)).toEqual(buildToolSpec());
+    expect(registry.has(LOOKUP_REF)).toBe(true);
+    expect(registry.has({ id: LOOKUP_REF.id, version: "1.0.1" })).toBe(false);
+    expect(handler.calls).toEqual([]);
+    expect(registry.getSpec({ id: LOOKUP_REF.id, version: "1.0.1" })).toBeUndefined();
+    expect(registry.getSpec({ id: LOOKUP_REF.id, version: "1" })).toBeUndefined();
+    expect(registry.getSpec({ id: "local.lookup2", version: "1.0.0" })).toBeUndefined();
   });
 
   it("keeps multiple versions of one Tool side by side", () => {
     const registry = createToolRegistry();
     registry.register({ spec: buildToolSpec(), handler: spyHandler() });
     registry.register({ spec: buildToolSpec({ version: "2.0.0", name: "Lookup v2" }), handler: spyHandler() });
-    expect(registry.get(LOOKUP_REF)?.spec.name).toBe("Local lookup");
-    expect(registry.get({ id: LOOKUP_REF.id, version: "2.0.0" })?.spec.name).toBe("Lookup v2");
+    expect(registry.getSpec(LOOKUP_REF)?.name).toBe("Local lookup");
+    expect(registry.getSpec({ id: LOOKUP_REF.id, version: "2.0.0" })?.name).toBe("Lookup v2");
   });
 
   it("rejects duplicate id + version registration", () => {
     const registry = createToolRegistry();
     registry.register({ spec: buildToolSpec(), handler: spyHandler() });
     expect(() => registry.register({ spec: buildToolSpec({ name: "Impostor" }), handler: spyHandler() })).toThrow(/already registered/);
-    expect(registry.get(LOOKUP_REF)?.spec.name).toBe("Local lookup");
+    expect(registry.getSpec(LOOKUP_REF)?.name).toBe("Local lookup");
   });
 
   it("registry instances are isolated (no global singleton)", () => {
     const a = createToolRegistry();
     const b = createToolRegistry();
     a.register({ spec: buildToolSpec(), handler: spyHandler() });
-    expect(a.get(LOOKUP_REF)).toBeDefined();
-    expect(b.get(LOOKUP_REF)).toBeUndefined();
+    expect(a.getSpec(LOOKUP_REF)).toBeDefined();
+    expect(b.getSpec(LOOKUP_REF)).toBeUndefined();
     expect(() => b.register({ spec: buildToolSpec(), handler: spyHandler() })).not.toThrow();
   });
 
@@ -48,7 +47,7 @@ describe("Tool Registry", () => {
     const reverse = createToolRegistry();
     for (const spec of specs) forward.register({ spec, handler: spyHandler() });
     for (const spec of [...specs].reverse()) reverse.register({ spec, handler: spyHandler() });
-    for (const spec of specs) expect(forward.get(spec)?.spec).toEqual(reverse.get(spec)?.spec);
+    for (const spec of specs) expect(forward.getSpec(spec)).toEqual(reverse.getSpec(spec));
   });
 
   it("callers cannot mutate stored specs through the registered object or returned references", () => {
@@ -58,15 +57,14 @@ describe("Tool Registry", () => {
     spec.permissionClasses.push("destructive");
     (spec.inputSchema as { required: string[] }).required.push("other");
 
-    const first = registry.get(LOOKUP_REF)!;
-    first.spec.permissionClasses.push("external_side_effect");
-    first.spec.name = "Mutated";
-    (first.spec.outputSchema as { required: string[] }).required.push("mutated");
+    const first = registry.getSpec(LOOKUP_REF)!;
+    first.permissionClasses.push("external_side_effect");
+    first.name = "Mutated";
+    (first.outputSchema as { required: string[] }).required.push("mutated");
 
-    const second = registry.get(LOOKUP_REF)!;
-    expect(second.spec).toEqual(buildToolSpec());
+    expect(registry.getSpec(LOOKUP_REF)).toEqual(buildToolSpec());
     // The compiled schema was built from a private clone too: `other` is still not required.
-    expect(second.inputSchema.validate({ query: "alpha" })).toEqual({ ok: true });
+    expect(resolveToolBinding(registry, LOOKUP_REF)!.inputSchema.validate({ query: "alpha" })).toEqual({ ok: true });
   });
 
   it.each([
@@ -94,18 +92,18 @@ describe("Tool Registry", () => {
   ])("rejects an inputSchema with %s at registration (fail closed)", (_label, inputSchema) => {
     const registry = createToolRegistry();
     expect(() => registry.register({ spec: buildToolSpec({ inputSchema }), handler: spyHandler() })).toThrow(/unsupported inputSchema/);
-    expect(registry.get(LOOKUP_REF)).toBeUndefined();
+    expect(registry.getSpec(LOOKUP_REF)).toBeUndefined();
   });
 
   it("rejects an invalid outputSchema at registration (fail closed)", () => {
     const registry = createToolRegistry();
     expect(() => registry.register({ spec: buildToolSpec({ outputSchema: { type: "array", items: { type: "strng" } } }), handler: spyHandler() })).toThrow(/unsupported outputSchema/);
-    expect(registry.get(LOOKUP_REF)).toBeUndefined();
+    expect(registry.getSpec(LOOKUP_REF)).toBeUndefined();
   });
 
   it("registers Tools whose permission classes V1 cannot execute — registered ≠ executable ≠ authorized", () => {
     const registry = createToolRegistry();
     registry.register({ spec: buildToolSpec({ permissionClasses: ["external_side_effect"] }), handler: spyHandler() });
-    expect(registry.get(LOOKUP_REF)?.spec.permissionClasses).toEqual(["external_side_effect"]);
+    expect(registry.getSpec(LOOKUP_REF)?.permissionClasses).toEqual(["external_side_effect"]);
   });
 });

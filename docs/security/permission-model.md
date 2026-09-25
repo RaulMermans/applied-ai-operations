@@ -25,10 +25,33 @@ Every initial `external_side_effect` requires human approval before execution. F
 
 `sensitive_data` is additive, for example `external_side_effect` plus `sensitive_data`. Its handling requires least privilege, data minimization, controlled trace logging, and explicit data-handling policy. Traces are operational evidence, not a reason to indiscriminately duplicate sensitive content.
 
-## Registered ≠ authorized
+## Registered ≠ supported ≠ authorized
 
-A Tool being **registered** with the Tool Runtime ([ADR-013](../decisions/ADR-013-tool-registry-and-safe-execution-boundary.md)) means trusted code exists to implement it and its schemas are enforceable. It does **not** mean any actor, Agent, or workflow may invoke it.
+A Tool being **registered** with the Tool Runtime ([ADR-013](../decisions/ADR-013-tool-registry-and-safe-execution-boundary.md)) means trusted code exists to implement it and its schemas are enforceable. **Supported** means this runtime version can safely execute every one of its permission classes. **Authorized** means a given principal may execute it in a given context. These are three separate checks.
 
-Sprint 8 adds only a fail-closed **permission support gate**. Tool Runtime V1 executes a Tool only if every one of its permission classes is `read_only` or `write_draft`. A Tool requiring `external_side_effect`, `destructive`, or `sensitive_data`, alone or mixed with a supported class, is refused (`TOOL_PERMISSION_UNSUPPORTED`, or `RUNTIME_PREFLIGHT_FAILED` for a workflow `tool` node) and its handler is never invoked. This gate says which kinds of Tool this runtime version can safely execute. It is not authorization.
+## Enforcement inputs (Sprint 9)
 
-Actual actor, permission, and policy enforcement belongs to Sprint 9 (Authorization & Permission Enforcement Boundary), which inputs the actor, the Agent permissions, the Tool permission requirements, and the policy, and produces a deterministic authorization decision. The intended direction is for `AgentSpec.permissionClasses` to act as one deterministic ceiling on the Tool requests an Agent may make, alongside Tool requirements and governance policy. Agent Tool use and external side effects stay disabled until that boundary exists.
+| Input | Source | Role |
+| --- | --- | --- |
+| Principal grants | Host-attested `AuthorizationContext.grantedPermissionClasses` | Explicit set of classes the principal holds. May be empty. No principal type implies any grant. |
+| Agent ceiling | Registered `AgentSpec.permissionClasses`, when an Agent acts | Upper bound on what the Agent may use on the principal's behalf. Only reduces authority. |
+| Tool requirements | Registered `ToolSpec.permissionClasses` | Every class is required. |
+| Runtime support | Tool Runtime V1 support gate | `read_only` and `write_draft` only. |
+
+Canonical rule, enforced by `@aao/authorization` inside `executeTool` ([ADR-014](../decisions/ADR-014-authorization-and-permission-enforcement.md), [authorization](../architecture/authorization.md)):
+
+```text
+Tool required permissions ⊆ principal grants
+```
+
+and, when an Agent is involved:
+
+```text
+Tool required permissions ⊆ principal grants ∩ agent ceiling
+```
+
+Permission classes have no hierarchy: `write_draft` does not imply `read_only`. A malformed or missing context fails closed.
+
+Runtime support is checked first and cannot be overridden: a Tool requiring `external_side_effect`, `destructive`, or `sensitive_data`, alone or mixed with a supported class, is refused (`TOOL_PERMISSION_UNSUPPORTED`, or `RUNTIME_PREFLIGHT_FAILED` for a workflow `tool` node) even when the context grants that class. Its handler is never invoked. Approval, side effects, and sensitive-data handling are not implemented; the approval and sensitive-data rules above remain requirements for when they are.
+
+Agent Tool use is still disabled. When it arrives, it will call `executeTool` with the initiating principal's context plus the Agent's registered ceiling, and inherit this rule unchanged.
