@@ -83,7 +83,7 @@ Sprint 8 carries `ToolSpec.capabilityRef` but does not resolve it: there is no C
 
 ## Registry
 
-`createToolRegistry()` returns an isolated instance: no global singleton, no filesystem scanning, and no dynamic import. `register({ spec, handler })` checks JSON safety and `ToolSpecSchema`, requires `handler.execute`, rejects a duplicate `id@version`, and compiles both schemas. Any failure throws, because these are programming errors in trusted host code. `get(ref)` is version-exact and returns a fresh spec clone. The stored spec and compiled schemas come from a private clone, so no caller reference can mutate registry state. Registration order does not matter.
+`createToolRegistry()` returns an isolated instance: no global singleton, no filesystem scanning, and no dynamic import. `register({ spec, handler })` checks JSON safety and `ToolSpecSchema`, requires `handler.execute`, rejects a duplicate `id@version`, and compiles both schemas. Any failure throws, because these are programming errors in trusted host code. `get(ref)` is version-exact and returns a fresh spec clone. The stored spec and compiled schemas come from a private clone, so no caller reference can mutate registry state. Registration captures the handler's `execute` function (bound to the original object) into a frozen registry-owned handler, and compiled schemas are frozen wrappers around a closure-private Ajv validator. Reassigning `execute` on the original handler, or `handler.execute` / `inputSchema.validate` / `outputSchema.validate` on a lookup result, cannot change what later `executeTool` calls run or enforce. Registration order does not matter.
 
 ## JSON Schema policy
 

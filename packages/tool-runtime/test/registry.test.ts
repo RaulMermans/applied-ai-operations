@@ -10,7 +10,9 @@ describe("Tool Registry", () => {
     registry.register({ spec: buildToolSpec(), handler });
     const resolved = registry.get(LOOKUP_REF);
     expect(resolved?.spec).toEqual(buildToolSpec());
-    expect(resolved?.handler).toBe(handler);
+    // Registered behavior, not object identity: the registry holds its own captured handler.
+    expect(resolved?.handler).not.toBe(handler);
+    expect(typeof resolved?.handler.execute).toBe("function");
     expect(registry.get({ id: LOOKUP_REF.id, version: "1.0.1" })).toBeUndefined();
     expect(registry.get({ id: LOOKUP_REF.id, version: "1" })).toBeUndefined();
     expect(registry.get({ id: "local.lookup2", version: "1.0.0" })).toBeUndefined();

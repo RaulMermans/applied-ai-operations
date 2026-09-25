@@ -1,10 +1,14 @@
 import { Ajv, type ErrorObject, type ValidateFunction } from "ajv";
 import type { JsonObject } from "@aao/contracts";
 
-/** A compiled, reusable, side-effect-free JSON Schema check. */
+/**
+ * A compiled, reusable, side-effect-free JSON Schema check. The object is
+ * frozen and the Ajv validate function stays private in its closure, so the
+ * enforcement path cannot be replaced by anyone holding a reference.
+ */
 export interface CompiledToolSchema {
   /** `issues` are Ajv's deterministic error messages with the offending instance path — never the offending value itself. */
-  validate(value: unknown): { ok: true } | { ok: false; issues: string[] };
+  readonly validate: (value: unknown) => { ok: true } | { ok: false; issues: string[] };
 }
 
 /**
@@ -37,12 +41,12 @@ export function compileToolSchema(schema: JsonObject): { ok: true; schema: Compi
   if ((validate as { $async?: unknown }).$async === true) return { ok: false, issues: ["$async schemas are not supported"] };
   return {
     ok: true,
-    schema: {
-      validate(value) {
+    schema: Object.freeze({
+      validate(value: unknown): { ok: true } | { ok: false; issues: string[] } {
         if (validate(value) === true) return { ok: true };
         return { ok: false, issues: (validate.errors ?? []).map(formatIssue) };
       },
-    },
+    }),
   };
 }
 

@@ -5,14 +5,17 @@ import type { RegisteredTool, ToolHandler, ToolRef } from "./types.js";
 
 /**
  * A registered Tool as the Tool Runtime resolves it: a defensive clone of
- * the canonical spec, the trusted handler, and the input/output schemas
- * compiled once at registration.
+ * the canonical spec, plus the execution behavior captured once at
+ * registration — the handler's `execute` function and the compiled
+ * input/output schemas. The resolved object and the captured behavior are
+ * frozen: a lookup can be inspected but never used to replace what future
+ * `executeTool` calls run or enforce.
  */
 export interface ResolvedTool {
-  spec: ToolSpec;
-  handler: ToolHandler;
-  inputSchema: CompiledToolSchema;
-  outputSchema: CompiledToolSchema;
+  readonly spec: ToolSpec;
+  readonly handler: Readonly<ToolHandler>;
+  readonly inputSchema: CompiledToolSchema;
+  readonly outputSchema: CompiledToolSchema;
 }
 
 /**
@@ -36,7 +39,11 @@ export interface ToolRegistry {
    * first invocation.
    */
   register(tool: RegisteredTool): void;
-  /** Version-exact lookup. The returned spec is a fresh clone: callers cannot mutate registry state through it. */
+  /**
+   * Version-exact lookup. The returned spec is a fresh clone and the rest is
+   * frozen registry-owned behavior: callers cannot mutate registry state, the
+   * captured handler, or schema enforcement through it.
+   */
   get(ref: ToolRef): ResolvedTool | undefined;
 }
 
@@ -59,13 +66,25 @@ export function createToolRegistry(): ToolRegistry {
       const outputSchema = compileToolSchema(cloneSpec(spec).outputSchema);
       if (!outputSchema.ok) throw new Error(`ToolRegistry: tool "${spec.id}" version "${spec.version}" has an unsupported outputSchema: ${outputSchema.issues.join("; ")}`);
 
-      tools.set(key, { spec, handler: tool.handler, inputSchema: inputSchema.schema, outputSchema: outputSchema.schema });
+      tools.set(key, Object.freeze({ spec, handler: captureHandler(tool.handler), inputSchema: inputSchema.schema, outputSchema: outputSchema.schema }));
     },
     get(ref: ToolRef): ResolvedTool | undefined {
       const tool = tools.get(toolKey(ref));
-      return tool === undefined ? undefined : { ...tool, spec: cloneSpec(tool.spec) };
+      return tool === undefined ? undefined : Object.freeze({ ...tool, spec: cloneSpec(tool.spec) });
     },
   };
+}
+
+/**
+ * Captures the handler's `execute` function (bound to its original object, so
+ * legitimate `this` use keeps working) into a frozen registry-owned handler.
+ * Reassigning `execute` on the caller's handler object after registration
+ * therefore cannot change what the registry runs. The caller's object is
+ * never modified.
+ */
+function captureHandler(handler: ToolHandler): Readonly<ToolHandler> {
+  const execute = handler.execute.bind(handler);
+  return Object.freeze({ execute });
 }
 
 function toolKey(ref: { id: string; version: string }): string {
