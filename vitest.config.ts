@@ -27,6 +27,7 @@ export default defineConfig({
       workspaceSourceAlias("@aao/model-runtime/vercel-ai", "./packages/model-runtime/src/adapters/vercel-ai.ts"),
       workspaceSourceAlias("@aao/model-runtime", "./packages/model-runtime/src/index.ts"),
       workspaceSourceAlias("@aao/runtime", "./packages/runtime/src/index.ts"),
+      workspaceSourceAlias("@aao/tool-runtime", "./packages/tool-runtime/src/index.ts"),
       workspaceSourceAlias("@aao/substrate-contracts", "./packages/substrate-contracts/src/index.ts"),
       workspaceSourceAlias("@aao/workflow-dsl", "./packages/workflow-dsl/src/index.ts"),
     ],

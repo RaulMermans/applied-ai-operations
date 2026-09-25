@@ -22,9 +22,11 @@ Provider-specific complexity stays behind adapters. AAO does not claim that all 
 
 The AAO Tool Layer validates input and output, assigns namespaces and risk, enforces permissions and policy, invokes through controlled infrastructure, normalizes errors, and records audit metadata. A tool request from a model or agent is a proposal, not authority to invoke an external system.
 
+Since Sprint 8 the Tool Runtime ([tool runtime](tool-runtime.md)) executes explicitly registered, trusted Tool bindings through one validated boundary. It does not resolve `capabilityRef`, and no adapter, connector, credential, or MCP client exists yet. The Integration Fabric will later create Tool bindings for normalized capabilities (`AAO Capability → Integration Fabric Adapter → AAO Tool Binding → Tool Runtime`).
+
 ## MCP role
 
-MCP is a connector protocol, not the workflow engine. It may provide external tools, resources, and appropriate prompts. AAO retains host behavior, tool exposure, authorization, policy, approval, orchestration, state, traces, and evaluation. MCP access must not bypass the controlled tool path.
+MCP is a connector protocol, not the workflow engine. It may provide external tools, resources, and appropriate prompts. AAO retains host behavior, tool exposure, authorization, policy, approval, orchestration, state, traces, and evaluation. MCP access must not bypass the controlled tool path: MCP capabilities will become AAO Tool bindings executed by the Tool Runtime (`MCP → AAO Tool Binding → Tool Runtime`), never `Agent → MCP` directly.
 
 ## Initial provider stance
 

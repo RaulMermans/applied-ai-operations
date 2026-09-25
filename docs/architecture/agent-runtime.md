@@ -105,6 +105,10 @@ A failure carries safe metadata only: `code`, a Runtime-built `message`, `agentE
 
 Agent output can never grant additional permissions, tools, iterations, model access, or external authority. Task text is not controller authority: a task asking to ignore the iteration limit, switch models, or enable tools has no effect, because those are deterministic configuration. Tool use arrives later only through `Agent → tool request → Tool Registry → authorization → policy → approval if required → execution`, never through AI SDK tool calls (which Model Runtime V1 already refuses).
 
+## Agent permissions and Tools (direction only)
+
+Sprint 8 added a Tool Runtime ([tool runtime](tool-runtime.md)), but Agents still cannot request Tools: `AgentDecision` stays `CONTINUE | COMPLETE`, and Agents with `toolRefs` remain unsupported. The intended direction is for `AgentSpec.permissionClasses` to act as one deterministic ceiling on the Tool requests an Agent may make, in addition to each Tool's permission requirements and governance policy. That ceiling is not implemented. Final authorization semantics belong to the Sprint 9 Authorization boundary. Agent Tool use arrives only after it, through `executeTool`.
+
 ## Explicit non-goals (Sprint 7)
 
 Tools, Skills Runtime, MCP, side effects, delegation or multi-agent patterns, dynamic workflow modification, long-term memory, persistence/checkpointing/resume, mid-Agent snapshots, Reflexion/evaluator loops, retries, fallback, and model escalation.

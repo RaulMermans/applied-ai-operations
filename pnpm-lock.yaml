@@ -133,6 +133,25 @@ importers:
         specifier: ^3.24.3
         version: 3.25.76
 
+  packages/tool-runtime:
+    dependencies:
+      '@aao/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@aao/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      ajv:
+        specifier: ^8.20.0
+        version: 8.20.0
+      zod:
+        specifier: ^3.24.3
+        version: 3.25.76
+    devDependencies:
+      '@aao/workflow-dsl':
+        specifier: workspace:*
+        version: link:../workflow-dsl
+
   packages/workflow-dsl:
     dependencies:
       '@aao/contracts':

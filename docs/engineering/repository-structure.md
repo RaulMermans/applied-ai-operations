@@ -14,6 +14,7 @@ packages/
   runtime/                 @aao/runtime — Node Registry, Runtime V1 (Sprint 4), and managed run state/lifecycle (Sprint 5)
   model-runtime/           @aao/model-runtime — model contracts, capability routing, AI SDK adapter, model node (Sprint 6)
   agent-runtime/           @aao/agent-runtime — bounded Agent registry, controller, decision contract, agent node (Sprint 7)
+  tool-runtime/            @aao/tool-runtime — Tool Registry, safe Tool execution boundary, tool node (Sprint 8)
   substrate-contracts/     research evidence, not production architecture
   substrate-spikes/        research evidence, not production architecture
 
@@ -57,6 +58,10 @@ The provider-neutral Model Runtime (Sprint 6): `ModelRequest`/`ModelResult`/`Mod
 
 The bounded Agent Runtime (Sprint 7): `RegisteredAgent` bindings (canonical `AgentSpec` + instructions + limits), an explicit version-exact `AgentRegistry`, the fail-closed `resolveExecutableAgent` support gate, the `AgentDecision` contract, the deterministic `executeAgent` controller, and `createAgentNodeExecutor`, the `agent` `NodeExecutor`. Production dependencies: `@aao/contracts`, `@aao/runtime`, `@aao/model-runtime`, `zod`; `ai` and `@aao/workflow-dsl` are test-only. It never imports the AI SDK, a provider SDK, LangGraph, MCP, Fastify, `apps/*`, or `packages/substrate-*`. See [ADR-012](../decisions/ADR-012-bounded-agent-runtime.md) and [agent runtime](../architecture/agent-runtime.md).
 
+## `packages/tool-runtime` — `@aao/tool-runtime`
+
+The Tool Runtime (Sprint 8): `RegisteredTool` bindings (canonical `ToolSpec` + trusted handler), an explicit version-exact `ToolRegistry` that compiles Tool JSON Schemas with strict Ajv at registration, the V1 permission support gate, the canonical `executeTool` path, deterministic workflow-owned Tool execution ids, and `createToolNodeExecutor`, the `tool` `NodeExecutor`. Production dependencies: `@aao/contracts`, `@aao/runtime`, `ajv`, `zod`; `@aao/workflow-dsl` is test-only. It never imports the AI SDK, a provider or vendor SDK, MCP, LangGraph, Fastify, `@aao/model-runtime`, `@aao/agent-runtime`, `apps/*`, or `packages/substrate-*`. See [ADR-013](../decisions/ADR-013-tool-registry-and-safe-execution-boundary.md) and [tool runtime](../architecture/tool-runtime.md).
+
 ## `packages/substrate-contracts` and `packages/substrate-spikes`
 
 Sprint 0A research evidence for the [substrate recommendation](../decisions/ADR-000-substrate-recommendation.md): executable spikes proving LangGraph.js, the Vercel AI SDK, and the MCP TypeScript SDK can sit behind AAO-owned contracts. **They are research evidence, not production AAO architecture.** Production code (`apps/*`, `packages/config`) does not import them. A later sprint will explicitly classify each concept as `PROMOTE`, `REWRITE`, `ARCHIVE`, or `DELETE`.
@@ -74,4 +79,4 @@ Narrative research notes (durability, graph runtime, integrations, MCP, model la
 
 ## Build and typecheck shape
 
-Every runnable package (`packages/config`, `packages/contracts`, `packages/workflow-dsl`, `packages/runtime`, `packages/model-runtime`, `packages/agent-runtime`, `apps/control-plane`, `apps/worker`) and the retained research packages each have their own `tsconfig.json` (typecheck, includes `src` and `test`) and `tsconfig.build.json` (build, excludes `test`, emits to that package's own `dist/`), both extending the shared [`tsconfig.base.json`](../../tsconfig.base.json) at the repository root. Each package builds independently; `pnpm build` runs every package's build script in dependency order (`pnpm -r`), so `@aao/config` compiles before the apps that depend on it. No `dist/` output is committed. See [local-development.md](local-development.md) for the day-to-day commands.
+Every runnable package (`packages/config`, `packages/contracts`, `packages/workflow-dsl`, `packages/runtime`, `packages/model-runtime`, `packages/agent-runtime`, `packages/tool-runtime`, `apps/control-plane`, `apps/worker`) and the retained research packages each have their own `tsconfig.json` (typecheck, includes `src` and `test`) and `tsconfig.build.json` (build, excludes `test`, emits to that package's own `dist/`), both extending the shared [`tsconfig.base.json`](../../tsconfig.base.json) at the repository root. Each package builds independently; `pnpm build` runs every package's build script in dependency order (`pnpm -r`), so `@aao/config` compiles before the apps that depend on it. No `dist/` output is committed. See [local-development.md](local-development.md) for the day-to-day commands.

@@ -35,7 +35,8 @@ Implement tool registry, authorization middleware, and MCP connector layer.
 
 | Sprint / outcome | Scope | Status |
 | --- | --- | --- |
-| Sprint 8 — Tool Registry & Safe Tool Execution Boundary | Tool Registry and the deterministic `tool request → registry → authorization → policy → approval → execution` boundary that Agents and tool nodes will use. | Next |
+| Sprint 8 — Tool Registry & Safe Tool Execution Boundary | `@aao/tool-runtime`: canonical `ToolSpec` + trusted handler binding, explicit version-exact Tool Registry with strict Ajv schema compilation at registration, one `executeTool` path (request → registry → permission support gate → input schema → handler once → output JSON safety + schema → `ToolResult`), redacted handler failures, deterministic workflow-owned Tool execution ids, and an explicitly registered `tool` node. Only `read_only`/`write_draft` Tools execute; the support gate is not authorization. No MCP, connectors, credentials, Agent Tool use, side effects, retries, or persistence. | Complete (`SPRINT_08_TOOL_RUNTIME_COMPLETE`) — see [ADR-013](../decisions/ADR-013-tool-registry-and-safe-execution-boundary.md) |
+| Sprint 9 — Authorization & Permission Enforcement Boundary | A deterministic authorization decision from actor + Agent permissions (as a ceiling) + Tool permission requirements + policy, in front of `executeTool`, before Agent Tool use or any external side effect is enabled. | Next |
 
 ## Phase E — Governance
 

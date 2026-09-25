@@ -69,7 +69,7 @@ Node Registry
 Registered Node Executor (trusted, code-registered — never authored by workflow source)
 ```
 
-Runtime V1 executes only unconditional routing with explicitly registered executors; conditional workflows and node kinds without a registered executor (`tool`, `approval`, `evaluator` — and `model`/`agent` unless the caller registers the Model Runtime's/Agent Runtime's executor) fail a deterministic preflight check before any node executes, rather than partially executing. See [ADR-009](docs/decisions/ADR-009-node-registry-and-runtime-v1.md) and [runtime V1](docs/architecture/runtime-v1.md) for the full pipeline, state semantics, and failure taxonomy, and what remains deliberately deferred (conditional routing, tool/approval/evaluator execution, retries, persistence, durability, parallel execution).
+Runtime V1 executes only unconditional routing with explicitly registered executors; conditional workflows and node kinds without a registered executor (`approval`, `evaluator` — and `model`/`agent`/`tool` unless the caller registers the Model Runtime's/Agent Runtime's/Tool Runtime's executor) fail a deterministic preflight check before any node executes, rather than partially executing. See [ADR-009](docs/decisions/ADR-009-node-registry-and-runtime-v1.md) and [runtime V1](docs/architecture/runtime-v1.md) for the full pipeline, state semantics, and failure taxonomy, and what remains deliberately deferred (conditional routing, tool/approval/evaluator execution, retries, persistence, durability, parallel execution).
 
 ## Managed runtime state and lifecycle
 
@@ -98,6 +98,16 @@ Workflow → Agent Node → Deterministic Agent Controller → Model Runtime →
 
 It reuses canonical `AgentSpec` plus a runtime binding (instructions, `maxIterations ≤ 16`, per-iteration output-token ceiling), an explicit version-exact Agent Registry, and a controller that owns continuation: one iteration = at most one model call, final-iteration `CONTINUE` fails closed, and there is no retry, fallback, tools, skills, delegation, memory, or persistence. The Agent Node is atomic to the parent Runtime (one step, one patch, no mid-Agent snapshot). Sprint 7 also added a generic safe executor-failure protocol (`{ ok: false, failure: { namespace, code } }`) so `NODE_EXECUTION_FAILED` keeps machine-readable causality without the Runtime knowing what a model or agent is. Model Node = one model invocation; Agent Node = bounded controller over multiple model invocations. See [ADR-012](docs/decisions/ADR-012-bounded-agent-runtime.md) and [agent runtime](docs/architecture/agent-runtime.md).
 
+## Tool Runtime
+
+`@aao/tool-runtime` (`packages/tool-runtime`) is the Tool execution boundary, a distinct Core subsystem bridged into the workflow Runtime as an explicitly registered `tool` node:
+
+```text
+ToolExecutionRequest → Tool Registry → permission support gate → inputSchema → trusted handler → output JSON safety + outputSchema → ToolResult
+```
+
+It reuses canonical `ToolSpec` plus a trusted handler binding, an explicit version-exact Tool Registry that compiles both JSON Schemas with strict Ajv at registration (fail closed), and one `executeTool` path that invokes a handler at most once (no retry, fallback, or timeout race), redacts thrown errors, and preserves only a bounded handler failure code. Tool Runtime V1 executes only Tools whose permission classes are all `read_only`/`write_draft`; `external_side_effect`, `destructive`, and `sensitive_data` fail closed, including in Tool Node preflight. That gate is not authorization: registered ≠ authorized. There is no MCP, Integration Fabric, credentials, Agent Tool use, or persistence. See [ADR-013](docs/decisions/ADR-013-tool-registry-and-safe-execution-boundary.md) and [tool runtime](docs/architecture/tool-runtime.md).
+
 ## Canonical architecture documents
 
 - [Product contract](docs/product/product-contract.md) — product purpose, boundaries, V1 proof, and success criteria.
@@ -107,6 +117,7 @@ It reuses canonical `AgentSpec` plus a runtime binding (instructions, `maxIterat
 - [Runtime state management](docs/architecture/runtime-state-management.md) — managed Run/Node lifecycle, the clock boundary, and safe execution snapshots.
 - [Model runtime](docs/architecture/model-runtime.md) — model request/result contracts, capability routing, the AI SDK adapter boundary, and the model node.
 - [Agent runtime](docs/architecture/agent-runtime.md) — bounded Agent registry, limits, deterministic controller, decision contract, iteration evidence, and the agent node.
+- [Tool runtime](docs/architecture/tool-runtime.md) — Tool Registry, JSON Schema policy, permission support gate, handler contract, and the tool node.
 - [System boundaries](docs/architecture/system-boundaries.md) — architectural layers and ownership.
 - [Core vs company](docs/architecture/core-vs-company.md) — portability boundary and configuration responsibilities.
 - [Execution model](docs/architecture/execution-model.md) — workflow-first design, responsibility split, and patterns.
