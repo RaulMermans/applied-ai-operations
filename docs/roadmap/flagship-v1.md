@@ -22,16 +22,20 @@ Implement workflow DSL, validation and compiler, node registry, runtime executor
 
 ## Phase C — AI Layer
 
-Implement model abstraction, capability/model routing, and bounded agent runtime.
+Implement model abstraction, capability/model routing, and bounded agent runtime. Complete.
 
 | Sprint / outcome | Scope | Status |
 | --- | --- | --- |
 | Sprint 6 — Model Abstraction & Capability Routing | Provider-neutral `@aao/model-runtime`: validated text/structured model requests and results, explicit Model and Model Policy registries, deterministic capability routing (no fallback/retry), a Vercel AI SDK adapter over an injected model, and an explicitly registered `model` node executed by the managed Runtime. | Complete (`SPRINT_06_MODEL_RUNTIME_COMPLETE`) — see [ADR-011](../decisions/ADR-011-model-runtime-and-capability-routing.md) |
-| Sprint 7 — Bounded Agent Runtime | Bounded agents built on top of the managed AAO Runtime and Model Runtime — not bypassing them. | Next |
+| Sprint 7 — Bounded Agent Runtime | `@aao/agent-runtime`: canonical `AgentSpec` + registered instructions/limits, explicit Agent Registry, a deterministic controller over at most `maxIterations` (≤ 16) Model Runtime invocations returning structured `CONTINUE`/`COMPLETE` decisions, an explicitly registered atomic `agent` node, and a generic safe executor-failure protocol. No tools, skills, delegation, memory, persistence, retries, fallback, or Reflexion. | Complete (`SPRINT_07_BOUNDED_AGENT_RUNTIME_COMPLETE`) — see [ADR-012](../decisions/ADR-012-bounded-agent-runtime.md) |
 
 ## Phase D — Tool Infrastructure
 
 Implement tool registry, authorization middleware, and MCP connector layer.
+
+| Sprint / outcome | Scope | Status |
+| --- | --- | --- |
+| Sprint 8 — Tool Registry & Safe Tool Execution Boundary | Tool Registry and the deterministic `tool request → registry → authorization → policy → approval → execution` boundary that Agents and tool nodes will use. | Next |
 
 ## Phase E — Governance
 

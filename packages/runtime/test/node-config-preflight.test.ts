@@ -37,7 +37,7 @@ function spyExecutor(kind: NodeExecutor["kind"], validateConfig?: (node: NodeDef
       : {}),
     async execute(context) {
       calls.push(context.node.id);
-      return {};
+      return { ok: true };
     },
   };
   return { executor, calls, validated };

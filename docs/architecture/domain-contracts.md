@@ -68,7 +68,7 @@ Identifiers (`identifierSchema` and its aliases in `common.ts`, e.g. `WorkflowId
 - **Skill** (`skill.ts`) — a reusable operational/reasoning capability a workflow or bounded agent can invoke: `schemaVersion`, `id`, `version`, `name`, `description?`, `requiredCapabilities`, `requiredTools`, `permissionClasses`.
 - **Model Policy** (`model.ts`) — a provider-neutral requirements/policy boundary: `schemaVersion`, `id`, `version`, `name`, `requiredCapabilities?`, `constraints?` (opaque `JsonObject`).
 
-None of these three files imports `ai`, an OpenAI/Anthropic/Gemini SDK, or LangChain/LangGraph types — `modelPolicyRef`, `skillRefs`, and `toolRefs` are plain identifier strings. No agent loop, prompt, model call, memory, handoff, multi-agent architecture, or model routing is implemented.
+None of these three files imports `ai`, an OpenAI/Anthropic/Gemini SDK, or LangChain/LangGraph types — `modelPolicyRef`, `skillRefs`, and `toolRefs` are plain identifier strings. No agent loop, prompt, model call, memory, handoff, multi-agent architecture, or model routing is implemented. (Execution came later and outside this package: model routing in `@aao/model-runtime`, ADR-011, and a bounded Agent controller in `@aao/agent-runtime`, ADR-012, which reuses `AgentSpec` unchanged.)
 
 ## Tool / integration contracts
 

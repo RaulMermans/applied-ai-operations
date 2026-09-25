@@ -58,7 +58,7 @@ describe("managed executeWorkflow — preflight failure lifecycle", () => {
       kind: "deterministic",
       async execute() {
         executeSpy.called = true;
-        return {};
+        return { ok: true };
       },
     };
     // "model" has no registered executor -> NODE_EXECUTOR_NOT_FOUND at preflight.
@@ -104,7 +104,7 @@ describe("managed executeWorkflow — Node failure lifecycle", () => {
       async execute(context) {
         if (context.node.id === "b") throw new Error("boom: should never leak");
         const config = context.node.config as { statePatch?: JsonObject };
-        return config.statePatch !== undefined ? { statePatch: config.statePatch } : {};
+        return config.statePatch !== undefined ? { ok: true, statePatch: config.statePatch } : { ok: true };
       },
     };
     const finalSpyCalls: unknown[] = [];
@@ -112,7 +112,7 @@ describe("managed executeWorkflow — Node failure lifecycle", () => {
       kind: "final_output",
       async execute(context) {
         finalSpyCalls.push(context.step);
-        return { output: context.state.values };
+        return { ok: true, output: context.state.values };
       },
     });
     const plan = compileOrThrow(
@@ -178,7 +178,7 @@ describe("managed executeWorkflow — invalid Node result lifecycle", () => {
   });
 
   it("marks the offending node FAILED and the Run FAILED without contaminating authoritative state, for an invalid state patch", async () => {
-    const badPatch: NodeExecutor = { kind: "deterministic", async execute() { return { statePatch: { when: new Date() } as never }; } };
+    const badPatch: NodeExecutor = { kind: "deterministic", async execute() { return { ok: true, statePatch: { when: new Date() } as never }; } };
     const registry = createTestRegistry(badPatch, finalOutputExecutor);
     const result = await executeWorkflow(buildRequest({ runId: "run.lifecycle.invalid-patch", plan: minimalPlan, registry }));
     expect(result.ok).toBe(false);

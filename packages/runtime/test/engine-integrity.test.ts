@@ -54,8 +54,8 @@ describe("executeWorkflow — integrity", () => {
   });
 
   it("does not execute the final node twice and stops the walk exactly at the terminal node", async () => {
-    const finalSpy = vi.fn(async (context: { state: { values: unknown } }) => ({ output: context.state.values }));
-    const deterministicExecutor: NodeExecutor = { kind: "deterministic", async execute() { return {}; } };
+    const finalSpy = vi.fn(async (context: { state: { values: unknown } }) => ({ ok: true as const, output: context.state.values }));
+    const deterministicExecutor: NodeExecutor = { kind: "deterministic", async execute() { return { ok: true }; } };
     const registry = createTestRegistry(deterministicExecutor, { kind: "final_output", execute: finalSpy as NodeExecutor["execute"] });
     const result = await executeWorkflow(buildRequest({ runId: "run.final-once", plan: minimalPlan, registry }));
     expect(result.ok).toBe(true);
@@ -69,7 +69,7 @@ describe("executeWorkflow — integrity", () => {
         throw new Error("fails on purpose");
       },
     };
-    const finalSpy = vi.fn(async () => ({}));
+    const finalSpy = vi.fn(async () => ({ ok: true as const }));
     const registry = createTestRegistry(throwing, { kind: "final_output", execute: finalSpy });
     const result = await executeWorkflow(buildRequest({ runId: "run.no-downstream", plan: minimalPlan, registry }));
     expect(result.ok).toBe(false);
@@ -81,7 +81,7 @@ describe("executeWorkflow — integrity", () => {
       kind: "deterministic",
       async execute(context) {
         (context.node.config as Record<string, unknown>).mutated = true;
-        return {};
+        return { ok: true };
       },
     };
     const registry = createTestRegistry(mutatingExecutor, finalOutputExecutor);

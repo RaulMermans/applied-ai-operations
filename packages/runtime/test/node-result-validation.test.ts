@@ -3,18 +3,18 @@ import { validateNodeExecutionResult } from "../src/node-result-validation.js";
 
 describe("validateNodeExecutionResult", () => {
   it("accepts an empty result", () => {
-    const result = validateNodeExecutionResult({});
+    const result = validateNodeExecutionResult({ ok: true });
     expect(result.ok).toBe(true);
   });
 
   it("accepts a result with only a statePatch", () => {
-    const result = validateNodeExecutionResult({ statePatch: { a: 1 } });
-    expect(result).toEqual({ ok: true, result: { statePatch: { a: 1 } } });
+    const result = validateNodeExecutionResult({ ok: true, statePatch: { a: 1 } });
+    expect(result).toEqual({ ok: true, result: { ok: true, statePatch: { a: 1 } } });
   });
 
   it("accepts a result with only output", () => {
-    const result = validateNodeExecutionResult({ output: { a: [1, "two", null, true] } });
-    expect(result).toEqual({ ok: true, result: { output: { a: [1, "two", null, true] } } });
+    const result = validateNodeExecutionResult({ ok: true, output: { a: [1, "two", null, true] } });
+    expect(result).toEqual({ ok: true, result: { ok: true, output: { a: [1, "two", null, true] } } });
   });
 
   it("rejects a non-object result", () => {
@@ -30,21 +30,21 @@ describe("validateNodeExecutionResult", () => {
   });
 
   it("rejects an unexpected extra key", () => {
-    const result = validateNodeExecutionResult({ statePatch: {}, bogus: true });
+    const result = validateNodeExecutionResult({ ok: true, statePatch: {}, bogus: true });
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.code).toBe("INVALID_NODE_RESULT");
   });
 
   it("rejects a function value inside output", () => {
-    const result = validateNodeExecutionResult({ output: { fn: () => 1 } });
+    const result = validateNodeExecutionResult({ ok: true, output: { fn: () => 1 } });
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.code).toBe("INVALID_NODE_RESULT");
   });
 
   it("rejects a Date instance inside statePatch", () => {
-    const result = validateNodeExecutionResult({ statePatch: { when: new Date() } });
+    const result = validateNodeExecutionResult({ ok: true, statePatch: { when: new Date() } });
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.code).toBe("INVALID_STATE_PATCH");
@@ -54,35 +54,35 @@ describe("validateNodeExecutionResult", () => {
     class Custom {
       value = 1;
     }
-    const result = validateNodeExecutionResult({ output: { instance: new Custom() } });
+    const result = validateNodeExecutionResult({ ok: true, output: { instance: new Custom() } });
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.code).toBe("INVALID_NODE_RESULT");
   });
 
   it("rejects statePatch that is an array rather than an object", () => {
-    const result = validateNodeExecutionResult({ statePatch: [1, 2, 3] as never });
+    const result = validateNodeExecutionResult({ ok: true, statePatch: [1, 2, 3] as never });
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.code).toBe("INVALID_STATE_PATCH");
   });
 
   it("rejects a Map instance smuggled in as statePatch (would look empty to a naive structural check)", () => {
-    const result = validateNodeExecutionResult({ statePatch: new Map() as never });
+    const result = validateNodeExecutionResult({ ok: true, statePatch: new Map() as never });
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.code).toBe("INVALID_STATE_PATCH");
   });
 
   it("rejects a non-finite number (NaN/Infinity) inside output", () => {
-    const result = validateNodeExecutionResult({ output: { score: Number.NaN } });
+    const result = validateNodeExecutionResult({ ok: true, output: { score: Number.NaN } });
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.code).toBe("INVALID_NODE_RESULT");
   });
 
   it("rejects a non-finite number (Infinity) inside statePatch", () => {
-    const result = validateNodeExecutionResult({ statePatch: { total: Number.POSITIVE_INFINITY } });
+    const result = validateNodeExecutionResult({ ok: true, statePatch: { total: Number.POSITIVE_INFINITY } });
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.code).toBe("INVALID_STATE_PATCH");

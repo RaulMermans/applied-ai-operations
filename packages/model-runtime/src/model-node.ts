@@ -4,7 +4,6 @@ import type { NodeExecutor, NodePreflightResult } from "@aao/runtime";
 import { executeModelRequest } from "./executor.js";
 import { hasUnsupportedConstraints, type ModelPolicyRegistry } from "./policy-registry.js";
 import type { ModelRegistry } from "./registry.js";
-import type { ModelFailure } from "./types.js";
 
 /**
  * Static, JSON-safe `model` node config. State keys are *top-level*
@@ -30,18 +29,8 @@ export interface ModelNodeExecutorDependencies {
   policies: ModelPolicyRegistry;
 }
 
-/**
- * Thrown by the model node when Model Runtime returns a failure. The generic
- * workflow Runtime catches every executor throw and reports only its own
- * redacted `NODE_EXECUTION_FAILED`, so nothing here reaches public Runtime
- * results; `failure` (already safe) is kept for in-process diagnostics.
- */
-export class ModelNodeExecutionError extends Error {
-  constructor(readonly failure: ModelFailure) {
-    super(`Model node failed: ${failure.code}`);
-    this.name = "ModelNodeExecutionError";
-  }
-}
+/** The executor-failure namespace this node reports under; the generic Runtime carries it opaquely. */
+export const MODEL_NODE_FAILURE_NAMESPACE = "model";
 
 /**
  * Bridges Model Runtime into the generic workflow Runtime as a `model`
@@ -49,7 +38,11 @@ export class ModelNodeExecutionError extends Error {
  * the generic Runtime never learns about models, providers, or prompts.
  * Exactly one model invocation per node execution. The executor never
  * mutates `RunState`: it proposes a state patch, which the Runtime validates
- * and applies (and which advances `RunState.revision`).
+ * and applies (and which advances `RunState.revision`). A Model Runtime
+ * failure is returned through the generic safe executor-failure protocol as
+ * `{ namespace: "model", code: <ModelFailureCode> }` — only the code, never
+ * the failure's message or details — so the Runtime's `NODE_EXECUTION_FAILED`
+ * keeps machine-readable causality without learning what a model is.
  */
 export function createModelNodeExecutor(dependencies: ModelNodeExecutorDependencies): NodeExecutor {
   const { models, policies } = dependencies;
@@ -79,8 +72,8 @@ export function createModelNodeExecutor(dependencies: ModelNodeExecutorDependenc
       const { modelPolicyRef, requestStateKey, resultStateKey } = verdict.config;
 
       const outcome = await executeModelRequest({ request: context.state.values[requestStateKey], modelPolicyRef, policies, models });
-      if (!outcome.ok) throw new ModelNodeExecutionError(outcome.failure);
-      return { statePatch: { [resultStateKey]: outcome.result } };
+      if (!outcome.ok) return { ok: false, failure: { namespace: MODEL_NODE_FAILURE_NAMESPACE, code: outcome.failure.code } };
+      return { ok: true, statePatch: { [resultStateKey]: outcome.result } };
     },
   };
 }

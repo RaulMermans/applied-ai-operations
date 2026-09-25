@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { createNodeRegistry } from "../src/registry.js";
 import type { NodeExecutor } from "../src/types.js";
 
-const deterministicExecutor: NodeExecutor = { kind: "deterministic", async execute() { return {}; } };
-const finalOutputExecutor: NodeExecutor = { kind: "final_output", async execute() { return {}; } };
+const deterministicExecutor: NodeExecutor = { kind: "deterministic", async execute() { return { ok: true }; } };
+const finalOutputExecutor: NodeExecutor = { kind: "final_output", async execute() { return { ok: true }; } };
 
 describe("createNodeRegistry", () => {
   it("starts empty", () => {
@@ -29,7 +29,7 @@ describe("createNodeRegistry", () => {
   it("rejects a duplicate registration for the same kind", () => {
     const registry = createNodeRegistry();
     registry.register(deterministicExecutor);
-    const other: NodeExecutor = { kind: "deterministic", async execute() { return {}; } };
+    const other: NodeExecutor = { kind: "deterministic", async execute() { return { ok: true }; } };
     expect(() => registry.register(other)).toThrow(/already registered/);
   });
 

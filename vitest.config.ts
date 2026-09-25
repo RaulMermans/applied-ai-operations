@@ -20,6 +20,7 @@ function workspaceSourceAlias(packageName: string, relativeEntry: string) {
 export default defineConfig({
   resolve: {
     alias: [
+      workspaceSourceAlias("@aao/agent-runtime", "./packages/agent-runtime/src/index.ts"),
       workspaceSourceAlias("@aao/config", "./packages/config/src/index.ts"),
       workspaceSourceAlias("@aao/contracts", "./packages/contracts/src/index.ts"),
       // Subpath first: a string alias also matches "@aao/model-runtime/..." as a prefix.

@@ -53,7 +53,7 @@ export const literalPatchExecutor: NodeExecutor = {
   kind: "deterministic",
   async execute(context) {
     const config = context.node.config as { statePatch?: JsonObject };
-    return config.statePatch !== undefined ? { statePatch: config.statePatch } : {};
+    return config.statePatch !== undefined ? { ok: true, statePatch: config.statePatch } : { ok: true };
   },
 };
 

@@ -68,7 +68,7 @@ Everything is JSON-safe and JSON round-trips; registries and adapters are live d
 | `INVALID_MODEL_RESULT` | malformed adapter result, non-JSON-safe output, wrong output kind, unsupported response (e.g. tool calls), unparseable output | once |
 | `MODEL_OUTPUT_SCHEMA_MISMATCH` | structured output violates the requested schema | once |
 
-Provider failures are reduced to an enumerated `reason`; no `Error.message`, stack, thrown value, URL, or header is ever copied into a failure. Inside a workflow, the Runtime further reduces a model node failure to its own redacted `NODE_EXECUTION_FAILED`.
+Provider failures are reduced to an enumerated `reason`; no `Error.message`, stack, thrown value, URL, or header is ever copied into a failure. Inside a workflow, the model node returns the Runtime's safe executor-failure result `{ ok: false, failure: { namespace: "model", code } }` (Sprint 7), so the Runtime reports `NODE_EXECUTION_FAILED` with `executorFailure: { namespace: "model", code: "MODEL_ROUTE_NOT_FOUND" }` (for example) — only the code crosses into the Runtime, never the failure's message or details.
 
 ## Model capability vs Integration capability
 
@@ -82,6 +82,10 @@ They are related concepts but separate registries and runtime responsibilities. 
 - **Routing determinism** — guaranteed: same request, policy, binding definitions, and priorities always select the same binding, independent of registration order.
 - **Generation determinism** — not claimed for real providers. Tests are deterministic only because they use `ai/test` models.
 
+## Consumers
+
+The `model` node (one invocation per node) and, since Sprint 7, the bounded Agent Runtime (`@aao/agent-runtime`), which calls `executeModelRequest` once per Agent iteration with a structured `AgentDecision` output — see [agent runtime](agent-runtime.md). Agents use only this package's entry point; they never import the AI SDK adapter.
+
 ## Explicit non-goals (V1)
 
-Agents, tools/tool calling, retries, fallback, adaptive/cost/quality routing, streaming, multimodal input, embeddings, model memory or conversation persistence, caching, prompt DSL/templating, live provider configuration and credentials, and live provider calls in tests or CI.
+Agent loops inside Model Runtime, tools/tool calling, retries, fallback, adaptive/cost/quality routing, streaming, multimodal input, embeddings, model memory or conversation persistence, caching, prompt DSL/templating, live provider configuration and credentials, and live provider calls in tests or CI.

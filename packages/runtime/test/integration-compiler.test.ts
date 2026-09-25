@@ -51,7 +51,7 @@ describe("compiler -> runtime integration", () => {
     expect(compiled.ok).toBe(true);
     if (!compiled.ok) return;
 
-    const executeSpy = vi.fn(async () => ({}));
+    const executeSpy = vi.fn(async () => ({ ok: true as const }));
     const deterministicExecutor: NodeExecutor = { kind: "deterministic", execute: executeSpy };
     const registry = createRuntimeV1Registry(); // already has final_output
     registry.register(deterministicExecutor);
@@ -129,7 +129,7 @@ describe("compiler -> runtime integration", () => {
       async execute(context) {
         if (context.node.id === "b") throw new Error("real-package-e2e: should never leak upstream");
         const config = context.node.config as { statePatch?: JsonObject };
-        return config.statePatch !== undefined ? { statePatch: config.statePatch } : {};
+        return config.statePatch !== undefined ? { ok: true, statePatch: config.statePatch } : { ok: true };
       },
     };
     const registry = createRuntimeV1Registry();

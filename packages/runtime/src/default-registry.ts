@@ -11,7 +11,7 @@ import type { NodeExecutor, NodeRegistry } from "./types.js";
 export const finalOutputExecutor: NodeExecutor = {
   kind: "final_output",
   async execute(context) {
-    return { output: context.state.values };
+    return { ok: true, output: context.state.values };
   },
 };
 

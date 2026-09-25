@@ -69,7 +69,7 @@ Node Registry
 Registered Node Executor (trusted, code-registered — never authored by workflow source)
 ```
 
-Runtime V1 executes only unconditional routing with explicitly registered executors; conditional workflows and node kinds without a registered executor (`agent`, `tool`, `approval`, `evaluator` — and `model` unless the caller registers the Model Runtime's executor) fail a deterministic preflight check before any node executes, rather than partially executing. See [ADR-009](docs/decisions/ADR-009-node-registry-and-runtime-v1.md) and [runtime V1](docs/architecture/runtime-v1.md) for the full pipeline, state semantics, and failure taxonomy, and what remains deliberately deferred (conditional routing, model/agent/tool/approval/evaluator execution, retries, persistence, durability, parallel execution).
+Runtime V1 executes only unconditional routing with explicitly registered executors; conditional workflows and node kinds without a registered executor (`tool`, `approval`, `evaluator` — and `model`/`agent` unless the caller registers the Model Runtime's/Agent Runtime's executor) fail a deterministic preflight check before any node executes, rather than partially executing. See [ADR-009](docs/decisions/ADR-009-node-registry-and-runtime-v1.md) and [runtime V1](docs/architecture/runtime-v1.md) for the full pipeline, state semantics, and failure taxonomy, and what remains deliberately deferred (conditional routing, tool/approval/evaluator execution, retries, persistence, durability, parallel execution).
 
 ## Managed runtime state and lifecycle
 
@@ -85,6 +85,19 @@ ModelRequest → ModelPolicy → deterministic Capability Router → AAO Model A
 
 It owns `ModelRequest`/`ModelResult`/`ModelFailure`, an explicit Model Registry and Model Policy Registry (reusing canonical `ModelPolicySpec`), deterministic routing on declared model capabilities + explicit priority (no fallback, no retry), and a `model` `NodeExecutor` that callers register explicitly. The generic Runtime stays model-agnostic; its only change is an optional `NodeExecutor.validateConfig` hook called during preflight. See [ADR-011](docs/decisions/ADR-011-model-runtime-and-capability-routing.md) and [model runtime](docs/architecture/model-runtime.md).
 
+## Bounded Agent Runtime
+
+`@aao/agent-runtime` (`packages/agent-runtime`) is the first Agent implementation, a distinct Core subsystem layered on the Model Runtime and bridged into the workflow Runtime as an explicitly registered `agent` node:
+
+```text
+Workflow → Agent Node → Deterministic Agent Controller → Model Runtime → structured AgentDecision
+                               ↑                                                ↓
+                               └──── CONTINUE (only if budget permits) ─────────┤
+                                                                                 COMPLETE → AgentResult → Runtime-managed state patch
+```
+
+It reuses canonical `AgentSpec` plus a runtime binding (instructions, `maxIterations ≤ 16`, per-iteration output-token ceiling), an explicit version-exact Agent Registry, and a controller that owns continuation: one iteration = at most one model call, final-iteration `CONTINUE` fails closed, and there is no retry, fallback, tools, skills, delegation, memory, or persistence. The Agent Node is atomic to the parent Runtime (one step, one patch, no mid-Agent snapshot). Sprint 7 also added a generic safe executor-failure protocol (`{ ok: false, failure: { namespace, code } }`) so `NODE_EXECUTION_FAILED` keeps machine-readable causality without the Runtime knowing what a model or agent is. Model Node = one model invocation; Agent Node = bounded controller over multiple model invocations. See [ADR-012](docs/decisions/ADR-012-bounded-agent-runtime.md) and [agent runtime](docs/architecture/agent-runtime.md).
+
 ## Canonical architecture documents
 
 - [Product contract](docs/product/product-contract.md) — product purpose, boundaries, V1 proof, and success criteria.
@@ -93,6 +106,7 @@ It owns `ModelRequest`/`ModelResult`/`ModelFailure`, an explicit Model Registry 
 - [Runtime V1](docs/architecture/runtime-v1.md) — Node Registry, runtime preflight, deterministic execution, and state/failure semantics.
 - [Runtime state management](docs/architecture/runtime-state-management.md) — managed Run/Node lifecycle, the clock boundary, and safe execution snapshots.
 - [Model runtime](docs/architecture/model-runtime.md) — model request/result contracts, capability routing, the AI SDK adapter boundary, and the model node.
+- [Agent runtime](docs/architecture/agent-runtime.md) — bounded Agent registry, limits, deterministic controller, decision contract, iteration evidence, and the agent node.
 - [System boundaries](docs/architecture/system-boundaries.md) — architectural layers and ownership.
 - [Core vs company](docs/architecture/core-vs-company.md) — portability boundary and configuration responsibilities.
 - [Execution model](docs/architecture/execution-model.md) — workflow-first design, responsibility split, and patterns.

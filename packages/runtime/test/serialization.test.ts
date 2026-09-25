@@ -17,7 +17,7 @@ describe("Runtime result serialization", () => {
         throw new Error("boom");
       },
     };
-    const registry = createTestRegistry(throwing, { kind: "final_output", async execute() { return {}; } });
+    const registry = createTestRegistry(throwing, { kind: "final_output", async execute() { return { ok: true }; } });
     const result = await executeWorkflow(buildRequest({ runId: "run.serialize-fail", plan: minimalPlan, registry }));
     expect(result.ok).toBe(false);
     const roundTripped = JSON.parse(JSON.stringify(result));

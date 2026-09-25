@@ -14,6 +14,7 @@ export type {
   NodeExecutor,
   NodeExecutionContext,
   NodeExecutionResult,
+  NodeExecutorFailure,
   NodePreflightContext,
   NodePreflightResult,
   NodeRegistry,

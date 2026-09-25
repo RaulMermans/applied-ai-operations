@@ -45,4 +45,4 @@ export { createModelRegistry, type ModelBinding, type ModelRegistry } from "./re
 export { createModelPolicyRegistry, hasUnsupportedConstraints, type ModelPolicyRegistry } from "./policy-registry.js";
 export { deriveRequiredCapabilities, selectModelBinding } from "./router.js";
 export { executeModelRequest, type ExecuteModelRequestParams } from "./executor.js";
-export { createModelNodeExecutor, ModelNodeConfigSchema, ModelNodeExecutionError, type ModelNodeConfig, type ModelNodeExecutorDependencies } from "./model-node.js";
+export { createModelNodeExecutor, ModelNodeConfigSchema, MODEL_NODE_FAILURE_NAMESPACE, type ModelNodeConfig, type ModelNodeExecutorDependencies } from "./model-node.js";

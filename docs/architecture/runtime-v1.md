@@ -50,7 +50,7 @@ A `CompiledWorkflowPlan` that compiled successfully is not necessarily a plan Ru
 
 ## Unsupported V1 features
 
-Conditional routing, agent execution, tool execution, approval waitpoints, evaluator execution, retries, replanning, persistence, durability, and parallel execution are all deliberately out of scope. Model execution exists since Sprint 6, but outside this package: `@aao/model-runtime` provides a `model` executor that callers register explicitly (see [model runtime](model-runtime.md)); without it, a model node still fails with `NODE_EXECUTOR_NOT_FOUND`. Attempting any of them fails a specific, structured preflight check rather than partially executing.
+Conditional routing, tool execution, approval waitpoints, evaluator execution, retries, replanning, persistence, durability, and parallel execution are all deliberately out of scope. Model execution exists since Sprint 6, but outside this package: `@aao/model-runtime` provides a `model` executor that callers register explicitly (see [model runtime](model-runtime.md)); without it, a model node still fails with `NODE_EXECUTOR_NOT_FOUND`. Bounded agent execution exists since Sprint 7, likewise outside this package: `@aao/agent-runtime` provides an `agent` executor that callers register explicitly (see [agent runtime](agent-runtime.md)); without it, an agent node fails with `NODE_EXECUTOR_NOT_FOUND`. Attempting any of them fails a specific, structured preflight check rather than partially executing.
 
 ## Node-specific static config validation
 
@@ -68,7 +68,7 @@ interface NodeRegistry {
 
 `createNodeRegistry()` builds a fresh, isolated registry — there is no module-level `Map`, no global singleton, and no filesystem/module scanning. `register` throws on a duplicate `kind` registration, since that is a programming-time invariant violation by trusted calling code, not an execution-time or user-input failure. Workflow *authors* can never register an executor: node `config` is inert JSON data until a trusted, code-registered executor interprets it (see [permission model](../security/permission-model.md) and the "Security" section below). `NodeKind` is imported from `@aao/contracts` (`NodeKindSchema`) — this package never redefines or drifts from the canonical kind enum.
 
-`createRuntimeV1Registry()` is the only registry Runtime V1 wires up automatically, and it contains exactly one executor: `final_output`. Model, agent, tool, approval, and evaluator executors are never auto-registered — a workflow that reaches one of those kinds fails preflight rather than silently succeeding against a fake executor.
+`createRuntimeV1Registry()` is the only registry Runtime V1 wires up automatically, and it contains exactly one executor: `final_output`. Model (`@aao/model-runtime`), agent (`@aao/agent-runtime`), tool, approval, and evaluator executors are never auto-registered — a workflow that reaches one of those kinds fails preflight rather than silently succeeding against a fake executor.
 
 ## Node Executor contract
 
@@ -85,15 +85,20 @@ interface NodeExecutionContext {
   step: number;
 }
 
-interface NodeExecutionResult {
-  statePatch?: JsonObject;
-  output?: JsonValue;
-}
+type NodeExecutionResult =
+  | { ok: true; statePatch?: JsonObject; output?: JsonValue }
+  | { ok: false; failure: { namespace: string; code: string } }; // safe executor failure (Sprint 7)
 ```
 
 An executor never receives a writable reference to authoritative state and never mutates it directly — it proposes a `statePatch` and/or `output`; the Runtime validates and applies it. No Fastify, Worker, `process.env`, filesystem, database, MCP, model SDK, or company-specific service is injected into `NodeExecutionContext` — those are later, explicitly justified dependency contexts, not implicit ambient access.
 
-Executor output is validated at the Runtime boundary (`node-result-validation.ts`) before it is trusted: an executor result must be a plain object containing only the known `statePatch`/`output` keys (`INVALID_NODE_RESULT` otherwise), and every value inside both must be JSON-safe — function values, `Date` instances, `Map`/`Set` instances, and other class instances are rejected even when they would otherwise look like an "empty object" to a naive structural check (`isJsonSafe` in `json-safety.ts` checks each object's prototype explicitly for this reason). A malformed `statePatch` specifically is `INVALID_STATE_PATCH`; every other malformed shape is `INVALID_NODE_RESULT`.
+Executor output is validated at the Runtime boundary (`node-result-validation.ts`) before it is trusted: a success must be a plain object with `ok: true` and only the known `statePatch`/`output` keys (`INVALID_NODE_RESULT` otherwise), and every value inside both must be JSON-safe — function values, `Date` instances, `Map`/`Set` instances, and other class instances are rejected even when they would otherwise look like an "empty object" to a naive structural check (`isJsonSafe` in `json-safety.ts` checks each object's prototype explicitly for this reason). A malformed `statePatch` specifically is `INVALID_STATE_PATCH`; every other malformed shape is `INVALID_NODE_RESULT`.
+
+### Safe executor-failure protocol (Sprint 7)
+
+An executor that fails in an *expected* way returns `{ ok: false, failure: { namespace, code } }` instead of throwing. The shape is strict and bounded: `namespace` matches `^[a-z][a-z0-9_]{0,31}$`, `code` matches `^[A-Z][A-Z0-9_]{0,63}$`, and no other field (message, stack, exception, provider payload, nested metadata, or a `statePatch` alongside it) is accepted — anything else is `INVALID_NODE_RESULT`. A valid failure marks the node `FAILED` and the Run `FAILED`, applies no patch, leaves downstream nodes `PENDING`, and returns the generic `NODE_EXECUTION_FAILED` with the pair carried as subordinate `executorFailure`. The Runtime never interprets the pair — it does not know what `model` or `agent` means; `@aao/model-runtime` reports `{ namespace: "model", code: <ModelFailureCode> }` and `@aao/agent-runtime` reports `{ namespace: "agent", code: <AgentFailureCode> }`.
+
+Throwing remains supported as defensive protection, but a thrown value is never inspected or parsed: it always becomes `NODE_EXECUTION_FAILED` with a fixed generic message and **no** `executorFailure`. Specific subordinate codes come only through the validated failure-result protocol.
 
 ## Runtime preflight
 
@@ -130,13 +135,13 @@ Execution starts at `plan.entryNodeId` and walks forward one node at a time: res
 | `RUNTIME_PREFLIGHT_FAILED` | The compiled plan is schema-valid but internally inconsistent for execution (unresolvable entry node, missing edge-index entries, terminal/non-terminal arity violations). |
 | `NODE_EXECUTOR_NOT_FOUND` | A node kind present in the plan has no registered executor. |
 | `CONDITIONAL_ROUTING_UNSUPPORTED` | The plan contains at least one edge with a `condition`. |
-| `NODE_EXECUTION_FAILED` | A registered executor threw. The public failure carries only safe, deterministic metadata (`code`, a fixed generic message, `nodeId`, `step`) — the thrown value's `message`, its stack, the raw thrown value itself, and any environment/secret data it might contain are never exposed, regardless of what the executor threw. |
-| `INVALID_NODE_RESULT` | An executor's return value is not a plain object with only `statePatch`/`output`, or `output` is not JSON-safe. |
+| `NODE_EXECUTION_FAILED` | A registered executor threw, or returned a validated safe executor failure. The public failure carries only safe, deterministic metadata (`code`, a fixed generic message, `nodeId`, `step`, and — only for a returned failure — `executorFailure: { namespace, code }`). A thrown value's `message`, its stack, the raw thrown value itself, and any environment/secret data it might contain are never exposed, regardless of what the executor threw. |
+| `INVALID_NODE_RESULT` | An executor's return value is not `{ ok: true, statePatch?, output? }` or a bounded `{ ok: false, failure: { namespace, code } }`, or `output` is not JSON-safe. |
 | `INVALID_STATE_PATCH` | An executor's `statePatch` is not a JSON-safe plain object. |
 | `MAX_STEPS_EXCEEDED` | Execution exceeded the bounded step ceiling. |
 | `INVALID_EXECUTION_SNAPSHOT` | A `RuntimeExecutionSnapshot` (see [runtime state management](runtime-state-management.md)) fails schema validation or is contextually incompatible with a given `CompiledWorkflowPlan` (returned by `validateSnapshotAgainstPlan`, not by `executeWorkflow` itself). |
 
-Every failure is a small, JSON-safe, deterministic object (`code`, `message`, optional `nodeId`/`step`/`details`) — free of stack traces, environment data, or secrets.
+Every failure is a small, JSON-safe, deterministic object (`code`, `message`, optional `nodeId`/`step`/`details`/`executorFailure`) — free of stack traces, environment data, or secrets.
 
 ## Execution evidence
 

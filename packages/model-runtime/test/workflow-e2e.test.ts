@@ -142,7 +142,13 @@ describe("AI workflow E2E: YAML → compiler → managed Runtime → model node 
     expect(models.fast.doGenerateCalls).toHaveLength(1);
     expect(models.backup.doGenerateCalls).toHaveLength(0);
     expect(models.structured.doGenerateCalls).toHaveLength(0);
-    expect(result.failure).toEqual({ code: "NODE_EXECUTION_FAILED", message: 'Node "answer" (kind "model") threw during execution.', nodeId: "answer", step: 1 });
+    expect(result.failure).toEqual({
+      code: "NODE_EXECUTION_FAILED",
+      message: 'Node "answer" (kind "model") reported an executor failure.',
+      nodeId: "answer",
+      step: 1,
+      executorFailure: { namespace: "model", code: "MODEL_INVOCATION_FAILED" },
+    });
     expect(result.execution?.run.status).toBe("FAILED");
     expect(result.execution?.nodeStatusesById).toEqual({ answer: "FAILED", final: "PENDING" });
     expect(result.execution?.state).toEqual(initialState);

@@ -1,0 +1,22 @@
+{
+  "name": "@aao/agent-runtime",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@aao/contracts": "workspace:*",
+    "@aao/model-runtime": "workspace:*",
+    "@aao/runtime": "workspace:*",
+    "zod": "^3.24.3"
+  },
+  "devDependencies": {
+    "@aao/workflow-dsl": "workspace:*",
+    "ai": "^7.0.107"
+  }
+}

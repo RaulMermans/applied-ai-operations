@@ -50,17 +50,40 @@ export interface NodeExecutionContext {
 }
 
 /**
- * What an executor returns instead of mutating state directly: a proposed
- * state patch and/or an output value. The Runtime — not the executor —
- * validates and applies the patch. Both fields are optional: a node may
- * produce output with no state change, a state change with no reportable
- * output, neither (a pure side-effect-free no-op in V1, since V1 has no real
- * side effects), or both.
+ * A safe, machine-readable reason a trusted executor reports when it fails
+ * in an *expected* way (e.g. its subsystem returned a deterministic failure
+ * value). Deliberately tiny and opaque to the Runtime: `namespace` names the
+ * reporting subsystem (e.g. `model`, `agent`) and `code` is that subsystem's
+ * own failure code. The Runtime validates the shape (see
+ * `node-result-validation.ts`) but never interprets either value — it does
+ * not know what `"model"` or `"agent"` means. No message, stack, exception,
+ * provider payload, or nested metadata is accepted.
  */
-export interface NodeExecutionResult {
-  statePatch?: JsonObject;
-  output?: JsonValue;
+export interface NodeExecutorFailure {
+  namespace: string;
+  code: string;
 }
+
+/**
+ * What an executor returns instead of mutating state directly — a
+ * discriminated union on `ok`:
+ *
+ * - `{ ok: true, statePatch?, output? }` — success. The Runtime — not the
+ *   executor — validates and applies the patch. Both fields are optional: a
+ *   node may produce output with no state change, a state change with no
+ *   reportable output, neither, or both.
+ * - `{ ok: false, failure: { namespace, code } }` — an expected, safe
+ *   executor failure. The Runtime marks the node `FAILED`, applies no patch,
+ *   and reports its own generic `NODE_EXECUTION_FAILED` carrying the
+ *   validated `failure` as subordinate `executorFailure` causality.
+ *
+ * Throwing remains supported as a defensive path, but a thrown value is
+ * never inspected: it always becomes a generic `NODE_EXECUTION_FAILED` with
+ * no `executorFailure`.
+ */
+export type NodeExecutionResult =
+  | { ok: true; statePatch?: JsonObject; output?: JsonValue }
+  | { ok: false; failure: NodeExecutorFailure };
 
 /**
  * Explicit, constructible, isolated Node Registry. There is no global
@@ -170,6 +193,13 @@ export interface RuntimeFailure {
   nodeId?: NodeId;
   step?: number;
   details?: JsonObject;
+  /**
+   * Present only on `NODE_EXECUTION_FAILED` when the executor *returned* a
+   * validated `{ ok: false, failure }` result — subordinate, bounded,
+   * machine-readable causality (e.g. `{ namespace: "model", code:
+   * "MODEL_ROUTE_NOT_FOUND" }`). Never present for a thrown executor.
+   */
+  executorFailure?: NodeExecutorFailure;
 }
 
 /**

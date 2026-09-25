@@ -6,7 +6,7 @@ import type { NodeExecutor } from "../src/types.js";
 
 describe("executeWorkflow — safety", () => {
   it("fails with NODE_EXECUTOR_NOT_FOUND before executing anything when an executor is missing", async () => {
-    const executeSpy = vi.fn(async () => ({}));
+    const executeSpy = vi.fn(async () => ({ ok: true as const }));
     const registry = createTestRegistry({ kind: "final_output", execute: executeSpy }); // no "deterministic" executor
     const result = await executeWorkflow(buildRequest({ runId: "run.missing", plan: minimalPlan, registry }));
     expect(result.ok).toBe(false);
@@ -54,8 +54,8 @@ describe("executeWorkflow — safety", () => {
   });
 
   it("rejects a conditional workflow before executing any node, with zero executors invoked", async () => {
-    const intakeExecuteSpy = vi.fn(async () => ({}));
-    const branchExecuteSpy = vi.fn(async () => ({}));
+    const intakeExecuteSpy = vi.fn(async () => ({ ok: true as const }));
+    const branchExecuteSpy = vi.fn(async () => ({ ok: true as const }));
     const plan = compileOrThrow(
       buildWorkflow({
         entryNodeId: "intake",
@@ -86,7 +86,7 @@ describe("executeWorkflow — safety", () => {
   });
 
   it("rejects malformed initial state before executing anything", async () => {
-    const executeSpy = vi.fn(async () => ({}));
+    const executeSpy = vi.fn(async () => ({ ok: true as const }));
     const registry = createTestRegistry({ kind: "deterministic", execute: executeSpy }, finalOutputExecutor);
     const request = buildRequest({ runId: "run.badstate", plan: minimalPlan, registry, initialState: { revision: -1 } as never });
     const result = await executeWorkflow(request);
@@ -97,7 +97,7 @@ describe("executeWorkflow — safety", () => {
   });
 
   it("rejects a runId mismatch between request and initialState before executing anything", async () => {
-    const executeSpy = vi.fn(async () => ({}));
+    const executeSpy = vi.fn(async () => ({ ok: true as const }));
     const registry = createTestRegistry({ kind: "deterministic", execute: executeSpy }, finalOutputExecutor);
     const request = buildRequest({ runId: "run.a", plan: minimalPlan, registry, initialState: buildRunState("run.b") });
     const result = await executeWorkflow(request);
@@ -114,7 +114,7 @@ describe("executeWorkflow — safety", () => {
         throw new Error("boom: secret internal detail");
       },
     };
-    const finalSpy = vi.fn(async () => ({}));
+    const finalSpy = vi.fn(async () => ({ ok: true as const }));
     const registry = createTestRegistry(throwingExecutor, { kind: "final_output", execute: finalSpy });
     const result = await executeWorkflow(buildRequest({ runId: "run.throw", plan: minimalPlan, registry }));
     expect(result.ok).toBe(false);
@@ -187,7 +187,7 @@ describe("executeWorkflow — safety", () => {
 
   it("rejects a malformed executor result as INVALID_NODE_RESULT and does not execute downstream nodes", async () => {
     const malformedExecutor: NodeExecutor = { kind: "deterministic", async execute() { return "not an object" as never; } };
-    const finalSpy = vi.fn(async () => ({}));
+    const finalSpy = vi.fn(async () => ({ ok: true as const }));
     const registry = createTestRegistry(malformedExecutor, { kind: "final_output", execute: finalSpy });
     const result = await executeWorkflow(buildRequest({ runId: "run.malformed", plan: minimalPlan, registry }));
     expect(result.ok).toBe(false);
@@ -197,7 +197,7 @@ describe("executeWorkflow — safety", () => {
   });
 
   it("rejects an invalid state patch as INVALID_STATE_PATCH", async () => {
-    const badPatchExecutor: NodeExecutor = { kind: "deterministic", async execute() { return { statePatch: { when: new Date() } as never }; } };
+    const badPatchExecutor: NodeExecutor = { kind: "deterministic", async execute() { return { ok: true, statePatch: { when: new Date() } as never }; } };
     const registry = createTestRegistry(badPatchExecutor, finalOutputExecutor);
     const result = await executeWorkflow(buildRequest({ runId: "run.badpatch", plan: minimalPlan, registry }));
     expect(result.ok).toBe(false);
@@ -290,8 +290,8 @@ describe("executeWorkflow — safety", () => {
         intake: [{ sourceNodeId: "intake", targetNodeId: "does-not-exist" }],
       },
     };
-    const intakeSpy = vi.fn(async () => ({}));
-    const finalSpy = vi.fn(async () => ({}));
+    const intakeSpy = vi.fn(async () => ({ ok: true as const }));
+    const finalSpy = vi.fn(async () => ({ ok: true as const }));
     const registry = createTestRegistry(
       { kind: "deterministic", execute: intakeSpy },
       { kind: "final_output", execute: finalSpy },
@@ -312,8 +312,8 @@ describe("executeWorkflow — safety", () => {
         final: [{ sourceNodeId: "does-not-exist", targetNodeId: "final" }],
       },
     };
-    const intakeSpy = vi.fn(async () => ({}));
-    const finalSpy = vi.fn(async () => ({}));
+    const intakeSpy = vi.fn(async () => ({ ok: true as const }));
+    const finalSpy = vi.fn(async () => ({ ok: true as const }));
     const registry = createTestRegistry(
       { kind: "deterministic", execute: intakeSpy },
       { kind: "final_output", execute: finalSpy },

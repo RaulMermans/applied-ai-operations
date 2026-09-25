@@ -103,7 +103,7 @@ interface RuntimeExecutionState {
 
 ### Execution history
 
-`NodeExecutionRecord.status` is now `"SUCCEEDED" | "FAILED"` (Sprint 4 only had `"SUCCEEDED"`). A `FAILED` record's `stateRevisionBefore` always equals `stateRevisionAfter`: no state patch is ever applied from a Node that threw or returned a result that failed validation. This remains deliberately minimal execution evidence — no per-Node timestamps, latency, tokens, cost, or trace ids. It is not the future canonical AAO Trace; it exists so tests (and eventually a real tracing layer) have deterministic proof of what ran, in what order, with what state effect.
+`NodeExecutionRecord.status` is now `"SUCCEEDED" | "FAILED"` (Sprint 4 only had `"SUCCEEDED"`). A `FAILED` record's `stateRevisionBefore` always equals `stateRevisionAfter`: no state patch is ever applied from a Node that threw, returned a safe executor failure (`{ ok: false, failure }`, Sprint 7), or returned a result that failed validation. This remains deliberately minimal execution evidence — no per-Node timestamps, latency, tokens, cost, or trace ids. It is not the future canonical AAO Trace; it exists so tests (and eventually a real tracing layer) have deterministic proof of what ran, in what order, with what state effect.
 
 ## The clock boundary
 
@@ -127,6 +127,8 @@ Two lifecycle invariants are enforced by comparing *instants*, never raw ISO str
 Node execution history intentionally carries no timestamps.
 
 A `model` node's `ModelRequest`/`ModelResult` appear in `RunState` (and therefore in snapshots) only because the workflow put them there under explicit top-level keys — Model Runtime keeps no hidden conversation state (see [model runtime](model-runtime.md)).
+
+An `agent` node (Sprint 7, [agent runtime](agent-runtime.md)) is **atomic** at this boundary. All of its internal iterations run while that one Node is `RUNNING`, so they are one workflow `step`, never a safe boundary, and never produce a snapshot — the "no `RUNNING` Node in a safe snapshot" invariant holds unchanged. Agent-local working state (drafts, iteration history) never touches `RunState` mid-execution: on success the node proposes exactly one patch (`{ [resultStateKey]: AgentResult }`, one revision increment regardless of iteration count); on failure it proposes none, and the last safe snapshot remains the latest valid one. Agent durability (checkpointing mid-Agent) is deliberately not implemented.
 
 ## State snapshots and Runtime execution snapshots
 

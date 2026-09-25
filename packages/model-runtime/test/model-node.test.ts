@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { NodeDefinition } from "@aao/contracts";
 import { compileWorkflow } from "@aao/workflow-dsl";
-import { createNodeRegistry, createRuntimeV1Registry, executeWorkflow, finalOutputExecutor, type NodeExecutor } from "@aao/runtime";
+import { createNodeRegistry, createRuntimeV1Registry, executeWorkflow, finalOutputExecutor, validateSnapshotAgainstPlan, type NodeExecutor } from "@aao/runtime";
 import { createModelNodeExecutor } from "../src/model-node.js";
 import { TEXT_ONLY, buildPolicy, buildRegistries, buildTextRequest, spyAdapter, succeeded } from "./fixtures.js";
 
@@ -42,7 +42,7 @@ function setup(options: { policies?: Parameters<typeof buildRegistries>[1] } = {
     kind: "deterministic",
     async execute(context) {
       prepareCalls.push(context.node.id);
-      return {};
+      return { ok: true };
     },
   };
   const registry = createNodeRegistry();
@@ -108,7 +108,13 @@ describe("model node — execution", () => {
     const { adapter, registry } = setup();
     const badState = { runId: "run.model", revision: 0, values: { modelRequest: { schemaVersion: 1, messages: [] } } };
     const result = await executeWorkflow({ runId: "run.model", plan: planWith(GOOD_CONFIG), initialState: badState, registry, options: { clock: clock() } });
-    expect(!result.ok && result.failure).toEqual({ code: "NODE_EXECUTION_FAILED", message: 'Node "classify" (kind "model") threw during execution.', nodeId: "classify", step: 2 });
+    expect(!result.ok && result.failure).toEqual({
+      code: "NODE_EXECUTION_FAILED",
+      message: 'Node "classify" (kind "model") reported an executor failure.',
+      nodeId: "classify",
+      step: 2,
+      executorFailure: { namespace: "model", code: "INVALID_MODEL_REQUEST" },
+    });
     expect(adapter.calls).toEqual([]);
     expect(result.execution?.state).toEqual(badState);
     expect(result.execution?.nodeStatusesById).toEqual({ prepare: "SUCCEEDED", classify: "FAILED", final: "PENDING" });
@@ -118,6 +124,34 @@ describe("model node — execution", () => {
     const { registry } = setup();
     const result = await executeWorkflow({ runId: "run.model", plan: planWith(GOOD_CONFIG), initialState: { runId: "run.model", revision: 0, values: {} }, registry, options: { clock: clock() } });
     expect(!result.ok && result.failure.code).toBe("NODE_EXECUTION_FAILED");
+    expect(!result.ok && result.failure.executorFailure).toEqual({ namespace: "model", code: "INVALID_MODEL_REQUEST" });
+  });
+
+  it("MODEL_ROUTE_NOT_FOUND surfaces as NODE_EXECUTION_FAILED + executorFailure { model, MODEL_ROUTE_NOT_FOUND }; state untouched; snapshot valid", async () => {
+    // Only a text binding is registered, but the policy requires structured output.
+    const { adapter, registry } = setup({ policies: [buildPolicy({ requiredCapabilities: ["model.structured_output"] })] });
+    const plan = planWith(GOOD_CONFIG);
+    const result = await executeWorkflow({ runId: "run.model", plan, initialState, registry, options: { clock: clock() } });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.failure).toEqual({
+      code: "NODE_EXECUTION_FAILED",
+      message: 'Node "classify" (kind "model") reported an executor failure.',
+      nodeId: "classify",
+      step: 2,
+      executorFailure: { namespace: "model", code: "MODEL_ROUTE_NOT_FOUND" },
+    });
+    expect(adapter.calls).toEqual([]);
+    expect(result.execution?.run.status).toBe("FAILED");
+    expect(result.execution?.nodeStatusesById).toEqual({ prepare: "SUCCEEDED", classify: "FAILED", final: "PENDING" });
+    expect(result.execution?.state).toEqual(initialState);
+    expect(result.latestSnapshot?.stateSnapshot.revision).toBe(0);
+    expect(validateSnapshotAgainstPlan(result.latestSnapshot, plan)).toBeUndefined();
+    // Only the safe code crosses into the Runtime: no Model Runtime message or details.
+    const serialized = JSON.stringify(result.failure);
+    expect(serialized).not.toMatch(/requiredCapabilities|binding satisfies/);
+    expect(JSON.parse(serialized)).toEqual(result.failure);
   });
 });
 

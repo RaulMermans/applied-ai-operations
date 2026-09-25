@@ -143,6 +143,24 @@ export async function executeWorkflow(request: ExecuteWorkflowRequest): Promise<
       return fail({ code: validated.code, message: `Node "${node.id}": ${validated.message}`, nodeId: node.id, step });
     }
 
+    if (!validated.result.ok) {
+      // An expected, executor-reported failure: the result was well-formed,
+      // so only its bounded { namespace, code } is carried through — as
+      // opaque subordinate causality the Runtime never interprets. No patch
+      // is applied, exactly like a throw.
+      const executorFailure = validated.result.failure;
+      nodeStatusesById = transitionNodeStatus(nodeStatusesById, node.id, "FAILED");
+      history = [...history, { nodeId: node.id, kind: node.kind, step, status: "FAILED", stateRevisionBefore: state.revision, stateRevisionAfter: state.revision }];
+      execution = { run, state, nodeStatusesById, step, history };
+      return fail({
+        code: "NODE_EXECUTION_FAILED",
+        message: `Node "${node.id}" (kind "${node.kind}") reported an executor failure.`,
+        nodeId: node.id,
+        step,
+        executorFailure: { ...executorFailure },
+      });
+    }
+
     const stateRevisionBefore = state.revision;
     state = applyStatePatch(state, validated.result.statePatch);
     const stateRevisionAfter = state.revision;
