@@ -45,7 +45,8 @@ Before any model call — in Agent Node preflight and in `executeAgent` alike (o
 ### Workflow bridge
 
 - `createAgentNodeExecutor({ agents, policies, models })` is an `agent` `NodeExecutor` callers register explicitly; the generic Runtime registers nothing agent-related. Config: `{ agentRef, taskStateKey, resultStateKey }` (top-level keys only, keys must differ), validated in preflight through the existing `validateConfig` hook together with the full support gate; preflight never invokes a model or mutates state, and a failure means zero nodes execute.
-- It reads the task from `RunState.values[taskStateKey]`, derives `agentExecutionId` as `<runId>.<nodeId>` (stable, never random), and calls the same canonical `executeAgent` — there is one Agent execution path.
+- It reads the task from `RunState.values[taskStateKey]`, derives `agentExecutionId` deterministically from Run + Node identity into a bounded canonical identifier (`deriveAgentExecutionId`: `agent.<sha256 hex>` over the unambiguous JSON `[domain, runId, nodeId]`; 70 characters however long the 256-character-max ids are, leaving room for `.i<n>` invocation suffixes; never random, no clock or counter), and calls the same canonical `executeAgent` — there is one Agent execution path.
+- Runtime V1 assumes one Agent execution attempt per Agent Node per Run. Future retry/resume semantics will add an explicit *attempt* dimension to the derivation — never ad hoc suffixes such as `.retry1` or timestamps. Direct `executeAgent` callers still supply their own `agentExecutionId`.
 - The Agent Node is atomic to the parent Runtime: all iterations happen while the node is `RUNNING`; they count as one workflow step, produce no intermediate state change, and never produce a mid-Agent workflow snapshot. Success proposes exactly one state patch `{ [resultStateKey]: AgentResult }` (one revision increment). Failure proposes none.
 
 ### Safe Node executor failure protocol

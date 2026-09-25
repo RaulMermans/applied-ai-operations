@@ -38,7 +38,7 @@ Workflow agent Node       config: { agentRef, taskStateKey, resultStateKey } (to
       ↓
 Generic AAO Runtime       caller registers createAgentNodeExecutor({ agents, policies, models }) explicitly;
       ↓                   preflight runs validateConfig (config schema + full support gate), no model call
-Agent Runtime             executeAgent({ agentExecutionId: "<runId>.<nodeId>", agentRef, task: state[taskStateKey] })
+Agent Runtime             executeAgent({ agentExecutionId: deriveAgentExecutionId(runId, nodeId), agentRef, task: state[taskStateKey] })
       ↓
 Model Runtime             1..maxIterations invocations, all while the Node is RUNNING
       ↓
@@ -47,6 +47,10 @@ Agent Result
 Runtime-managed patch     success: { [resultStateKey]: AgentResult } → one revision increment
                           failure: no patch; NODE_EXECUTION_FAILED + executorFailure { agent, <AgentFailureCode> }
 ```
+
+Workflow-owned Agent execution ids are deterministically derived from Run + Node identity into a bounded canonical identifier: `agent.<sha256 hex>` over the unambiguous JSON array `[domain, runId, nodeId]` (70 characters regardless of how long the ≤256-character Run/Node ids are, so a workflow that passes preflight can never fail on an over-long derived id, and the `.i<n>` invocation suffix always fits). No randomness, clock, or counter. Direct `executeAgent` callers still supply their own `agentExecutionId`.
+
+Runtime V1 currently assumes one Agent execution attempt per Agent Node per Run. Future retry/resume semantics will add an explicit attempt dimension to this derivation.
 
 The Agent Node is **atomic** to the parent Runtime: `READY → RUNNING → SUCCEEDED | FAILED`. Agent iterations are not workflow steps, do not increment `RunState.revision`, never mutate workflow state, and never create a safe workflow snapshot mid-Agent. Without an explicitly registered agent executor, an agent node fails preflight with `NODE_EXECUTOR_NOT_FOUND`.
 

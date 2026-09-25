@@ -49,7 +49,7 @@ describe("@aao/agent-runtime dependency boundary", () => {
   const sourceFiles = listTsFiles(srcDir);
 
   it("finds the source files", () => {
-    expect(sourceFiles.map((file) => relative(srcDir, file)).sort()).toEqual(["agent-node.ts", "controller.ts", "decision.ts", "index.ts", "registry.ts", "resolution.ts", "types.ts"]);
+    expect(sourceFiles.map((file) => relative(srcDir, file)).sort()).toEqual(["agent-node.ts", "controller.ts", "decision.ts", "execution-id.ts", "index.ts", "registry.ts", "resolution.ts", "types.ts"]);
   });
 
   it.each(sourceFiles.map((file) => [relative(srcDir, file)]))("%s imports no AI SDK, provider SDK, orchestration framework, MCP, Fastify, or substrate package", (file) => {
@@ -57,8 +57,8 @@ describe("@aao/agent-runtime dependency boundary", () => {
     for (const forbidden of FORBIDDEN_SUBSTRINGS) expect(codeOnly).not.toContain(forbidden.toLowerCase());
   });
 
-  it("every source module imports only @aao/contracts, @aao/runtime, @aao/model-runtime (entry point), and zod — never `ai`", () => {
-    const allowed = new Set(["@aao/contracts", "@aao/runtime", "@aao/model-runtime", "zod"]);
+  it("every source module imports only @aao/contracts, @aao/runtime, @aao/model-runtime (entry point), zod, and node:crypto — never `ai`", () => {
+    const allowed = new Set(["@aao/contracts", "@aao/runtime", "@aao/model-runtime", "zod", "node:crypto"]);
     for (const file of sourceFiles) {
       for (const specifier of importSpecifiers(file)) {
         expect(allowed.has(specifier), `${relative(srcDir, file)} imports unexpected module "${specifier}"`).toBe(true);

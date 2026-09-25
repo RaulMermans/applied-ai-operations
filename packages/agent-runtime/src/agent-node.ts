@@ -2,6 +2,7 @@ import { z } from "zod";
 import { identifierSchema, type JsonObject } from "@aao/contracts";
 import type { NodeExecutor, NodePreflightResult } from "@aao/runtime";
 import { executeAgent, type AgentRuntimeDependencies } from "./controller.js";
+import { deriveAgentExecutionId } from "./execution-id.js";
 import { resolveExecutableAgent } from "./resolution.js";
 import { AgentRefSchema } from "./types.js";
 
@@ -70,11 +71,12 @@ export function createAgentNodeExecutor(dependencies: AgentRuntimeDependencies):
       if (!verdict.ok) throw new Error("Agent node config is invalid.");
       const { agentRef, taskStateKey, resultStateKey } = verdict.config;
 
-      // Stable and caller-derived (Run + Node identity), never random: a Node
-      // executes at most once per Run in Runtime V1. The task is whatever the
-      // workflow state holds; `executeAgent` validates it (a missing, non-string,
-      // or blank task is INVALID_AGENT_REQUEST) like any other untrusted request.
-      const request = { schemaVersion: 1, agentExecutionId: `${context.runId}.${context.node.id}`, agentRef, task: context.state.values[taskStateKey] };
+      // Deterministically derived from Run + Node identity into a bounded id
+      // (see execution-id.ts), never random: a Node executes at most once per
+      // Run in Runtime V1. The task is whatever the workflow state holds;
+      // `executeAgent` validates it (a missing, non-string, or blank task is
+      // INVALID_AGENT_REQUEST) like any other untrusted request.
+      const request = { schemaVersion: 1, agentExecutionId: deriveAgentExecutionId(context.runId, context.node.id), agentRef, task: context.state.values[taskStateKey] };
       const outcome = await executeAgent({ request, ...dependencies });
       if (!outcome.ok) return { ok: false, failure: { namespace: AGENT_NODE_FAILURE_NAMESPACE, code: outcome.failure.code } };
       return { ok: true, statePatch: { [resultStateKey]: outcome.result } };

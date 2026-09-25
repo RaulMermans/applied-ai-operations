@@ -3,6 +3,7 @@ import type { NodeDefinition } from "@aao/contracts";
 import { compileWorkflow } from "@aao/workflow-dsl";
 import { createNodeRegistry, createRuntimeV1Registry, executeWorkflow, finalOutputExecutor, validateSnapshotAgainstPlan, type NodeExecutor } from "@aao/runtime";
 import { createAgentNodeExecutor } from "../src/agent-node.js";
+import { deriveAgentExecutionId } from "../src/execution-id.js";
 import { AGENT_REF, buildAgent, buildPolicy, buildWorld, decision, type ScriptedResponse } from "./fixtures.js";
 
 function clock() {
@@ -106,7 +107,7 @@ describe("agent node — execution", () => {
     expect(world.primary.calls).toHaveLength(2);
     expect(world.primary.calls[0]?.messages[1]?.content).toBe("Summarize local-first workflow tools.");
     expect(result.execution.state.revision).toBe(1);
-    expect(result.execution.state.values.research).toMatchObject({ agentExecutionId: "run.agent.research", finalOutput: "Final.", iterationsUsed: 2 });
+    expect(result.execution.state.values.research).toMatchObject({ agentExecutionId: deriveAgentExecutionId("run.agent", "research"), finalOutput: "Final.", iterationsUsed: 2 });
     expect(result.execution.history.find((record) => record.nodeId === "research")).toMatchObject({ status: "SUCCEEDED", stateRevisionBefore: 0, stateRevisionAfter: 1 });
     expect(initialState.values).not.toHaveProperty("research");
     expect(validateSnapshotAgainstPlan(result.latestSnapshot, plan)).toBeUndefined();

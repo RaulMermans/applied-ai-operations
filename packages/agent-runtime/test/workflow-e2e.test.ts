@@ -5,6 +5,7 @@ import { RuntimeExecutionSnapshotSchema, createNodeRegistry, executeWorkflow, fi
 import { createModelPolicyRegistry, createModelRegistry } from "@aao/model-runtime";
 import { createVercelAiModelAdapter } from "@aao/model-runtime/vercel-ai";
 import { createAgentNodeExecutor } from "../src/agent-node.js";
+import { deriveAgentExecutionId } from "../src/execution-id.js";
 import { createAgentRegistry } from "../src/registry.js";
 import { AgentResultSchema } from "../src/types.js";
 import { TEXT_AND_STRUCTURED, buildAgent, buildPolicy } from "./fixtures.js";
@@ -113,7 +114,7 @@ describe("Agent workflow E2E: YAML → compiler → Runtime → Agent Node → A
     const agentResult = AgentResultSchema.parse(result.execution.state.values.research);
     expect(agentResult).toEqual({
       schemaVersion: 1,
-      agentExecutionId: "run.agent.one.research",
+      agentExecutionId: deriveAgentExecutionId("run.agent.one", "research"),
       agentRef: { id: "research.synthesizer", version: "1.0.0" },
       finalOutput: "Local-first tools are growing.",
       iterationsUsed: 1,
@@ -122,7 +123,7 @@ describe("Agent workflow E2E: YAML → compiler → Runtime → Agent Node → A
           iteration: 1,
           action: "COMPLETE",
           output: "Local-first tools are growing.",
-          invocationId: "run.agent.one.research.i1",
+          invocationId: `${deriveAgentExecutionId("run.agent.one", "research")}.i1`,
           modelBindingId: "local.agent",
           usage: { inputTokens: 20, outputTokens: 5, totalTokens: 25 },
         },
