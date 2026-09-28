@@ -16,7 +16,7 @@ Transforms an AAO model request through AAO policy and provider/model resolution
 
 ## Tool Layer and MCP Connector Layer
 
-The Tool Layer owns canonical tool contracts, input/output validation, namespaces, risk classes, permissions, invocation, canonical errors, and audit metadata. The MCP Connector Layer treats MCP as a connector protocol for external tools, resources, and appropriate prompts. AAO owns MCP host behavior, authorization, exposure, orchestration, approval, state, traces, and evaluation; MCP is not the workflow engine.
+The Tool Layer owns canonical tool contracts, input/output validation, namespaces, risk classes, permissions, invocation, canonical errors, and audit metadata. The MCP Connector Layer (`@aao/mcp-connector`, Sprint 10) implements Tools only: explicit host-controlled stdio sessions, bounded discovery, and trusted bindings into the existing Tool Runtime. Resources, prompts, sampling, HTTP, and OAuth are deferred. AAO owns MCP host behavior, authorization, exposure, orchestration, approval, state, traces, and evaluation; MCP is not the workflow engine.
 
 ## Governance Layer
 
@@ -31,3 +31,5 @@ Owns run persistence, checkpoints, resume, interruption recovery, persisted oper
 Observability owns canonical execution truth: run and node events, model and tool calls, retries, approvals, checkpoints, latency, measurable token and cost use, evaluation results, errors, and artifacts. It is part of correctness, not decorative monitoring.
 
 Evaluation owns workflow and schema evaluation, tool-use and trace assertions, authorization tests, regression cases, safety tests, and model/capability benchmarks. A final response does not establish correct execution.
+
+The [MCP connector](mcp-connector.md) owns protocol/session infrastructure. SDK objects and transport configuration never enter canonical contracts or workflow state. Discovery metadata cannot supply permissions, grants, capability assignments, or AAO state mutations; `executeTool` owns the governed invocation path.

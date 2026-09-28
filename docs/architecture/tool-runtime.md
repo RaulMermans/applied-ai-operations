@@ -36,7 +36,7 @@ Output validation        strict result shape, then JSON-safety                  
 ToolExecutionResult      { ok: true, result: ToolResult }
 ```
 
-Entry point: `executeTool({ request, tools, authorizationContext })`. It is the only Tool execution implementation and the only exported path that invokes a registered handler. The Tool Node, future governed Agent Tool use, and future MCP adapters all call it.
+Entry point: `executeTool({ request, tools, authorizationContext })`. It is the only Tool execution implementation and the only exported path that invokes a registered handler. The Tool Node, future governed Agent Tool use, and MCP-backed handlers all inherit it.
 
 ## Workflow path
 
@@ -83,7 +83,7 @@ AAO Tool Binding          RegisteredTool { spec, handler }
 Tool Runtime
 ```
 
-Sprint 8 carries `ToolSpec.capabilityRef` but does not resolve it: there is no Capability Registry, Adapter Registry, connector, or MCP client. Tool Runtime executes registered Tool bindings. Integration Fabric will later create and bind those Tools to normalized enterprise capabilities, and MCP capabilities will arrive as Tool bindings (`MCP → AAO Tool Binding → Tool Runtime`), never `Agent → MCP` directly.
+Sprint 8 carries `ToolSpec.capabilityRef` but does not resolve it: there is no Capability Registry, general Adapter Registry, or capability routing. Sprint 10 supplies explicit MCP Tool bindings from the separate connector package. Tool Runtime executes registered Tool bindings. Integration Fabric will later create and bind those Tools to normalized enterprise capabilities, and MCP Tools arrive as explicit host-owned Tool bindings (`MCP → AAO Tool Binding → Tool Runtime`), never `Agent → MCP` directly.
 
 ## Registry
 
@@ -116,7 +116,7 @@ ToolHandlerContext = { toolExecutionId, tool: ToolRef, input: JsonValue }   // v
 ToolHandlerResult  = { ok: true, output: JsonValue } | { ok: false, code: /^[A-Z][A-Z0-9_]{0,63}$/ }
 ```
 
-Handlers get no workflow state, `process.env`, credentials, database, MCP session, model client, Agent Runtime, or global service. Future adapters construct handlers with explicit dependencies outside the Tool Runtime.
+Handlers get no workflow state, `process.env`, credentials, database, MCP session, model client, Agent Runtime, or global service. Adapters construct handlers with explicit dependencies outside the Tool Runtime. The [MCP connector](mcp-connector.md) captures its private session in a handler closure; no MCP type enters this contract.
 
 ## Execution identity
 
@@ -127,6 +127,6 @@ Direct callers own `toolExecutionId`. The Tool Node derives it as `tool.<sha256 
 - **Tool Runtime control determinism** is guaranteed: the same request, registry, and deterministic handler always give the same validation, invocation count, and result.
 - **External-system response determinism** is not guaranteed and is not claimed. Future handlers backed by real systems may return different data.
 
-## Explicit non-goals (Sprint 8)
+## Current Tool Runtime non-goals
 
-MCP, Integration Fabric, capability resolution, OAuth and credentials, connectors, Agent Tool use (`AgentDecision` stays `CONTINUE | COMPLETE`), external side effects, destructive or sensitive-data execution, retries, fallback, timeouts, cancellation, idempotency, replay protection, rollback, compensation, verification, persistence, caching, and Tool memory.
+MCP protocol ownership (implemented separately in `@aao/mcp-connector`, ADR-015), Integration Fabric, capability resolution, OAuth and credentials, connectors, Agent Tool use (`AgentDecision` stays `CONTINUE | COMPLETE`), external side effects, destructive or sensitive-data execution, retries, fallback, timeouts, cancellation, idempotency, replay protection, rollback, compensation, verification, persistence, caching, and Tool memory.

@@ -106,7 +106,7 @@ It reuses canonical `AgentSpec` plus a runtime binding (instructions, `maxIterat
 ToolExecutionRequest → Tool Registry → permission support gate → authorization → inputSchema → trusted handler → output JSON safety + outputSchema → ToolResult
 ```
 
-It reuses canonical `ToolSpec` plus a trusted handler binding, an explicit version-exact Tool Registry that compiles both JSON Schemas with strict Ajv at registration (fail closed), and one `executeTool` path that invokes a handler at most once (no retry, fallback, or timeout race), redacts thrown errors, and preserves only a bounded handler failure code. Tool Runtime V1 executes only Tools whose permission classes are all `read_only`/`write_draft`; `external_side_effect`, `destructive`, and `sensitive_data` fail closed, including in Tool Node preflight. That gate is not authorization: registered ≠ supported ≠ authorized. The public Tool Registry is inspection-only, so `executeTool` is the only path to a registered handler. There is no MCP, Integration Fabric, credentials, Agent Tool use, or persistence. See [ADR-013](docs/decisions/ADR-013-tool-registry-and-safe-execution-boundary.md) and [tool runtime](docs/architecture/tool-runtime.md).
+It reuses canonical `ToolSpec` plus a trusted handler binding, an explicit version-exact Tool Registry that compiles both JSON Schemas with strict Ajv at registration (fail closed), and one `executeTool` path that invokes a handler at most once (no retry, fallback, or timeout race), redacts thrown errors, and preserves only a bounded handler failure code. Tool Runtime V1 executes only Tools whose permission classes are all `read_only`/`write_draft`; `external_side_effect`, `destructive`, and `sensitive_data` fail closed, including in Tool Node preflight. That gate is not authorization: registered ≠ supported ≠ authorized. The public Tool Registry is inspection-only, so `executeTool` is the only path to a registered handler. The Tool Runtime remains MCP-unaware; the connector below supplies normal handlers. There is no general Integration Fabric, credentials, Agent Tool use, or persistence. See [ADR-013](docs/decisions/ADR-013-tool-registry-and-safe-execution-boundary.md) and [tool runtime](docs/architecture/tool-runtime.md).
 
 ## Authorization
 
@@ -117,6 +117,19 @@ host-attested AuthorizationContext → Tool permission requirements → Agent ce
 ```
 
 The rule is `required ⊆ principal grants` and, with an Agent, `required ⊆ grants ∩ agent ceiling`. There is no permission hierarchy, superuser, default allow, policy language, or model involvement. AAO does not authenticate; the host attests the principal. Missing or malformed context fails closed, the support gate runs first, and authorization runs before input validation. The workflow `tool` node gets its context from a host resolver, never from workflow state or config; the generic Runtime stays authorization-unaware. See [ADR-014](docs/decisions/ADR-014-authorization-and-permission-enforcement.md) and [authorization](docs/architecture/authorization.md).
+
+## MCP connector boundary
+
+`@aao/mcp-connector` (`packages/mcp-connector`, Sprint 10) is the single production MCP adapter. A trusted host creates one explicit stdio session per server, discovers Tools, and binds a selected remote name to a canonical AAO `ToolSpec`. Discovery never registers Tools or assigns permissions.
+
+```text
+Trusted host → MCP session → SDK Client → stdio → MCP server
+Discovery → explicit trusted binding → Tool Registry → executeTool
+→ support gate → Authorization → AAO input validation → MCP call once
+→ structured output normalization → AAO output validation → ToolResult
+```
+
+SDK types, subprocess configuration, and sessions stay inside infrastructure configuration. The generic Runtime, Agent Runtime, Authorization, and Tool Runtime remain MCP-unaware. No HTTP, OAuth, resources, prompts, sampling, Agent Tool use, retry, reconnect, or persistence is implemented. See [ADR-015](docs/decisions/ADR-015-mcp-integration-boundary-and-tool-adapter-sessions.md) and [MCP connector](docs/architecture/mcp-connector.md).
 
 ## Canonical architecture documents
 
@@ -129,6 +142,7 @@ The rule is `required ⊆ principal grants` and, with an Agent, `required ⊆ gr
 - [Agent runtime](docs/architecture/agent-runtime.md) — bounded Agent registry, limits, deterministic controller, decision contract, iteration evidence, and the agent node.
 - [Tool runtime](docs/architecture/tool-runtime.md) — Tool Registry, JSON Schema policy, permission support gate, handler contract, and the tool node.
 - [Authorization](docs/architecture/authorization.md) — host-attested Authorization Context, the deterministic evaluator, Agent ceiling, and enforcement inside `executeTool`.
+- [MCP connector](docs/architecture/mcp-connector.md) — isolated stdio sessions, bounded discovery, explicit Tool bindings, and normalized failures.
 - [System boundaries](docs/architecture/system-boundaries.md) — architectural layers and ownership.
 - [Core vs company](docs/architecture/core-vs-company.md) — portability boundary and configuration responsibilities.
 - [Execution model](docs/architecture/execution-model.md) — workflow-first design, responsibility split, and patterns.
@@ -154,7 +168,7 @@ Dependencies implement infrastructure; AAO defines product semantics.
 | Evaluation | Yes | Implementation deferred |
 | Trace model | Yes | Implementation deferred |
 
-The repository's `packages/substrate-contracts`, `packages/substrate-spikes`, and `experiments` remain Sprint 0A research evidence. They are not production packages or final public contracts. A later sprint must explicitly promote, rewrite, migrate, delete, or archive each concept.
+The repository's `packages/substrate-contracts`, `packages/substrate-spikes`, and `experiments` remain Sprint 0A research evidence. They are not production packages or final public contracts. The MCP spike is `KEEP_AS_HISTORICAL_EVIDENCE`; production MCP is exclusively `@aao/mcp-connector` (ADR-015). Other concepts still need explicit promotion, migration, deletion, or archival.
 
 ## Operating rules
 

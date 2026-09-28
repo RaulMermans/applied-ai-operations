@@ -16,6 +16,7 @@ packages/
   agent-runtime/           @aao/agent-runtime — bounded Agent registry, controller, decision contract, agent node (Sprint 7)
   tool-runtime/            @aao/tool-runtime — Tool Registry, safe Tool execution boundary, tool node (Sprint 8)
   authorization/           @aao/authorization — Authorization Context, deterministic permission evaluator (Sprint 9)
+  mcp-connector/           @aao/mcp-connector — stdio sessions, discovery, explicit governed Tool bindings (Sprint 10)
   substrate-contracts/     research evidence, not production architecture
   substrate-spikes/        research evidence, not production architecture
 
@@ -27,7 +28,7 @@ docs/                  architecture contract, ADRs, and engineering docs
 
 A Fastify HTTP process. `src/app.ts` owns Fastify construction and route registration and is testable without opening a TCP port (Fastify `inject()`); `src/server.ts` owns process startup: configuration loading, `listen()`, startup logging, and graceful shutdown on `SIGINT`/`SIGTERM`.
 
-Routes: `GET /health/live` (is the process alive) and `GET /health/ready` (have the dependencies that currently exist — none yet — initialized). There is no database, queue, workflow runtime, model provider, or MCP connector to check readiness against yet, so readiness is not faked for systems that do not exist.
+Routes: `GET /health/live` (is the process alive) and `GET /health/ready` (have the dependencies that currently exist — none yet — initialized). There is no database, queue, workflow runtime, model provider, or configured MCP server to check readiness against yet, so readiness is not faked for systems that do not exist.
 
 ## `apps/worker` — `@aao/worker`
 
@@ -67,9 +68,13 @@ The Tool Runtime (Sprint 8): `RegisteredTool` bindings (canonical `ToolSpec` + t
 
 The Authorization Boundary (Sprint 9): strict `AuthorizationContext`, `AuthorizationRequest`, and `AuthorizationDecision` contracts, the pure `authorize()` evaluator, and `agentAuthorityFromSpec`. Production dependencies: `@aao/contracts`, `zod`. It imports no Runtime package, AI SDK, MCP, provider SDK, Fastify, or `apps/*`. See [ADR-014](../decisions/ADR-014-authorization-and-permission-enforcement.md) and [authorization](../architecture/authorization.md).
 
+## `packages/mcp-connector` — `@aao/mcp-connector`
+
+The sole production MCP boundary (Sprint 10): explicit isolated stdio sessions, bounded Tools discovery, host-owned `McpToolBinding` → normal `RegisteredTool`, and safe structured-result/error normalization. Production dependencies: `@aao/contracts`, `@aao/tool-runtime`, official MCP SDK `1.30.0`, `zod`. Runtime/Authorization test dependencies are test-only. No direct invocation API is exported. See [ADR-015](../decisions/ADR-015-mcp-integration-boundary-and-tool-adapter-sessions.md) and [MCP connector](../architecture/mcp-connector.md). After `pnpm build`, run `pnpm --filter @aao/mcp-connector smoke` for compiled real-stdio evidence.
+
 ## `packages/substrate-contracts` and `packages/substrate-spikes`
 
-Sprint 0A research evidence for the [substrate recommendation](../decisions/ADR-000-substrate-recommendation.md): executable spikes proving LangGraph.js, the Vercel AI SDK, and the MCP TypeScript SDK can sit behind AAO-owned contracts. **They are research evidence, not production AAO architecture.** Production code (`apps/*`, `packages/config`) does not import them. A later sprint will explicitly classify each concept as `PROMOTE`, `REWRITE`, `ARCHIVE`, or `DELETE`.
+Sprint 0A research evidence for the [substrate recommendation](../decisions/ADR-000-substrate-recommendation.md): executable spikes proving LangGraph.js, the Vercel AI SDK, and the MCP TypeScript SDK can sit behind AAO-owned contracts. **They are research evidence, not production AAO architecture.** Production code (`apps/*`, `packages/config`) does not import them. Sprint 10 classifies the MCP spike as `KEEP_AS_HISTORICAL_EVIDENCE`: its toy permission check is not production authorization, and no production package imports it. Other concepts still need classification as `PROMOTE`, `REWRITE`, `ARCHIVE`, or `DELETE`.
 
 ## `experiments/`
 
@@ -84,4 +89,4 @@ Narrative research notes (durability, graph runtime, integrations, MCP, model la
 
 ## Build and typecheck shape
 
-Every runnable package (`packages/config`, `packages/contracts`, `packages/workflow-dsl`, `packages/runtime`, `packages/model-runtime`, `packages/agent-runtime`, `packages/tool-runtime`, `packages/authorization`, `apps/control-plane`, `apps/worker`) and the retained research packages each have their own `tsconfig.json` (typecheck, includes `src` and `test`) and `tsconfig.build.json` (build, excludes `test`, emits to that package's own `dist/`), both extending the shared [`tsconfig.base.json`](../../tsconfig.base.json) at the repository root. Each package builds independently; `pnpm build` runs every package's build script in dependency order (`pnpm -r`), so `@aao/config` compiles before the apps that depend on it. No `dist/` output is committed. See [local-development.md](local-development.md) for the day-to-day commands.
+Every runnable package (`packages/config`, `packages/contracts`, `packages/workflow-dsl`, `packages/runtime`, `packages/model-runtime`, `packages/agent-runtime`, `packages/tool-runtime`, `packages/authorization`, `packages/mcp-connector`, `apps/control-plane`, `apps/worker`) and the retained research packages each have their own `tsconfig.json` (typecheck, includes `src` and `test`) and `tsconfig.build.json` (build, excludes `test`, emits to that package's own `dist/`), both extending the shared [`tsconfig.base.json`](../../tsconfig.base.json) at the repository root. Each package builds independently; `pnpm build` runs every package's build script in dependency order (`pnpm -r`), so `@aao/config` compiles before the apps that depend on it. No `dist/` output is committed. See [local-development.md](local-development.md) for the day-to-day commands.

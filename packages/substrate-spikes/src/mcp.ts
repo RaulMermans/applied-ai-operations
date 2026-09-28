@@ -1,3 +1,6 @@
+// KEEP_AS_HISTORICAL_EVIDENCE — Sprint 0A in-memory research only.
+// Its toy permission check is not AAO authorization. Production MCP lives
+// exclusively in @aao/mcp-connector and inherits executeTool (ADR-015).
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";

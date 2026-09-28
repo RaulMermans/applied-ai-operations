@@ -83,4 +83,4 @@ The generic Runtime never sees the reason code. Resolver exceptions are never in
 
 ## Not implemented
 
-Authentication, users and roles, groups and tenants, policy languages, approvals, Agent Tool use, MCP, external-side-effect/sensitive-data/destructive Tools, credentials, durable authorization state, and authorization caching. Future RBAC/ABAC systems construct an `AuthorizationContext`; they do not replace the evaluator.
+Authentication, users and roles, groups and tenants, policy languages, approvals, Agent Tool use, MCP protocol ownership (the separate connector inherits this evaluator), external-side-effect/sensitive-data/destructive Tools, credentials, durable authorization state, and authorization caching. Future RBAC/ABAC systems construct an `AuthorizationContext`; they do not replace the evaluator.

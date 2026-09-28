@@ -31,17 +31,17 @@ Implement model abstraction, capability/model routing, and bounded agent runtime
 
 ## Phase D — Tool Infrastructure
 
-Implement tool registry, authorization middleware, and MCP connector layer.
+Complete: Tool Registry, safe Tool execution, deterministic Authorization, and the isolated MCP connector boundary.
 
 | Sprint / outcome | Scope | Status |
 | --- | --- | --- |
 | Sprint 8 — Tool Registry & Safe Tool Execution Boundary | `@aao/tool-runtime`: canonical `ToolSpec` + trusted handler binding, explicit version-exact Tool Registry with strict Ajv schema compilation at registration, one `executeTool` path (request → registry → permission support gate → input schema → handler once → output JSON safety + schema → `ToolResult`), redacted handler failures, deterministic workflow-owned Tool execution ids, and an explicitly registered `tool` node. Only `read_only`/`write_draft` Tools execute; the support gate is not authorization. No MCP, connectors, credentials, Agent Tool use, side effects, retries, or persistence. | Complete (`SPRINT_08_TOOL_RUNTIME_COMPLETE`) — see [ADR-013](../decisions/ADR-013-tool-registry-and-safe-execution-boundary.md) |
 | Sprint 9 — Authorization & Permission Enforcement Boundary | `@aao/authorization`: host-attested `AuthorizationContext` (principal + explicit grants + optional Agent ceiling from the registered `AgentSpec`), one pure deterministic `authorize()` evaluator (`required ⊆ grants ∩ ceiling`, no hierarchy, no superuser, safe reason codes), enforced inside `executeTool` after the support gate and before input validation. Tool Node gets its context from a trusted host resolver; the public Tool Registry is inspection-only. No authentication, roles, policy DSL, approvals, Agent Tool use, MCP, or side effects. | Complete (`SPRINT_09_AUTHORIZATION_BOUNDARY_COMPLETE`) — see [ADR-014](../decisions/ADR-014-authorization-and-permission-enforcement.md) |
-| Sprint 10 — MCP Integration Boundary & Tool Adapter Sessions | Bind MCP capabilities as normalized AAO Tool bindings executed through the Tool Runtime and its authorization (`MCP capability → AAO Tool binding → Tool Runtime → Authorization → execution`). Agents never talk to MCP directly. | Next |
+| Sprint 10 — MCP Integration Boundary & Tool Adapter Sessions | `@aao/mcp-connector`: explicit stdio client/server sessions, bounded Tools discovery, trusted host-owned canonical Tool bindings, structured output normalization, safe errors, and the existing `executeTool` support/authorization/validation path. Real SDK stdio, zero-call rejection gates, generic workflow integration, and compiled smoke verified. No HTTP, OAuth, Agent Tool use, retries, or persistence. | Complete (`SPRINT_10_MCP_INTEGRATION_BOUNDARY_COMPLETE`) — see [ADR-015](../decisions/ADR-015-mcp-integration-boundary-and-tool-adapter-sessions.md) |
 
 ## Phase E — Governance
 
-Implement actor, role, and policy model plus approval engine.
+Next phase: implement actor, role, and policy model plus approval engine. Add further integration infrastructure only for a demonstrated workflow requirement.
 
 ## Phase F — Reliability
 

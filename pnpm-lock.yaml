@@ -88,6 +88,31 @@ importers:
         specifier: ^3.24.3
         version: 3.25.76
 
+  packages/mcp-connector:
+    dependencies:
+      '@aao/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@aao/tool-runtime':
+        specifier: workspace:*
+        version: link:../tool-runtime
+      '@modelcontextprotocol/sdk':
+        specifier: 1.30.0
+        version: 1.30.0(@cfworker/json-schema@4.1.1)(zod@3.25.76)
+      zod:
+        specifier: ^3.24.3
+        version: 3.25.76
+    devDependencies:
+      '@aao/authorization':
+        specifier: workspace:*
+        version: link:../authorization
+      '@aao/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      '@aao/workflow-dsl':
+        specifier: workspace:*
+        version: link:../workflow-dsl
+
   packages/model-runtime:
     dependencies:
       '@aao/contracts':

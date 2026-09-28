@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createLocalMcpLab, invokeAuthorizedRead, McpAuthorizationError } from "../src/mcp.js";
 
-describe("MCP stays behind AAO authorization", () => {
+describe("historical Sprint 0A MCP toy permission spike (not production authorization)", () => {
   const labs: Awaited<ReturnType<typeof createLocalMcpLab>>[] = [];
   afterEach(async () => { await Promise.all(labs.splice(0).map((lab) => lab.close())); });
 

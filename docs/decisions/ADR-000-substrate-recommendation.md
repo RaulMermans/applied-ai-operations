@@ -10,7 +10,7 @@ AAO is a local-first, workflow-first operational layer. It needs reusable infras
 
 - **LangGraph.js — ADOPT_BEHIND_ADAPTER.** The local compiler spike proves conditional execution can be hidden behind AAO `PrototypeWorkflow`/run-state data. Retain an `AAO Workflow Compiler` boundary.
 - **Vercel AI SDK — ADOPT_BEHIND_ADAPTER.** Use an `AAO ModelExecutor` plus model-policy/provider boundary. The installed `ai` package executes locally with structured output, invalid-output handling, and canonical error mapping; live and local-compatible providers remain future-gate work.
-- **MCP TypeScript SDK — ADOPT_BEHIND_ADAPTER.** Use as a connector protocol only. `AAO Tool`, permissions, approvals, validation, and audit must execute before invocation. Re-spike current split v2 packages before production.
+- **MCP TypeScript SDK — ADOPT_BEHIND_ADAPTER.** Use as a connector protocol only. `AAO Tool`, permissions, approvals, validation, and audit must execute before invocation. Production promotion requires a fresh SDK/transport/lifecycle spike. Sprint 10 re-spiked the installed official `@modelcontextprotocol/sdk` 1.30.0 and adopted it unchanged behind `@aao/mcp-connector` ([ADR-015](ADR-015-mcp-integration-boundary-and-tool-adapter-sessions.md)); this supersedes the historical assumption that split v2 packages were necessary.
 - **AAO-owned local durability — ADOPT.** Continue with the `DurableExecutor` boundary and an AAO run/checkpoint model; choose a real backing store only after a crash/recovery requirement exists.
 - **Capability adapters — ADOPT.** `CrmCapability` demonstrates provider-independent workflow behavior. Canonicalise capabilities, never full vendor schemas.
 - **xyflow — REFERENCE_ONLY.** Use later for a React visualisation of backend truth, never for execution semantics.
@@ -64,6 +64,6 @@ Sprint 0A and 0A.1 evidence has been incorporated into the canonical architectur
 | Future gate | Intended phase |
 | --- | --- |
 | Live provider test; local/OpenAI-compatible endpoint test; model/provider benchmarking | Before selecting or operating a production model/provider adapter. |
-| Current supported MCP SDK version re-spike; auth/transport validation; connector lifecycle behavior | Before a production MCP connector migration. |
+| Current supported MCP SDK version re-spike; auth/transport validation; connector lifecycle behavior | Local stdio/Tools/session gate satisfied by Sprint 10 (ADR-015); authenticated remote transport remains a separate future gate. |
 | Crash-safe persistence; durable idempotency; atomic or recoverable side-effect contract | Before durable external side effects or crash recovery are required. |
 | One read-only real provider integration; authentication/credential boundary; integration-specific evals | Before enabling that provider integration in a governed workflow. |
