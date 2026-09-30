@@ -22,7 +22,7 @@ The Tool Layer owns canonical tool contracts, input/output validation, namespace
 
 Owns actors, roles, permissions, policies, risk classification, approval requirements, sensitive-data rules, and side-effect authorization. It remains deterministic.
 
-Current `@aao/governance` resolves host-attested actors through explicit role bindings and deny policies into effective permission classes. Existing `@aao/authorization` then checks requested authority and the Agent ceiling. Tool Runtime separately gates unsupported permission classes. Approval requirements, sensitive-data execution controls, and side-effect authority remain future work; no model, workflow state, Tool input, MCP metadata, or memory may grant them.
+Current `@aao/governance` resolves host-attested actors through explicit role bindings and deny policies into effective permission classes. Existing `@aao/authorization` then checks requested authority and the Agent ceiling. Tool Runtime separately gates unsupported permission classes. Approval waitpoints are implemented in `@aao/approval`; sensitive-data execution controls and side-effect authority remain future work; no model, workflow state, Tool input, MCP metadata, or memory may grant them.
 
 ## Durability Layer
 

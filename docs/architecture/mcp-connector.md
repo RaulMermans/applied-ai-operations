@@ -99,7 +99,7 @@ pnpm --filter @aao/mcp-connector smoke
 
 The smoke imports built production packages, discovers and explicitly binds `crm.read_account` to `crm.account.read@1.0.0`, authorizes a service with `read_only`, validates the account result, proves exactly one call, and closes/removes its fixture. Success marker: `SPRINT_10_MCP_CONNECTOR_SMOKE_OK`.
 
-Sprint 0A MCP code is retained as `KEEP_AS_HISTORICAL_EVIDENCE`; only this package is production authority. HTTP, OAuth/credentials, resources, prompts, sampling, elicitation, roots, tasks, MCP logging, Agent Tool use, approvals, side effects, retries, persistence and recovery are deferred. The next roadmap phase is Governance.
+Sprint 0A MCP code is retained as `KEEP_AS_HISTORICAL_EVIDENCE`; only this package is production authority. HTTP, OAuth/credentials, resources, prompts, sampling, elicitation, roots, tasks, MCP logging, Agent Tool use, MCP-specific approval delivery, side effects, retries, persistence and recovery are deferred. Generic approval waitpoints now live in `@aao/approval`, separate from MCP. The next roadmap phase is Reliability Runtime.
 
 ## Sprint 10 validation evidence
 

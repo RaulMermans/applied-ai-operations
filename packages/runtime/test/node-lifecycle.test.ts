@@ -15,8 +15,13 @@ describe("isLegalNodeTransition", () => {
     expect(isLegalNodeTransition("RUNNING", "FAILED")).toBe(true);
   });
 
-  it("rejects every transition out of a terminal-for-V1 status (SUCCEEDED, FAILED, WAITING, SKIPPED, CANCELLED)", () => {
-    for (const from of ["SUCCEEDED", "FAILED", "WAITING", "SKIPPED", "CANCELLED"] as const) {
+  it("accepts approval wait transitions", () => {
+    expect(isLegalNodeTransition("RUNNING", "WAITING")).toBe(true);
+    for (const to of ["SUCCEEDED", "FAILED", "CANCELLED"] as const) expect(isLegalNodeTransition("WAITING", to)).toBe(true);
+  });
+
+  it("rejects every transition out of a terminal status", () => {
+    for (const from of ["SUCCEEDED", "FAILED", "SKIPPED", "CANCELLED"] as const) {
       for (const to of ALL_STATUSES) {
         expect(isLegalNodeTransition(from, to), `${from} -> ${to}`).toBe(false);
       }

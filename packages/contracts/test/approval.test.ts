@@ -24,7 +24,7 @@ describe("ApprovalRecordSchema", () => {
       ...approvalRecordFixture,
       status: "approved" as const,
       resolvedAt: "2026-09-23T12:10:00Z",
-      resolvedBy: "reviewer@example.com",
+      resolvedBy: { id: "reviewer", type: "user" },
     };
     expect(ApprovalRecordSchema.safeParse(resolved).success).toBe(true);
   });

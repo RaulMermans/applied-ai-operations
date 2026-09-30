@@ -76,10 +76,14 @@ export const capabilitySpecFixture: CapabilitySpec = {
 };
 
 export const approvalRecordFixture: ApprovalRecord = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   approvalId: "approval-0001",
   runId: "run-0001",
   nodeId: "require-approval",
+  requestFingerprint: "a".repeat(64),
+  requestedBy: { id: "requester", type: "user" },
+  requiredApproverRoleIds: ["manager"],
+  allowSelfApproval: false,
   status: "pending",
   requestedAt: "2026-09-23T12:00:00Z",
   permissionClasses: ["external_side_effect"],

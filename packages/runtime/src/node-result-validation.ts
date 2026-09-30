@@ -21,6 +21,11 @@ const NodeExecutionSuccessShapeSchema = z
   })
   .strict();
 
+const NodeExecutionWaitShapeSchema = z.object({
+  ok: z.literal(true),
+  wait: z.object({ kind: z.literal("approval"), referenceId: z.string().regex(/^[a-zA-Z0-9]+(?:[._:-][a-zA-Z0-9]+)*$/).max(256), requestFingerprint: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
+}).strict();
+
 /**
  * The bounded executor-failure vocabulary. `namespace` is a short lowercase
  * subsystem name (`model`, `agent`); `code` is an UPPER_SNAKE_CASE failure
@@ -63,6 +68,11 @@ export type NodeResultValidation =
  * Runtime then decides what an executor failure means for the Node and Run.
  */
 export function validateNodeExecutionResult(raw: unknown): NodeResultValidation {
+  if (raw !== null && typeof raw === "object" && "wait" in raw) {
+    const waitShape = NodeExecutionWaitShapeSchema.safeParse(raw);
+    if (!waitShape.success) return { ok: false, code: "INVALID_NODE_RESULT", message: "wait result must carry only a bounded approval reference and request fingerprint." };
+    return { ok: true, result: waitShape.data };
+  }
   if (raw !== null && typeof raw === "object" && (raw as { ok?: unknown }).ok === false) {
     const failureShape = NodeExecutionFailureShapeSchema.safeParse(raw);
     if (!failureShape.success) {

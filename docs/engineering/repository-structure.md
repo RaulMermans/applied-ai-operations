@@ -16,6 +16,7 @@ packages/
   agent-runtime/           @aao/agent-runtime — bounded Agent registry, controller, decision contract, agent node (Sprint 7)
   tool-runtime/            @aao/tool-runtime — Tool Registry, safe Tool execution boundary, tool node (Sprint 8)
   authorization/           @aao/authorization — Authorization Context, deterministic permission evaluator (Sprint 9)
+  approval/                @aao/approval — process-local human approval engine and node executor (Sprint 12)
   mcp-connector/           @aao/mcp-connector — stdio sessions, discovery, explicit governed Tool bindings (Sprint 10)
   substrate-contracts/     research evidence, not production architecture
   substrate-spikes/        research evidence, not production architecture
@@ -68,6 +69,10 @@ The Tool Runtime (Sprint 8): `RegisteredTool` bindings (canonical `ToolSpec` + t
 
 The Authorization Boundary (Sprint 9): strict `AuthorizationContext`, `AuthorizationRequest`, and `AuthorizationDecision` contracts, the pure `authorize()` evaluator, and `agentAuthorityFromSpec`. Production dependencies: `@aao/contracts`, `zod`. It imports no Runtime package, AI SDK, MCP, provider SDK, Fastify, or `apps/*`. See [ADR-014](../decisions/ADR-014-authorization-and-permission-enforcement.md) and [authorization](../architecture/authorization.md).
 
+## `packages/approval` — `@aao/approval`
+
+The process-local Approval Engine, exact-request fingerprinting, host-attested human resolver checks through Governance, and the trusted Approval Node executor. Production dependencies: `@aao/contracts`, `@aao/runtime`, `@aao/governance`, `zod`; Workflow DSL, Tool Runtime, and Authorization are test-only. It provides validated in-process continuation but no persistence, scheduler, UI, notifications, or external side-effect execution. See [ADR-017](../decisions/ADR-017-human-approval-and-runtime-waitpoints.md) and [approval engine](../architecture/approval-engine.md).
+
 ## `packages/mcp-connector` — `@aao/mcp-connector`
 
 The sole production MCP boundary (Sprint 10): explicit isolated stdio sessions, bounded Tools discovery, host-owned `McpToolBinding` → normal `RegisteredTool`, and safe structured-result/error normalization. Production dependencies: `@aao/contracts`, `@aao/tool-runtime`, official MCP SDK `1.30.0`, `zod`. Runtime/Authorization test dependencies are test-only. No direct invocation API is exported. See [ADR-015](../decisions/ADR-015-mcp-integration-boundary-and-tool-adapter-sessions.md) and [MCP connector](../architecture/mcp-connector.md). After `pnpm build`, run `pnpm --filter @aao/mcp-connector smoke` for compiled real-stdio evidence.
@@ -89,4 +94,4 @@ Narrative research notes (durability, graph runtime, integrations, MCP, model la
 
 ## Build and typecheck shape
 
-Every runnable package (`packages/config`, `packages/contracts`, `packages/workflow-dsl`, `packages/runtime`, `packages/model-runtime`, `packages/agent-runtime`, `packages/tool-runtime`, `packages/authorization`, `packages/mcp-connector`, `apps/control-plane`, `apps/worker`) and the retained research packages each have their own `tsconfig.json` (typecheck, includes `src` and `test`) and `tsconfig.build.json` (build, excludes `test`, emits to that package's own `dist/`), both extending the shared [`tsconfig.base.json`](../../tsconfig.base.json) at the repository root. Each package builds independently; `pnpm build` runs every package's build script in dependency order (`pnpm -r`), so `@aao/config` compiles before the apps that depend on it. No `dist/` output is committed. See [local-development.md](local-development.md) for the day-to-day commands.
+Every runnable package (`packages/config`, `packages/contracts`, `packages/workflow-dsl`, `packages/runtime`, `packages/model-runtime`, `packages/agent-runtime`, `packages/tool-runtime`, `packages/authorization`, `packages/approval`, `packages/mcp-connector`, `apps/control-plane`, `apps/worker`) and the retained research packages each have their own `tsconfig.json` (typecheck, includes `src` and `test`) and `tsconfig.build.json` (build, excludes `test`, emits to that package's own `dist/`), both extending the shared [`tsconfig.base.json`](../../tsconfig.base.json) at the repository root. Each package builds independently; `pnpm build` runs every package's build script in dependency order (`pnpm -r`), so `@aao/config` compiles before the apps that depend on it. No `dist/` output is committed. See [local-development.md](local-development.md) for the day-to-day commands.

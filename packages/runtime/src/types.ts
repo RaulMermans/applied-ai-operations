@@ -49,6 +49,14 @@ export interface NodeExecutionContext {
   step: number;
 }
 
+/** Serializable coordination metadata; the RunRecord remains lifecycle truth. */
+export interface RuntimeWaitState {
+  kind: "approval";
+  nodeId: NodeId;
+  referenceId: string;
+  requestFingerprint: string;
+}
+
 /**
  * A safe, machine-readable reason a trusted executor reports when it fails
  * in an *expected* way (e.g. its subsystem returned a deterministic failure
@@ -83,6 +91,7 @@ export interface NodeExecutorFailure {
  */
 export type NodeExecutionResult =
   | { ok: true; statePatch?: JsonObject; output?: JsonValue }
+  | { ok: true; wait: { kind: "approval"; referenceId: string; requestFingerprint: string } }
   | { ok: false; failure: NodeExecutorFailure };
 
 /**
@@ -131,6 +140,16 @@ export interface ExecuteWorkflowRequest {
   options?: RuntimeOptions;
 }
 
+export interface ContinueWaitingWorkflowRequest {
+  plan: CompiledWorkflowPlan;
+  registry: NodeRegistry;
+  execution: RuntimeExecutionState;
+  approval: { approvalId: string; runId: string; nodeId: string; requestFingerprint: string; status: "pending" | "approved" | "rejected" | "expired" | "cancelled" };
+  /** Independently recomputed by the trusted approval host from the current subject. */
+  currentRequestFingerprint: string;
+  options?: RuntimeOptions;
+}
+
 // --- Runtime result -----------------------------------------------------------
 
 /**
@@ -169,6 +188,7 @@ export interface RuntimeExecutionState {
   nodeStatusesById: NodeStatusMap;
   step: number;
   history: NodeExecutionRecord[];
+  wait?: RuntimeWaitState;
 }
 
 /**
@@ -185,7 +205,13 @@ export type RuntimeFailureCode =
   | "INVALID_NODE_RESULT"
   | "INVALID_STATE_PATCH"
   | "MAX_STEPS_EXCEEDED"
-  | "INVALID_EXECUTION_SNAPSHOT";
+  | "INVALID_EXECUTION_SNAPSHOT"
+  | "INVALID_APPROVAL_CONTEXT"
+  | "APPROVAL_STILL_PENDING"
+  | "APPROVAL_REQUEST_MISMATCH"
+  | "APPROVAL_REJECTED"
+  | "APPROVAL_EXPIRED"
+  | "APPROVAL_CANCELLED";
 
 export interface RuntimeFailure {
   code: RuntimeFailureCode;

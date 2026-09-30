@@ -86,3 +86,7 @@ The generic Runtime never sees the reason code. Resolver exceptions are never in
 ## Not implemented
 
 Authentication, groups and tenants, generic policy languages, approvals, Agent Tool use, MCP protocol ownership (the separate connector inherits this evaluator), external-side-effect/sensitive-data/destructive Tools, credentials, durable authorization state, and authorization caching. Governance constructs an `AuthorizationContext`; it does not replace the evaluator.
+
+## Sprint 12 approval boundary
+
+An explicitly registered Approval Node now returns a bounded Runtime wait result. The Run enters `WAITING_FOR_APPROVAL`, the Approval Node enters `WAITING`, and downstream nodes remain pending. The version-2 safe snapshot includes an approval reference and fingerprint. A trusted host may resolve the process-local Approval and invoke validated in-process continuation through the same Runtime loop. Approval only confirms the exact request; Governance, Authorization, Agent ceilings, and Tool Runtime support still apply. See [approval engine](approval-engine.md) and [ADR-017](../decisions/ADR-017-human-approval-and-runtime-waitpoints.md).

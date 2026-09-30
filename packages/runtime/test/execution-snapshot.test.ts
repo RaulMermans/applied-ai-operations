@@ -24,7 +24,7 @@ describe("captureExecutionSnapshot", () => {
     const execution = buildRunningExecution();
     const snapshot = captureExecutionSnapshot(execution, "2026-02-01T00:00:00.000Z");
     expect(snapshot).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       run: execution.run,
       stateSnapshot: { runId: "run.snap", revision: 0, values: {}, capturedAt: "2026-02-01T00:00:00.000Z" },
       nodeStatusesById: { intake: "READY", final: "PENDING" },
@@ -157,7 +157,7 @@ describe("validateSnapshotAgainstPlan", () => {
     // RUNNING guard) to exercise validateSnapshotAgainstPlan in isolation
     // against a hand-built, externally-supplied snapshot.
     const handBuilt = {
-      schemaVersion: 1 as const,
+      schemaVersion: 2 as const,
       run: execution.run,
       stateSnapshot: { runId: "run.snap", revision: 0, values: {}, capturedAt: "2026-02-01T00:00:00.000Z" },
       nodeStatusesById: execution.nodeStatusesById,
@@ -165,7 +165,7 @@ describe("validateSnapshotAgainstPlan", () => {
     };
     const failure = validateSnapshotAgainstPlan(handBuilt, minimalPlan);
     expect(failure?.code).toBe("INVALID_EXECUTION_SNAPSHOT");
-    expect(failure?.message).toMatch(/READY/);
+    expect(failure?.message).toMatch(/RuntimeExecutionSnapshotSchema/);
   });
 
   it("rejects a COMPLETED snapshot that still carries a currentNodeId", () => {

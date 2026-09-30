@@ -138,11 +138,12 @@ An `agent` node (Sprint 7, [agent runtime](agent-runtime.md)) is **atomic** at t
 
 ```ts
 {
-  schemaVersion: 1,
+  schemaVersion: 2,
   run: RunRecord,
   stateSnapshot: StateSnapshot,
   nodeStatusesById: Record<NodeId, NodeStatus>,
   step: number,
+  wait?: { kind: "approval"; nodeId: NodeId; referenceId: string; requestFingerprint: string },
 }
 ```
 
@@ -154,6 +155,7 @@ A `RuntimeExecutionSnapshot` must never represent a half-executed Node. `capture
 - **After a Node succeeds** — the executed Node `= SUCCEEDED`, the next Node `= READY` (or the Run is already `COMPLETED` if it was terminal), and its state patch is already accepted.
 - **After a Node fails** — the failing Node `= FAILED`, `Run = FAILED`, and `state`/`stateSnapshot` reflect only the last *validly accepted* patch — never anything proposed by the failing Node itself.
 - **After completion** — the final Node `= SUCCEEDED`, `Run = COMPLETED`.
+- **At approval wait** — `Run = WAITING_FOR_APPROVAL`, current Approval Node `= WAITING`, and a bounded wait descriptor identifies the request. No Node is `RUNNING`.
 
 This matters most once real side effects exist: a snapshot captured mid-Node could never later establish whether that Node's operation actually completed.
 
@@ -163,16 +165,20 @@ The Runtime does not accumulate a full in-memory snapshot archive. `WorkflowExec
 
 ### Snapshot/plan compatibility
 
-A structurally valid `RuntimeExecutionSnapshot` is not automatically compatible with a particular `CompiledWorkflowPlan` — a snapshot from one workflow version handed to a different plan, or a hand-corrupted one, should never be silently trusted. `validateSnapshotAgainstPlan(snapshot, plan)` checks: workflow identity (`workflowId`/`workflowVersion` match), internal identity (`run.runId` matches `stateSnapshot.runId`), that `nodeStatusesById`'s keys exactly match the plan's Node set, that `currentNodeId` (when present) resolves in the plan, and safe-boundary coherence for `RUNNING`/`COMPLETED`/`FAILED` snapshots (e.g. a `RUNNING` snapshot's current Node must itself be `READY`; a `COMPLETED`/`FAILED` snapshot must carry no cursor). This is the smallest set of invariants needed to catch obviously corrupt or incompatible execution state — not a general-purpose graph/state verifier — and exists as groundwork for a future snapshot handoff, persistence, or Run Inspector feature, none of which this sprint implements.
+A structurally valid `RuntimeExecutionSnapshot` is not automatically compatible with a particular `CompiledWorkflowPlan` — a snapshot from one workflow version handed to a different plan, or a hand-corrupted one, should never be silently trusted. `validateSnapshotAgainstPlan(snapshot, plan)` checks: workflow identity (`workflowId`/`workflowVersion` match), internal identity (`run.runId` matches `stateSnapshot.runId`), that `nodeStatusesById`'s keys exactly match the plan's Node set, that `currentNodeId` (when present) resolves in the plan, and safe-boundary coherence for `RUNNING`/`WAITING_FOR_APPROVAL`/`COMPLETED`/`FAILED` snapshots (e.g. a `RUNNING` snapshot's current Node must itself be `READY`; a `COMPLETED`/`FAILED` snapshot must carry no cursor). This is the smallest set of invariants needed to catch obviously corrupt or incompatible execution state — not a general-purpose graph/state verifier — and exists as groundwork for a future snapshot handoff, persistence, or Run Inspector feature, none of which this sprint implements.
 
 ## What this sprint deliberately does not build
 
 Consistent with [ADR-010](../decisions/ADR-010-managed-runtime-state-and-lifecycle.md):
 
-- **No resume.** There is no `resumeWorkflow`, no restoring a Run from a stored snapshot, and no replay. `RuntimeExecutionSnapshot` is *resume-ready* data, not a resume implementation.
+- **No durable resume.** `continueWaitingWorkflow` advances an in-process waiting Run after validation. There is no restoring a Run from a persisted snapshot.
 - **No persistence.** No database, filesystem run store, queue, or object storage. Everything is process-local and in-memory.
-- **No cancellation, approval, or retry execution.** `CANCELLED`, `WAITING_FOR_APPROVAL`, and `RETRYING` remain legal `RunStatus` values Runtime V1's lifecycle table permits transitioning *into* structurally, but nothing in this package drives a Run into them, waits, retries, or cancels anything.
+- **No general cancellation or retry execution.** Approval cancellation is implemented at a waiting boundary; `RETRYING` remains unused.
 - **No reducer registry.** State patch semantics are unchanged from Sprint 4: a shallow top-level merge, nothing more, until a real Node/workflow demonstrates a need for domain-specific merge behavior.
 - **No tracing.** `NodeExecutionRecord` is still not the canonical AAO Trace — no latency, cost, tokens, or spans.
 
 Runtime snapshots are recovery-*ready* data structures. They are not a durable-recovery guarantee.
+
+## Sprint 12 approval boundary
+
+An explicitly registered Approval Node now returns a bounded Runtime wait result. The Run enters `WAITING_FOR_APPROVAL`, the Approval Node enters `WAITING`, and downstream nodes remain pending. The version-2 safe snapshot includes an approval reference and fingerprint. A trusted host may resolve the process-local Approval and invoke validated in-process continuation through the same Runtime loop. Approval only confirms the exact request; Governance, Authorization, Agent ceilings, and Tool Runtime support still apply. See [approval engine](approval-engine.md) and [ADR-017](../decisions/ADR-017-human-approval-and-runtime-waitpoints.md).

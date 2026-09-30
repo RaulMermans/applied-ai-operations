@@ -44,7 +44,7 @@ Complete: Tool Registry, safe Tool execution, deterministic Authorization, and t
 | Sprint / outcome | Scope | Status |
 | --- | --- | --- |
 | Sprint 11 — Actor, Role & Policy Governance | Host-attested actors, explicit role bindings, deterministic deny policies, resolved authority feeding existing Authorization. | Complete (`SPRINT_11_GOVERNANCE_MODEL_COMPLETE`) — see [ADR-016](../decisions/ADR-016-actor-role-policy-governance.md) |
-| Sprint 12 — Approval Engine | Human approval of actions that require it, separate from authority resolution and authorization. | Planned |
+| Sprint 12 — Approval Engine | Process-local exact-request human approval waitpoints, eligible resolver checks, and validated in-process continuation; no real external effects or durable recovery. | Complete (`SPRINT_12_APPROVAL_ENGINE_COMPLETE`) — see [ADR-017](../decisions/ADR-017-human-approval-and-runtime-waitpoints.md) |
 
 ## Forward roadmap
 

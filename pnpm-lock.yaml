@@ -67,6 +67,31 @@ importers:
         specifier: ^7.0.107
         version: 7.0.107(zod@3.25.76)
 
+  packages/approval:
+    dependencies:
+      '@aao/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@aao/governance':
+        specifier: workspace:*
+        version: link:../governance
+      '@aao/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      zod:
+        specifier: ^3.24.3
+        version: 3.25.76
+    devDependencies:
+      '@aao/authorization':
+        specifier: workspace:*
+        version: link:../authorization
+      '@aao/tool-runtime':
+        specifier: workspace:*
+        version: link:../tool-runtime
+      '@aao/workflow-dsl':
+        specifier: workspace:*
+        version: link:../workflow-dsl
+
   packages/authorization:
     dependencies:
       '@aao/contracts':

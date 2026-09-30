@@ -94,7 +94,7 @@ The plan is built from a deep JSON clone of the input `Workflow`, so `compileWor
 Explicitly out of scope for this sprint — do not assume any of the following exists yet:
 
 - Condition **evaluation** (conditions remain opaque, inert JSON; only their structural presence is validated)
-- Node-specific **config validation** (`toolRef`, `agentRef`, `modelPolicyRef`, `approvalPolicy`, or any other node `config` content) — belongs to the future Node Registry
+- Node-specific **config validation** (`toolRef`, `agentRef`, `modelPolicyRef`, `approvalPolicy`, or any other node `config` content) — belongs to Runtime preflight and each registered executor
 - **Tool / Capability / Agent / Skill existence** checks against a real registry — none exists yet
 - **State reducers** or any state/checkpoint persistence
 - **Execution** of any kind — a compiled plan is not an executed plan

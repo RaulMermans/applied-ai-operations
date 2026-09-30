@@ -8,7 +8,7 @@
 // execution snapshots, and a small structured failure taxonomy. Consumes
 // @aao/contracts and @aao/workflow-dsl as canonical sources of truth; never
 // parses workflow source, never redefines Run/Node kinds or statuses, and
-// performs no model/tool/agent/approval execution, persistence, or resume.
+// performs no built-in model/tool/agent execution or persistence. Approval waits use trusted registered executors.
 
 export type {
   NodeExecutor,
@@ -20,6 +20,8 @@ export type {
   NodeRegistry,
   RuntimeOptions,
   ExecuteWorkflowRequest,
+  ContinueWaitingWorkflowRequest,
+  RuntimeWaitState,
   NodeExecutionRecord,
   RuntimeExecutionState,
   RuntimeFailureCode,
@@ -34,7 +36,7 @@ export { runPreflight } from "./preflight.js";
 export { validateRuntimeInput } from "./runtime-input-validation.js";
 export { validateNodeExecutionResult } from "./node-result-validation.js";
 export { isJsonSafe } from "./json-safety.js";
-export { executeWorkflow } from "./engine.js";
+export { executeWorkflow, continueWaitingWorkflow } from "./engine.js";
 
 export type { RuntimeClock } from "./clock.js";
 export { createSystemClock } from "./clock.js";

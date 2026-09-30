@@ -8,22 +8,14 @@ import type { NodeId, NodeStatus } from "@aao/contracts";
  */
 export type NodeStatusMap = Record<NodeId, NodeStatus>;
 
-/**
- * Runtime V1's supported Node lifecycle: `PENDING -> READY -> RUNNING ->
- * SUCCEEDED | FAILED`. Canonical `NodeStatus` also contains `WAITING`,
- * `SKIPPED`, and `CANCELLED` (see `@aao/contracts`), but Runtime V1
- * implements no behavior that reaches them yet — approval waitpoints,
- * routing-driven skips, and cancellation are deferred to later sprints (see
- * ADR-010). This table intentionally has no outgoing transitions for those
- * three statuses because nothing in this package ever produces them.
- */
+/** Runtime Node lifecycle, including the approval wait boundary. SKIPPED remains unsupported. */
 const LEGAL_NODE_TRANSITIONS: Readonly<Record<NodeStatus, readonly NodeStatus[]>> = {
   PENDING: ["READY"],
   READY: ["RUNNING"],
-  RUNNING: ["SUCCEEDED", "FAILED"],
+  RUNNING: ["SUCCEEDED", "FAILED", "WAITING"],
   SUCCEEDED: [],
   FAILED: [],
-  WAITING: [],
+  WAITING: ["SUCCEEDED", "FAILED", "CANCELLED"],
   SKIPPED: [],
   CANCELLED: [],
 };

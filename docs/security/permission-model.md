@@ -54,6 +54,10 @@ Tool required permissions ⊆ principal grants ∩ agent ceiling
 
 Permission classes have no hierarchy: `write_draft` does not imply `read_only`. A malformed or missing context fails closed.
 
-Runtime support is checked first and cannot be overridden: a Tool requiring `external_side_effect`, `destructive`, or `sensitive_data`, alone or mixed with a supported class, is refused (`TOOL_PERMISSION_UNSUPPORTED`, or `RUNTIME_PREFLIGHT_FAILED` for a workflow `tool` node) even when the context grants that class. Its handler is never invoked. Approval, side effects, and sensitive-data handling are not implemented; the approval and sensitive-data rules above remain requirements for when they are.
+Runtime support is checked first and cannot be overridden: a Tool requiring `external_side_effect`, `destructive`, or `sensitive_data`, alone or mixed with a supported class, is refused (`TOOL_PERMISSION_UNSUPPORTED`, or `RUNTIME_PREFLIGHT_FAILED` for a workflow `tool` node) even when the context grants that class. Its handler is never invoked. Approval waitpoints are implemented, while side effects and sensitive-data execution remain unsupported.
 
 Agent Tool use is still disabled. When it arrives, it will call `executeTool` with the initiating principal's context plus the Agent's registered ceiling, and inherit this rule unchanged.
+
+## Implemented human approval boundary (Sprint 12)
+
+Approval waitpoints and validated in-process continuation are implemented. An eligible host-attested user may approve or reject an exact fingerprinted request; approval grants no permissions and cannot override Governance DENY, Authorization, Agent ceilings, or Tool Runtime support. `external_side_effect`, `destructive`, and `sensitive_data` execution remain unsupported, even with an approved record. Approval records are process-local and contain no raw action payload.

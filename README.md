@@ -8,7 +8,7 @@ AAO is a layer, not an operating system, chatbot, agent marketplace, no-code wor
 
 ## Current status
 
-Sprint 0 architecture contract complete. Sprint 1 engineering foundation complete (`SPRINT_01_ENGINEERING_FOUNDATION_COMPLETE`). Sprint 2 canonical domain contracts complete (`SPRINT_02_CANONICAL_DOMAIN_CONTRACTS_COMPLETE`). Sprint 3 workflow DSL and compiler complete (`SPRINT_03_WORKFLOW_DSL_COMPILER_COMPLETE`). Sprint 4 Node Registry and Runtime V1 complete (`SPRINT_04_RUNTIME_V1_COMPLETE`). Sprint 5 managed runtime state and lifecycle complete (`SPRINT_05_MANAGED_RUNTIME_STATE_COMPLETE`). Sprint 6 model abstraction and capability routing complete (`SPRINT_06_MODEL_RUNTIME_COMPLETE`). Sprint 7 bounded Agent Runtime complete (`SPRINT_07_BOUNDED_AGENT_RUNTIME_COMPLETE`). Sprint 8 Tool Registry and safe Tool execution boundary complete (`SPRINT_08_TOOL_RUNTIME_COMPLETE`). Sprint 9 authorization and permission enforcement boundary complete (`SPRINT_09_AUTHORIZATION_BOUNDARY_COMPLETE`). Sprint 10 MCP integration boundary and governed Tool adapter sessions complete (`SPRINT_10_MCP_INTEGRATION_BOUNDARY_COMPLETE`). Sprint 11 Actor, Role & Policy Governance complete (`SPRINT_11_GOVERNANCE_MODEL_COMPLETE`). Sprint 12 Approval Engine is next.
+Sprint 0 architecture contract complete. Sprint 1 engineering foundation complete (`SPRINT_01_ENGINEERING_FOUNDATION_COMPLETE`). Sprint 2 canonical domain contracts complete (`SPRINT_02_CANONICAL_DOMAIN_CONTRACTS_COMPLETE`). Sprint 3 workflow DSL and compiler complete (`SPRINT_03_WORKFLOW_DSL_COMPILER_COMPLETE`). Sprint 4 Node Registry and Runtime V1 complete (`SPRINT_04_RUNTIME_V1_COMPLETE`). Sprint 5 managed runtime state and lifecycle complete (`SPRINT_05_MANAGED_RUNTIME_STATE_COMPLETE`). Sprint 6 model abstraction and capability routing complete (`SPRINT_06_MODEL_RUNTIME_COMPLETE`). Sprint 7 bounded Agent Runtime complete (`SPRINT_07_BOUNDED_AGENT_RUNTIME_COMPLETE`). Sprint 8 Tool Registry and safe Tool execution boundary complete (`SPRINT_08_TOOL_RUNTIME_COMPLETE`). Sprint 9 authorization and permission enforcement boundary complete (`SPRINT_09_AUTHORIZATION_BOUNDARY_COMPLETE`). Sprint 10 MCP integration boundary and governed Tool adapter sessions complete (`SPRINT_10_MCP_INTEGRATION_BOUNDARY_COMPLETE`). Sprint 11 Actor, Role & Policy Governance complete (`SPRINT_11_GOVERNANCE_MODEL_COMPLETE`). Sprint 12 Approval Engine complete (`SPRINT_12_APPROVAL_ENGINE_COMPLETE`). Sprint 13 Reliability Runtime is next.
 
 Available:
 
@@ -32,21 +32,21 @@ Available:
 Not yet implemented:
 
 - Agent capabilities beyond bounded reasoning. Agents have NO tool use, NO external actions, NO MCP, NO delegation, NO long-term memory, NO durable Agent recovery, NO automatic retries, and NO Reflexion — they are bounded reasoning components, not autonomous workers
-- approval or evaluator node execution
+- evaluator node execution
 - Tools requiring `external_side_effect`, `destructive`, or `sensitive_data` (refused by the Tool Runtime), Tool retries, timeouts/cancellation, idempotency, rollback, and durable Tool recovery
 - general Integration Fabric, enterprise provider integrations, MCP HTTP/resources/prompts/sampling, OAuth, and credentials
 - authentication, IAM/SSO, and durable authorization state (the host attests the principal; governance configuration is in memory)
-- a dynamic policy language, and approval gates or approval workflow
+- a dynamic policy language and automated approval-policy exceptions
 - Agent Tool calls
 - model retries, fallback, adaptive/cost routing, streaming, prompt templating, or any configured live model provider/credentials
 - conditional routing evaluation
 - integrations (Integration Fabric)
-- persistence, durability, retries, recovery, resume, cancellation execution, or approval/retry execution
+- persistence, durability, retries, crash recovery, or retry execution
 - observability/tracing
 - runtime evals
 - Control Center UI
 
-AAO can now take a declarative workflow through workflow compilation → managed deterministic execution → provider-neutral model execution → bounded multi-iteration Agent execution → authorized, schema-validated Tool execution: `model` nodes (one validated invocation each), `agent` nodes (a deterministic controller over at most `maxIterations` structured model decisions, applied as one Runtime-managed state patch), and `tool` nodes (one authorized, validated call to a registered, trusted, `read_only`/`write_draft` Tool). It still executes only unconditional workflows, and only node kinds whose executors the caller registers explicitly; approval and evaluator nodes have no implementation and fail a deterministic preflight check rather than partially executing. No live model provider is configured — model validation uses deterministic `ai/test` models offline; MCP tests use a real local SDK stdio server. Runtime snapshots are recovery-ready data structures, not a durable-recovery guarantee — nothing is persisted.
+AAO can now take a declarative workflow through workflow compilation → managed deterministic execution → provider-neutral model execution → bounded multi-iteration Agent execution → authorized, schema-validated Tool execution: `model` nodes (one validated invocation each), `agent` nodes (a deterministic controller over at most `maxIterations` structured model decisions, applied as one Runtime-managed state patch), and `tool` nodes (one authorized, validated call to a registered, trusted, `read_only`/`write_draft` Tool). It still executes only unconditional workflows, and only node kinds whose executors the caller registers explicitly; approval nodes can wait and continue with a registered executor; evaluator nodes remain unsupported and fail preflight. No live model provider is configured — model validation uses deterministic `ai/test` models offline; MCP tests use a real local SDK stdio server. Runtime snapshots are recovery-ready data structures, not a durable-recovery guarantee — nothing is persisted.
 
 The repository remains local-first. `packages/substrate-contracts`, `packages/substrate-spikes`, and `experiments/` are Sprint 0A research evidence, not production AAO architecture; production code does not depend on them. See [docs/engineering/local-development.md](docs/engineering/local-development.md) to run everything, and [docs/engineering/repository-structure.md](docs/engineering/repository-structure.md) for what exists today.
 
@@ -79,3 +79,7 @@ pnpm check               # typecheck -> lint -> build -> test
 See [docs/engineering/local-development.md](docs/engineering/local-development.md) for the full command reference, configuration, and compiled-build smoke verification.
 
 No deployment target, cloud infrastructure, live model provider, or enterprise MCP server is configured. The current `packages/substrate-*` packages and `experiments/` documentation are research evidence, not production AAO architecture.
+
+## Human approval boundary
+
+AAO workflows can pause at an exact approval request, expose a structured pending Approval, and continue only after an eligible host-attested user resolves it. This is in-process only; pending approvals and snapshots are not durable. Tool Runtime still supports only `read_only` and `write_draft`; approval does not enable external side effects, destructive operations, or sensitive-data handling. See [approval engine](docs/architecture/approval-engine.md) and [ADR-017](docs/decisions/ADR-017-human-approval-and-runtime-waitpoints.md).

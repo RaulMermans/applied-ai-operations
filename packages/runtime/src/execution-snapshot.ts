@@ -1,9 +1,11 @@
 import { z } from "zod";
-import { NodeIdSchema, NodeStatusSchema, RunRecordSchema, StateSnapshotSchema } from "@aao/contracts";
+import { NodeIdSchema, NodeStatusSchema, RunRecordSchema, StateSnapshotSchema, identifierSchema } from "@aao/contracts";
 import type { CompiledWorkflowPlan } from "@aao/workflow-dsl";
 import { captureStateSnapshot } from "./state.js";
 import { compareIsoInstants } from "./timestamps.js";
 import type { RuntimeExecutionState, RuntimeFailure } from "./types.js";
+
+const RuntimeWaitStateSchema = z.object({ kind: z.literal("approval"), nodeId: NodeIdSchema, referenceId: identifierSchema, requestFingerprint: z.string().regex(/^[a-f0-9]{64}$/) }).strict();
 
 /**
  * A safe, in-memory execution-engine artifact: Run lifecycle + a canonical
@@ -24,11 +26,12 @@ import type { RuntimeExecutionState, RuntimeFailure } from "./types.js";
  */
 export const RuntimeExecutionSnapshotSchema = z
   .object({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.literal(2),
     run: RunRecordSchema,
     stateSnapshot: StateSnapshotSchema,
     nodeStatusesById: z.record(NodeIdSchema, NodeStatusSchema),
     step: z.number().int().nonnegative(),
+    wait: RuntimeWaitStateSchema.optional(),
   })
   .strict()
   .superRefine((snapshot, ctx) => {
@@ -39,6 +42,11 @@ export const RuntimeExecutionSnapshotSchema = z
         message: "stateSnapshot.capturedAt must not be earlier than run.updatedAt.",
       });
     }
+    const waitingNodes = Object.entries(snapshot.nodeStatusesById).filter(([, status]) => status === "WAITING");
+    if (Object.values(snapshot.nodeStatusesById).includes("RUNNING")) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "safe snapshot cannot contain a RUNNING node" });
+    if (snapshot.run.status === "WAITING_FOR_APPROVAL") {
+      if (!snapshot.wait || snapshot.run.currentNodeId !== snapshot.wait.nodeId || snapshot.nodeStatusesById[snapshot.wait.nodeId] !== "WAITING" || waitingNodes.length !== 1) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "approval wait requires matching current WAITING node and descriptor" });
+    } else if (snapshot.wait || waitingNodes.length > 0) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "nonwaiting snapshot cannot carry wait metadata or a WAITING node" });
   });
 export type RuntimeExecutionSnapshot = z.infer<typeof RuntimeExecutionSnapshotSchema>;
 
@@ -62,11 +70,12 @@ export function captureExecutionSnapshot(execution: RuntimeExecutionState, captu
   }
 
   const snapshot: RuntimeExecutionSnapshot = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     run: { ...execution.run },
     stateSnapshot: captureStateSnapshot(execution.state, capturedAt),
     nodeStatusesById: { ...execution.nodeStatusesById },
     step: execution.step,
+    ...(execution.wait ? { wait: { ...execution.wait } } : {}),
   };
 
   if (compareIsoInstants(capturedAt, execution.run.updatedAt) < 0) {
@@ -137,6 +146,8 @@ export function validateSnapshotAgainstPlan(snapshot: unknown, plan: CompiledWor
       message: `Snapshot run.currentNodeId "${parsed.run.currentNodeId}" does not resolve to a node in the plan.`,
     };
   }
+
+  if (parsed.wait && plan.nodesById[parsed.wait.nodeId]?.kind !== "approval") return { code: "INVALID_EXECUTION_SNAPSHOT", message: "Approval wait must reference an approval node." };
 
   if (parsed.run.status === "RUNNING") {
     if (parsed.run.currentNodeId === undefined) {

@@ -1,13 +1,13 @@
 import type { NodeId, RunRecord, RunState } from "@aao/contracts";
 import { createSystemClock, type RuntimeClock } from "./clock.js";
-import { captureExecutionSnapshot, type RuntimeExecutionSnapshot } from "./execution-snapshot.js";
+import { captureExecutionSnapshot, validateSnapshotAgainstPlan, type RuntimeExecutionSnapshot } from "./execution-snapshot.js";
 import { initializeNodeStatuses, transitionNodeStatus, type NodeStatusMap } from "./node-lifecycle.js";
 import { validateNodeExecutionResult } from "./node-result-validation.js";
 import { runPreflight } from "./preflight.js";
 import { createRunRecord, setCurrentNodeId, transitionRunRecord } from "./run-lifecycle.js";
 import { validateRuntimeInput } from "./runtime-input-validation.js";
 import { applyStatePatch, cloneRunState } from "./state.js";
-import type { ExecuteWorkflowRequest, NodeExecutionRecord, RuntimeExecutionState, RuntimeFailure, WorkflowExecutionResult } from "./types.js";
+import type { ContinueWaitingWorkflowRequest, ExecuteWorkflowRequest, NodeExecutionRecord, RuntimeExecutionState, RuntimeFailure, WorkflowExecutionResult } from "./types.js";
 
 /**
  * The bounded allowance added on top of a plan's node count when computing
@@ -22,13 +22,12 @@ const DEFAULT_MAX_STEPS_ALLOWANCE = 5;
  * Executes a `CompiledWorkflowPlan` end to end as a *managed* run: creates
  * an authoritative `RunRecord`, walks it through the canonical Run
  * lifecycle (`CREATED -> VALIDATING -> QUEUED -> RUNNING -> COMPLETED |
- * FAILED`), maintains authoritative Node lifecycle for every plan Node, and
+ * WAITING_FOR_APPROVAL | FAILED`), maintains authoritative Node lifecycle for every plan Node, and
  * captures a safe `RuntimeExecutionSnapshot` at every safe execution
  * boundary. See `docs/architecture/runtime-state-management.md` and
  * ADR-010 for the full state model this function implements, and
  * `docs/architecture/runtime-v1.md` for what Runtime V1 deliberately does
- * not support yet (conditional routing, retries, persistence,
- * model/tool/agent/approval execution, resume).
+ * not support yet (conditional routing, retries, persistence, durable resume).
  */
 export async function executeWorkflow(request: ExecuteWorkflowRequest): Promise<WorkflowExecutionResult> {
   // The request itself may not be trustworthy enough to construct a Run at
@@ -69,17 +68,59 @@ export async function executeWorkflow(request: ExecuteWorkflowRequest): Promise<
   run = transitionRunRecord(run, "QUEUED", clock.now());
   run = transitionRunRecord(run, "RUNNING", clock.now());
 
-  let currentNodeId: NodeId = plan.entryNodeId;
+  const currentNodeId: NodeId = plan.entryNodeId;
   nodeStatusesById = transitionNodeStatus(nodeStatusesById, currentNodeId, "READY");
   run = setCurrentNodeId(run, currentNodeId);
 
-  let state: RunState = cloneRunState(request.initialState);
-  let history: NodeExecutionRecord[] = [];
-  let step = 0;
+  const state: RunState = cloneRunState(request.initialState);
+  const history: NodeExecutionRecord[] = [];
+  const step = 0;
 
-  let execution: RuntimeExecutionState = { run, state, nodeStatusesById, step, history };
-  let latestSnapshot: RuntimeExecutionSnapshot = captureExecutionSnapshot(execution, clock.now());
+  const execution: RuntimeExecutionState = { run, state, nodeStatusesById, step, history };
+  const latestSnapshot: RuntimeExecutionSnapshot = captureExecutionSnapshot(execution, clock.now());
 
+  return runLoop({ runId, plan, registry, clock, maxSteps, execution, latestSnapshot, currentNodeId });
+}
+
+/** Validated in-process continuation. The exact request is checked before consuming the waiting execution object. */
+export async function continueWaitingWorkflow(request: ContinueWaitingWorkflowRequest): Promise<WorkflowExecutionResult> {
+  const { execution, approval, plan, registry } = request;
+  const wait = execution.wait;
+  const invalid = (code: RuntimeFailure["code"]): WorkflowExecutionResult => ({ ok: false, failure: { code, message: code }, execution });
+  if (execution.run.status !== "WAITING_FOR_APPROVAL" || !wait || wait.kind !== "approval" || execution.run.currentNodeId !== wait.nodeId || execution.nodeStatusesById[wait.nodeId] !== "WAITING" || plan.nodesById[wait.nodeId]?.kind !== "approval") return invalid("INVALID_APPROVAL_CONTEXT");
+  if (approval.approvalId !== wait.referenceId || approval.runId !== execution.run.runId || approval.nodeId !== wait.nodeId || approval.requestFingerprint !== wait.requestFingerprint || request.currentRequestFingerprint !== wait.requestFingerprint) return invalid("APPROVAL_REQUEST_MISMATCH");
+  if (!["pending", "approved", "rejected", "expired", "cancelled"].includes(approval.status)) return invalid("INVALID_APPROVAL_CONTEXT");
+  if (approval.status === "pending") return invalid("APPROVAL_STILL_PENDING");
+  const clock = request.options?.clock ?? createSystemClock();
+  let snapshot: RuntimeExecutionSnapshot;
+  try { snapshot = captureExecutionSnapshot(execution, clock.now()); }
+  catch { return invalid("INVALID_APPROVAL_CONTEXT"); }
+  const compatibility = validateSnapshotAgainstPlan(snapshot, plan);
+  if (compatibility || runPreflight(plan, registry)) return invalid("INVALID_APPROVAL_CONTEXT");
+  const node = plan.nodesById[wait.nodeId];
+  if (!node) return invalid("INVALID_APPROVAL_CONTEXT");
+  const next = plan.outgoingEdgesByNode[wait.nodeId]?.[0]?.targetNodeId;
+  if (approval.status === "approved" && (!next || execution.nodeStatusesById[next] !== "PENDING")) return invalid("INVALID_APPROVAL_CONTEXT");
+  const terminal = approval.status === "cancelled" ? "CANCELLED" : "FAILED";
+  execution.nodeStatusesById = transitionNodeStatus(execution.nodeStatusesById, wait.nodeId, approval.status === "approved" ? "SUCCEEDED" : terminal);
+  execution.run = transitionRunRecord(execution.run, approval.status === "approved" ? "RUNNING" : terminal, clock.now());
+  delete execution.wait;
+  execution.history = [...execution.history, { nodeId: node.id, kind: node.kind, step: execution.step, status: approval.status === "approved" ? "SUCCEEDED" : "FAILED", stateRevisionBefore: execution.state.revision, stateRevisionAfter: execution.state.revision }];
+  if (approval.status !== "approved") {
+    execution.run = setCurrentNodeId(execution.run, undefined);
+    const code = approval.status === "rejected" ? "APPROVAL_REJECTED" : approval.status === "expired" ? "APPROVAL_EXPIRED" : "APPROVAL_CANCELLED";
+    return { ok: false, failure: { code, message: code, nodeId: node.id }, execution, latestSnapshot: captureExecutionSnapshot(execution, clock.now()) };
+  }
+  execution.nodeStatusesById = transitionNodeStatus(execution.nodeStatusesById, next!, "READY");
+  execution.run = setCurrentNodeId(execution.run, next);
+  const latestSnapshot = captureExecutionSnapshot(execution, clock.now());
+  return runLoop({ runId: execution.run.runId, plan, registry, clock, maxSteps: request.options?.maxSteps ?? Object.keys(plan.nodesById).length + DEFAULT_MAX_STEPS_ALLOWANCE, execution, latestSnapshot, currentNodeId: next! });
+}
+
+async function runLoop(params: { runId: ExecuteWorkflowRequest["runId"]; plan: ExecuteWorkflowRequest["plan"]; registry: ExecuteWorkflowRequest["registry"]; clock: RuntimeClock; maxSteps: number; execution: RuntimeExecutionState; latestSnapshot: RuntimeExecutionSnapshot; currentNodeId: NodeId }): Promise<WorkflowExecutionResult> {
+  const { runId, plan, registry, clock, maxSteps } = params;
+  let { execution, latestSnapshot, currentNodeId } = params;
+  let { run, state, nodeStatusesById, step, history } = execution;
   const terminalNodeIds = new Set(plan.terminalNodeIds);
 
   /** Commits a terminal Run failure from the *last safe boundary* (`execution` as currently committed) and captures its snapshot. Used by every failure path that has not itself already advanced `execution`. */
@@ -159,6 +200,20 @@ export async function executeWorkflow(request: ExecuteWorkflowRequest): Promise<
         step,
         executorFailure: { ...executorFailure },
       });
+    }
+
+    if ("wait" in validated.result) {
+      if (node.kind !== "approval") {
+        nodeStatusesById = transitionNodeStatus(nodeStatusesById, node.id, "FAILED");
+        history = [...history, { nodeId: node.id, kind: node.kind, step, status: "FAILED", stateRevisionBefore: state.revision, stateRevisionAfter: state.revision }];
+        execution = { run, state, nodeStatusesById, step, history };
+        return fail({ code: "INVALID_NODE_RESULT", message: "Only an approval node may request an approval wait.", nodeId: node.id, step });
+      }
+      nodeStatusesById = transitionNodeStatus(nodeStatusesById, node.id, "WAITING");
+      run = transitionRunRecord(run, "WAITING_FOR_APPROVAL", clock.now());
+      execution = { run, state, nodeStatusesById, step, history, wait: { ...validated.result.wait, nodeId: node.id } };
+      latestSnapshot = captureExecutionSnapshot(execution, clock.now());
+      return { ok: true, execution, latestSnapshot };
     }
 
     const stateRevisionBefore = state.revision;

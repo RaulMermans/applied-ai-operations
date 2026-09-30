@@ -119,7 +119,7 @@ export type AuthorizationDenialReasonCode = z.infer<typeof AuthorizationDenialRe
 /**
  * Reuses the canonical `PolicyDecisionValue` vocabulary, restricted to the
  * two values this boundary can produce. `REQUIRE_APPROVAL` belongs to the
- * future approval engine, not to permission-set authorization (ADR-014).
+ * separate approval engine, not to permission-set authorization (ADR-014).
  */
 export const AuthorizationDecisionValueSchema = PolicyDecisionValueSchema.extract(["ALLOW", "DENY"]);
 
