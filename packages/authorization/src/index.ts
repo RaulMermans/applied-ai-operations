@@ -34,4 +34,4 @@ export type {
   AuthorizationAllow,
   AuthorizationDeny,
 } from "./types.js";
-export { authorize, agentAuthorityFromSpec } from "./evaluator.js";
+export { authorize, agentAuthorityFromSpec, authorizationContextFromAuthority } from "./evaluator.js";

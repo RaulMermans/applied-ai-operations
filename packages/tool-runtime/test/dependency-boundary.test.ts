@@ -93,7 +93,7 @@ describe("@aao/tool-runtime dependency boundary", () => {
   it("declares exactly the expected production dependencies", () => {
     const packageJson = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
     expect(Object.keys(packageJson.dependencies ?? {}).sort()).toEqual(["@aao/authorization", "@aao/contracts", "@aao/runtime", "ajv", "zod"]);
-    expect(Object.keys(packageJson.devDependencies ?? {}).sort()).toEqual(["@aao/workflow-dsl"]);
+    expect(Object.keys(packageJson.devDependencies ?? {}).sort()).toEqual(["@aao/governance", "@aao/workflow-dsl"]);
   });
 
   it("contains no retry, timeout race, cache, persistence, or global mutable Tool state", () => {

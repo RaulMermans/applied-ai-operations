@@ -29,7 +29,9 @@ Every initial `external_side_effect` requires human approval before execution. F
 
 A Tool being **registered** with the Tool Runtime ([ADR-013](../decisions/ADR-013-tool-registry-and-safe-execution-boundary.md)) means trusted code exists to implement it and its schemas are enforceable. **Supported** means this runtime version can safely execute every one of its permission classes. **Authorized** means a given principal may execute it in a given context. These are three separate checks.
 
-## Enforcement inputs (Sprint 9)
+## Enforcement inputs (Sprints 9–11)
+
+`@aao/governance` now resolves host-attested actor identity, explicit role bindings, and deny policies into principal grants. Those grants feed the existing Authorization Context; Agent ceilings and the Tool Runtime support gate continue to constrain execution. Memory, workflow state, model output, Tool input, and MCP metadata cannot grant authority.
 
 | Input | Source | Role |
 | --- | --- | --- |

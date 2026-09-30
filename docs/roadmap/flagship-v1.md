@@ -39,37 +39,36 @@ Complete: Tool Registry, safe Tool execution, deterministic Authorization, and t
 | Sprint 9 — Authorization & Permission Enforcement Boundary | `@aao/authorization`: host-attested `AuthorizationContext` (principal + explicit grants + optional Agent ceiling from the registered `AgentSpec`), one pure deterministic `authorize()` evaluator (`required ⊆ grants ∩ ceiling`, no hierarchy, no superuser, safe reason codes), enforced inside `executeTool` after the support gate and before input validation. Tool Node gets its context from a trusted host resolver; the public Tool Registry is inspection-only. No authentication, roles, policy DSL, approvals, Agent Tool use, MCP, or side effects. | Complete (`SPRINT_09_AUTHORIZATION_BOUNDARY_COMPLETE`) — see [ADR-014](../decisions/ADR-014-authorization-and-permission-enforcement.md) |
 | Sprint 10 — MCP Integration Boundary & Tool Adapter Sessions | `@aao/mcp-connector`: explicit stdio client/server sessions, bounded Tools discovery, trusted host-owned canonical Tool bindings, structured output normalization, safe errors, and the existing `executeTool` support/authorization/validation path. Real SDK stdio, zero-call rejection gates, generic workflow integration, and compiled smoke verified. No HTTP, OAuth, Agent Tool use, retries, or persistence. | Complete (`SPRINT_10_MCP_INTEGRATION_BOUNDARY_COMPLETE`) — see [ADR-015](../decisions/ADR-015-mcp-integration-boundary-and-tool-adapter-sessions.md) |
 
-## Phase E — Governance
+## Phase E — Governed execution
 
-Next phase: implement actor, role, and policy model plus approval engine. Add further integration infrastructure only for a demonstrated workflow requirement.
+| Sprint / outcome | Scope | Status |
+| --- | --- | --- |
+| Sprint 11 — Actor, Role & Policy Governance | Host-attested actors, explicit role bindings, deterministic deny policies, resolved authority feeding existing Authorization. | Complete (`SPRINT_11_GOVERNANCE_MODEL_COMPLETE`) — see [ADR-016](../decisions/ADR-016-actor-role-policy-governance.md) |
+| Sprint 12 — Approval Engine | Human approval of actions that require it, separate from authority resolution and authorization. | Planned |
 
-## Phase F — Reliability
+## Forward roadmap
 
-Implement error taxonomy, retries and timeouts, durable execution, and idempotency.
+| Sprint | Outcome | Status |
+| --- | --- | --- |
+| 13 | Reliability Runtime | Planned |
+| 14 | Durable Execution | Planned |
+| 15 | Trace Runtime | Planned |
+| 16 | Metrics & Audit | Planned |
+| 17 | Evaluation Runtime | Planned |
+| 18 | Eval Analytics / CI Gates | Planned |
+| 19 | Framework Surface | Planned |
+| 20 | Toolbox Foundation | Planned |
+| 21 | Company Research Proof | Planned |
+| 22 | Document Intelligence Proof | Planned |
+| 23 | Operational Request Proof | Planned |
+| 24 | Company Portability | Planned |
+| 25 | Capability Packs / Templates | Planned |
+| 26 | Control Center Foundation | Planned |
+| 27 | Guided Integration / Run Inspector UX | Planned |
+| 28 | Security / Integration Hardening | Planned |
+| 29 | Benchmark / Docs / Local V1 | Planned |
 
-## Phase G — Observability
-
-Implement trace runtime, metrics, and audit.
-
-## Phase H — Evaluation
-
-Implement evaluation runtime and CI regression gates.
-
-## Phase I — Workflow Proof
-
-Build and evaluate Company Research, Document Intelligence, and Operational Request.
-
-## Phase J — Portability
-
-Build company configuration system and prove adaptation to a second company.
-
-## Phase K — Product Surface
-
-Build the Operations Control Center and Run Inspector.
-
-## Phase L — Hardening
-
-Run adversarial tests, security work, real-integration gates, and a comprehensive benchmark.
+The framework surface, generic Toolbox, Integration Fabric, capability packs, and Control Center will use the same governance boundary. This roadmap adds no implementation or deployment commitment for those future layers.
 
 ## Stable milestones
 

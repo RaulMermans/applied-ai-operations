@@ -1,11 +1,13 @@
 import { PermissionClassesSchema, type AgentSpec, type PermissionClass } from "@aao/contracts";
 import { z } from "zod";
+import type { ResolvedAuthority } from "@aao/governance";
 import {
   AuthorizationActionSchema,
   AuthorizationContextSchema,
   AuthorizationResourceSchema,
   type AgentAuthority,
   type AuthorizationDecision,
+  type AuthorizationContext,
   type AuthorizationDenialReasonCode,
 } from "./types.js";
 
@@ -63,6 +65,16 @@ export function authorize(request: unknown): AuthorizationDecision {
  */
 export function agentAuthorityFromSpec(spec: Pick<AgentSpec, "id" | "version" | "permissionClasses">): AgentAuthority {
   return { agentRef: { id: spec.id, version: spec.version }, permissionCeiling: [...spec.permissionClasses] };
+}
+
+/** Trusted-host bridge from a resolved governance result to the existing evaluator. */
+export function authorizationContextFromAuthority(authority: ResolvedAuthority, agent?: AgentAuthority): AuthorizationContext {
+  return AuthorizationContextSchema.parse({
+    schemaVersion: 1,
+    principal: authority.actor,
+    grantedPermissionClasses: authority.permissionClasses,
+    ...(agent === undefined ? {} : { agent }),
+  });
 }
 
 /** Exact membership: no permission class implies another. */

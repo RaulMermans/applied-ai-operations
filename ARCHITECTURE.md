@@ -24,6 +24,8 @@ flowchart TB
 
 ## Canonical domain contracts
 
+Company configuration supplies actors, roles, bindings, and deny policies to `@aao/governance`. Its deterministic resolver turns host-attested identity into effective authority. Existing `@aao/authorization` checks requested permissions and the Agent ceiling; `@aao/tool-runtime` enforces runtime support and executes supported Tools. See [governance](docs/architecture/governance.md) and [ADR-016](docs/decisions/ADR-016-actor-role-policy-governance.md). Approval remains a separate future gate.
+
 `@aao/contracts` (`packages/contracts`) is the canonical, framework-neutral, vendor-neutral semantic boundary for AAO: runtime-validatable Zod schemas, with TypeScript types inferred from them, for Workflow, Node, Edge, Run, State, Checkpoint, Agent, Skill, Model Policy, Tool, Capability, Permission, Policy Decision, Approval, Eval, Trace, Artifact, Capability Pack references, and Company Configuration. The dependency direction is one-way:
 
 ```text
@@ -116,7 +118,7 @@ It reuses canonical `ToolSpec` plus a trusted handler binding, an explicit versi
 host-attested AuthorizationContext → Tool permission requirements → Agent ceiling (if present) → authorize() → ALLOW / DENY + reason code
 ```
 
-The rule is `required ⊆ principal grants` and, with an Agent, `required ⊆ grants ∩ agent ceiling`. There is no permission hierarchy, superuser, default allow, policy language, or model involvement. AAO does not authenticate; the host attests the principal. Missing or malformed context fails closed, the support gate runs first, and authorization runs before input validation. The workflow `tool` node gets its context from a host resolver, never from workflow state or config; the generic Runtime stays authorization-unaware. See [ADR-014](docs/decisions/ADR-014-authorization-and-permission-enforcement.md) and [authorization](docs/architecture/authorization.md).
+The rule is `required ⊆ principal grants` and, with an Agent, `required ⊆ grants ∩ agent ceiling`. There is no permission hierarchy, superuser, default allow, generic policy language, or model involvement in Authorization. AAO does not authenticate; the host attests the principal. Missing or malformed context fails closed, the support gate runs first, and authorization runs before input validation. The workflow `tool` node gets its context from a host resolver, never from workflow state or config; the generic Runtime stays authorization-unaware. See [ADR-014](docs/decisions/ADR-014-authorization-and-permission-enforcement.md) and [authorization](docs/architecture/authorization.md).
 
 ## MCP connector boundary
 
@@ -142,6 +144,7 @@ SDK types, subprocess configuration, and sessions stay inside infrastructure con
 - [Agent runtime](docs/architecture/agent-runtime.md) — bounded Agent registry, limits, deterministic controller, decision contract, iteration evidence, and the agent node.
 - [Tool runtime](docs/architecture/tool-runtime.md) — Tool Registry, JSON Schema policy, permission support gate, handler contract, and the tool node.
 - [Authorization](docs/architecture/authorization.md) — host-attested Authorization Context, the deterministic evaluator, Agent ceiling, and enforcement inside `executeTool`.
+- [Governance](docs/architecture/governance.md) — host-attested actors, role bindings, deny policies, and resolved authority before Authorization.
 - [MCP connector](docs/architecture/mcp-connector.md) — isolated stdio sessions, bounded discovery, explicit Tool bindings, and normalized failures.
 - [System boundaries](docs/architecture/system-boundaries.md) — architectural layers and ownership.
 - [Core vs company](docs/architecture/core-vs-company.md) — portability boundary and configuration responsibilities.
@@ -165,6 +168,7 @@ Dependencies implement infrastructure; AAO defines product semantics.
 | Canonical integrations | Yes | Provider capability adapters |
 | Visualization truth | Yes | xyflow may visualize backend truth later |
 | Authorization | Yes | `@aao/authorization`, no external dependency (Sprint 9) |
+| Governance | Yes | `@aao/governance`, canonical contracts and deterministic validation (Sprint 11) |
 | Evaluation | Yes | Implementation deferred |
 | Trace model | Yes | Implementation deferred |
 

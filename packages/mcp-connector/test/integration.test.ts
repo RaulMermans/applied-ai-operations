@@ -5,6 +5,8 @@ import { createNodeRegistry } from "@aao/runtime";
 import { executeWorkflow, finalOutputExecutor } from "@aao/runtime";
 import { createToolNodeExecutor } from "@aao/tool-runtime";
 import { createMcpToolBinding } from "../src/index.js";
+import { createGovernanceRegistry, resolveAuthority } from "@aao/governance";
+import { authorizationContextFromAuthority } from "@aao/authorization";
 import { AUTH, REF, REQUEST, SPEC, realServer } from "./fixtures.js";
 
 const servers: ReturnType<typeof realServer>[] = [];
@@ -19,6 +21,26 @@ async function governed(mode = "ok", spec = SPEC) {
 }
 
 describe("official SDK stdio and governed MCP E2E", () => {
+  it("resolves governance before MCP execution: bound actor calls once, unbound actor calls zero times", async () => {
+    const server = await governed();
+    const registry = createGovernanceRegistry({
+      actors: [{ id: "user.alice", type: "user" }, { id: "user.bob", type: "user" }],
+      roles: [{ id: "researcher", version: "1.0.0", permissionClasses: ["read_only"] }],
+      bindings: [{ id: "alice.researcher", actorId: "user.alice", roleId: "researcher", status: "active" }],
+      policies: [],
+    });
+    const allowed = resolveAuthority(registry, { id: "user.alice", type: "user" }, ["read_only"]);
+    if (!allowed.authority) throw new Error("expected resolved authority");
+    const first = await executeTool({ tools: server.tools, request: REQUEST, authorizationContext: authorizationContextFromAuthority(allowed.authority) });
+    expect(first.ok).toBe(true);
+    expect(server.evidence().calls).toBe(1);
+    const denied = resolveAuthority(registry, { id: "user.bob", type: "user" }, ["read_only"]);
+    if (!denied.authority) throw new Error("expected resolved authority");
+    expect(denied.decision).toBe("DENY");
+    const second = await executeTool({ tools: server.tools, request: { ...REQUEST, toolExecutionId: "exec.mcp.2" }, authorizationContext: authorizationContextFromAuthority(denied.authority) });
+    expect(second).toMatchObject({ ok: false, failure: { code: "TOOL_AUTHORIZATION_DENIED" } });
+    expect(server.evidence().calls).toBe(1);
+  });
   it("initializes, discovers, explicitly binds, authorizes, invokes once, validates and closes", async () => {
     const server = fixture("schema");
     expect(server.session.state).toBe("CREATED");

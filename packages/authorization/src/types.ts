@@ -4,6 +4,7 @@ import {
   PermissionClassSchema,
   PermissionClassesSchema,
   PolicyDecisionValueSchema,
+  PrincipalSchema,
   ToolIdSchema,
   entityVersionSchema,
   identifierSchema,
@@ -17,17 +18,8 @@ import {
  * only: no principal type — `system` included — implies any permission.
  * Every principal carries explicit grants.
  */
-export const PRINCIPAL_TYPES = ["user", "service", "system"] as const;
-export const PrincipalTypeSchema = z.enum(PRINCIPAL_TYPES);
-export type PrincipalType = z.infer<typeof PrincipalTypeSchema>;
-
-export const PrincipalSchema = z
-  .object({
-    id: identifierSchema,
-    type: PrincipalTypeSchema,
-  })
-  .strict();
-export type Principal = z.infer<typeof PrincipalSchema>;
+export { PRINCIPAL_TYPES, PrincipalTypeSchema, PrincipalSchema } from "@aao/contracts";
+export type { PrincipalType, Principal } from "@aao/contracts";
 
 /**
  * The permission classes explicitly granted to a principal. Canonical

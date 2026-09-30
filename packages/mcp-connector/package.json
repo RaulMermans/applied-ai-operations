@@ -18,6 +18,7 @@
     "zod": "^3.24.3"
   },
   "devDependencies": {
+    "@aao/governance": "workspace:*",
     "@aao/authorization": "workspace:*",
     "@aao/runtime": "workspace:*",
     "@aao/workflow-dsl": "workspace:*"

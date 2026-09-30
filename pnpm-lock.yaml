@@ -72,6 +72,9 @@ importers:
       '@aao/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@aao/governance':
+        specifier: workspace:*
+        version: link:../governance
       zod:
         specifier: ^3.24.3
         version: 3.25.76
@@ -84,6 +87,15 @@ importers:
 
   packages/contracts:
     dependencies:
+      zod:
+        specifier: ^3.24.3
+        version: 3.25.76
+
+  packages/governance:
+    dependencies:
+      '@aao/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       zod:
         specifier: ^3.24.3
         version: 3.25.76
@@ -106,6 +118,9 @@ importers:
       '@aao/authorization':
         specifier: workspace:*
         version: link:../authorization
+      '@aao/governance':
+        specifier: workspace:*
+        version: link:../governance
       '@aao/runtime':
         specifier: workspace:*
         version: link:../runtime
@@ -185,6 +200,9 @@ importers:
         specifier: ^3.24.3
         version: 3.25.76
     devDependencies:
+      '@aao/governance':
+        specifier: workspace:*
+        version: link:../governance
       '@aao/workflow-dsl':
         specifier: workspace:*
         version: link:../workflow-dsl

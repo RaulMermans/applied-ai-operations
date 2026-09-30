@@ -2,6 +2,8 @@
 
 `@aao/authorization` (`packages/authorization`, Sprint 9) is AAO's deterministic Authorization Boundary. It decides whether an already-attested principal, optionally acting through an Agent, may perform a governed action. The Tool Runtime calls it inside every `executeTool`. See [ADR-014](../decisions/ADR-014-authorization-and-permission-enforcement.md).
 
+Since Sprint 11, `@aao/governance` resolves a host-attested actor through roles, bindings, and deny policies. `authorizationContextFromAuthority` converts its resolved authority to this package's existing context. The evaluator and Tool Runtime enforcement remain the same. See [governance](governance.md) and [ADR-016](../decisions/ADR-016-actor-role-policy-governance.md).
+
 ## Four separate questions
 
 | Question | Owner | Status |
@@ -83,4 +85,4 @@ The generic Runtime never sees the reason code. Resolver exceptions are never in
 
 ## Not implemented
 
-Authentication, users and roles, groups and tenants, policy languages, approvals, Agent Tool use, MCP protocol ownership (the separate connector inherits this evaluator), external-side-effect/sensitive-data/destructive Tools, credentials, durable authorization state, and authorization caching. Future RBAC/ABAC systems construct an `AuthorizationContext`; they do not replace the evaluator.
+Authentication, groups and tenants, generic policy languages, approvals, Agent Tool use, MCP protocol ownership (the separate connector inherits this evaluator), external-side-effect/sensitive-data/destructive Tools, credentials, durable authorization state, and authorization caching. Governance constructs an `AuthorizationContext`; it does not replace the evaluator.

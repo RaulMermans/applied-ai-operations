@@ -60,17 +60,17 @@ describe("@aao/authorization dependency boundary", () => {
     expect(codeOnly).not.toMatch(/from\s+["']ai["']/);
   });
 
-  it("every source module imports only @aao/contracts and zod", () => {
+  it("every source module imports only contracts, governance types, and zod", () => {
     for (const file of sourceFiles) {
       for (const specifier of importSpecifiers(file)) {
-        expect(["@aao/contracts", "zod"].includes(specifier), `${relative(srcDir, file)} imports unexpected module "${specifier}"`).toBe(true);
+        expect(["@aao/contracts", "@aao/governance", "zod"].includes(specifier), `${relative(srcDir, file)} imports unexpected module "${specifier}"`).toBe(true);
       }
     }
   });
 
-  it("declares exactly @aao/contracts and zod as dependencies", () => {
+  it("declares exactly contracts, governance, and zod as dependencies", () => {
     const packageJson = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
-    expect(Object.keys(packageJson.dependencies ?? {}).sort()).toEqual(["@aao/contracts", "zod"]);
+    expect(Object.keys(packageJson.dependencies ?? {}).sort()).toEqual(["@aao/contracts", "@aao/governance", "zod"]);
     expect(packageJson.devDependencies ?? {}).toEqual({});
   });
 
