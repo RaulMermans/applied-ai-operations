@@ -4,7 +4,7 @@ Status: accepted
 
 ## Decision
 
-Approval is a separate confirmation gate after trusted identity, Governance, and Authorization. It grants no role, permission, Agent ceiling, or Tool Runtime support. Only a host-attested `user` may approve or reject. The Approval Engine resolves the user's current Governance roles and permissions; the required approver roles must intersect, and self-approval is denied unless trusted node configuration explicitly enables it.
+Approval is a separate confirmation gate after trusted identity, Governance, and Authorization. It grants no role, permission, Agent ceiling, or Tool Runtime support. Only a host-attested `user` may approve or reject. The Approval Engine resolves the user's current Governance role membership (not the action's permissions — corrected in the Sprint 13 closure gate); the required approver roles must intersect, and self-approval is denied unless trusted node configuration explicitly enables it.
 
 `@aao/approval` owns process-local request and resolution state. Approval records contain run/node references, the trusted requester, risk permission classes, required roles, and a SHA-256 fingerprint of canonical JSON-safe run ID, node ID, state revision, and subject. They never copy the subject or Tool arguments. Pending requests are idempotent only for identical binding metadata. A terminal record cannot be changed. Explicit expiry and cancellation have no scheduler.
 

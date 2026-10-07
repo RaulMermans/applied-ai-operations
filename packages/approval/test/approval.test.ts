@@ -103,6 +103,37 @@ describe("approval engine", () => {
     expect(engine.getApproval(pending.approvalId)).toBe(approved);
   });
 
+  it("approver eligibility uses trusted role membership, not the requester's action permissions", () => {
+    const erin = { id: "user.erin", type: "user" } as const;
+    const frank = { id: "user.frank", type: "user" } as const;
+    const gina = { id: "user.gina", type: "user" } as const;
+    const decoupled = createGovernanceRegistry({
+      actors: [alice, bob, erin, frank, gina],
+      roles: [
+        { id: "operator", version: "1.0.0", permissionClasses: ["write_draft"] },
+        { id: "manager", version: "1.0.0", permissionClasses: ["read_only"] },
+        { id: "auditor", version: "1.0.0", permissionClasses: ["read_only"] },
+      ],
+      bindings: [
+        { id: "alice.operator", actorId: alice.id, roleId: "operator", status: "active" },
+        { id: "bob.manager", actorId: bob.id, roleId: "manager", status: "active" },
+        { id: "erin.auditor", actorId: erin.id, roleId: "auditor", status: "active" },
+        { id: "frank.manager", actorId: frank.id, roleId: "manager", status: "inactive" },
+        { id: "gina.operator", actorId: gina.id, roleId: "operator", status: "active" },
+      ],
+      policies: [{ id: "deny.manager.read", rules: [{ id: "manager.read", effect: "DENY", permissionClasses: ["read_only"], roleIds: ["manager"] }] }],
+    });
+    expect(resolveAuthority(decoupled, bob, ["write_draft"]).decision).toBe("DENY");
+    const engine = createApprovalEngine({ governance: decoupled, clock: clock() });
+    const base = { runId: "run.decoupled", nodeId: "approval", requestFingerprint: "d".repeat(64), requestedBy: alice, requiredApproverRoleIds: ["manager"], permissionClasses: ["write_draft"] as ["write_draft"], allowSelfApproval: false };
+    const pending = engine.requestApproval({ ...base, approvalId: "approval.decoupled" });
+    for (const ineligible of [erin, frank, gina, { id: "user.unknown", type: "user" } as const]) expect(() => engine.approve(pending.approvalId, ineligible)).toThrow("APPROVAL_RESOLVER_NOT_ELIGIBLE");
+    expect(engine.approve(pending.approvalId, bob)).toMatchObject({ status: "approved", resolvedBy: bob });
+    const rejectable = engine.requestApproval({ ...base, approvalId: "approval.decoupled.reject" });
+    expect(engine.reject(rejectable.approvalId, bob).status).toBe("rejected");
+    expect(() => engine.requestApproval({ ...base, approvalId: "approval.bob.request", requestedBy: bob })).toThrow("APPROVAL_REQUESTER_NOT_AUTHORIZED");
+  });
+
   it("enforces contract lifecycle evidence", () => {
     const base = { schemaVersion: 2, approvalId: "approval.test", runId: "run.test", nodeId: "approval", requestFingerprint: "a".repeat(64), requestedBy: alice, requiredApproverRoleIds: ["manager"], allowSelfApproval: false, permissionClasses: ["write_draft"], requestedAt: "2026-09-30T12:00:00Z" };
     expect(ApprovalRecordSchema.safeParse({ ...base, status: "pending" }).success).toBe(true);

@@ -4,6 +4,7 @@ import {
   PrincipalSchema,
   type GovernanceConfiguration,
   type PermissionClass,
+  type Principal,
   type GovernanceDecision,
   type ResolvedAuthority,
 } from "@aao/contracts";
@@ -67,6 +68,20 @@ export function resolveAuthority(registry: GovernanceRegistry, actorInput: unkno
     authority,
     reasonCodes: [allowed ? "GOVERNANCE_ALLOWED" : policyDenied ? "GOVERNANCE_POLICY_DENY" : "GOVERNANCE_DEFAULT_DENY"],
   };
+}
+
+/**
+ * Resolve only trusted identity and current active role membership. No permission is evaluated:
+ * role membership is a distinct question from whether the actor may perform an action itself.
+ */
+export function resolveRoleMembership(registry: GovernanceRegistry, actorInput: unknown): { actor: Principal; roleIds: string[] } | undefined {
+  if (!(registry instanceof Registry)) return undefined;
+  const actor = PrincipalSchema.safeParse(actorInput);
+  if (!actor.success) return undefined;
+  const registered = registry.configuration.actors.find((entry) => entry.id === actor.data.id && entry.type === actor.data.type);
+  if (!registered) return undefined;
+  const roleIds = sorted(new Set(registry.configuration.bindings.filter((binding) => binding.actorId === registered.id && binding.status === "active").map((binding) => binding.roleId)));
+  return { actor: { ...registered }, roleIds };
 }
 
 function sorted<T extends string>(values: Set<T>): T[] { return [...values].sort(); }

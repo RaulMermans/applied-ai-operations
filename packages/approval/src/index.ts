@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { ApprovalRecordSchema, PermissionClassesSchema, PrincipalSchema, RunIdSchema, NodeIdSchema, canonicalJsonStringify, identifierSchema, isoTimestampSchema, type ApprovalRecord, type JsonValue, type Principal } from "@aao/contracts";
-import { resolveAuthority, type GovernanceRegistry } from "@aao/governance";
+import { resolveAuthority, resolveRoleMembership, type GovernanceRegistry } from "@aao/governance";
 import { continueWaitingWorkflow, isJsonSafe, type ContinueWaitingWorkflowRequest, type NodeExecutor, type RuntimeClock, type WorkflowExecutionResult } from "@aao/runtime";
 
 const ApprovalNodeConfigSchema = z.object({
@@ -64,8 +64,9 @@ export function createApprovalEngine(dependencies: { governance: GovernanceRegis
     if (status === "approved" || status === "rejected") {
       const parsed = PrincipalSchema.safeParse(principal);
       if (!parsed.success || parsed.data.type !== "user") throw new ApprovalError("APPROVAL_HUMAN_REQUIRED");
-      const decision = resolveAuthority(dependencies.governance, parsed.data, prior.permissionClasses);
-      if (decision.decision !== "ALLOW" || !decision.authority || !decision.authority.roleIds.some((role) => prior.requiredApproverRoleIds.includes(role))) throw new ApprovalError("APPROVAL_RESOLVER_NOT_ELIGIBLE");
+      // Eligibility = trusted registered human + current required-role membership. The approver need not hold the action's permissions.
+      const membership = resolveRoleMembership(dependencies.governance, parsed.data);
+      if (!membership || !membership.roleIds.some((role) => prior.requiredApproverRoleIds.includes(role))) throw new ApprovalError("APPROVAL_RESOLVER_NOT_ELIGIBLE");
       if (!prior.allowSelfApproval && prior.requestedBy.id === parsed.data.id) throw new ApprovalError("APPROVAL_SELF_APPROVAL_FORBIDDEN");
     }
     const resolvedAt = dependencies.clock.now();

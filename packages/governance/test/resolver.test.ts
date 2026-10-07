@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { GovernanceDecisionSchema, ResolvedAuthoritySchema } from "@aao/contracts";
-import { createGovernanceRegistry, resolveAuthority } from "../src/index.js";
+import { createGovernanceRegistry, resolveAuthority, resolveRoleMembership } from "../src/index.js";
 
 const actor = { id: "user.alice", type: "user" } as const;
 const config = {
@@ -31,6 +31,16 @@ describe("governance compile and resolution", () => {
     expect(JSON.stringify(config)).toBe(before);
     expect(Object.isFrozen(registry.configuration.roles[0])).toBe(true);
     expect(resolveAuthority(registry, { id: "user.bob", type: "user" }, ["write_draft"]).decision).toBe("DENY");
+  });
+
+  it("resolves trusted active role membership without evaluating permissions", () => {
+    const registry = createGovernanceRegistry({ ...config, policies: [{ id: "deny.all.read", rules: [{ id: "read", effect: "DENY", permissionClasses: ["read_only"] }] }] });
+    expect(resolveRoleMembership(registry, actor)).toEqual({ actor, roleIds: ["operator", "researcher"] });
+    expect(resolveRoleMembership(registry, { id: "user.mallory", type: "user" })).toBeUndefined();
+    expect(resolveRoleMembership(registry, { ...actor, roleIds: ["operator"] })).toBeUndefined();
+    expect(resolveRoleMembership(registry, { id: actor.id, type: "service" })).toBeUndefined();
+    expect(resolveRoleMembership({ configuration: registry.configuration } as never, actor)).toBeUndefined();
+    expect(resolveRoleMembership(createGovernanceRegistry({ ...config, bindings: config.bindings.map((binding) => ({ ...binding, status: "inactive" })) }), actor)).toEqual({ actor, roleIds: [] });
   });
 
   it("denies unknown, unbound, inactive and malformed actors and permissions", () => {
