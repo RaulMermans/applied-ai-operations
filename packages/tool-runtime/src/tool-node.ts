@@ -1,11 +1,12 @@
 import { z } from "zod";
-import { identifierSchema, type JsonObject } from "@aao/contracts";
+import { identifierSchema, type FailureCategory, type JsonObject, type RetrySafety } from "@aao/contracts";
 import type { NodeExecutor, NodePreflightResult } from "@aao/runtime";
 import { deriveToolExecutionId } from "./execution-id.js";
 import type { AuthorizationContext } from "@aao/authorization";
 import { executeTool, type ToolRuntimeDependencies } from "./executor.js";
 import { checkToolPermissionSupport } from "./permissions.js";
-import { ToolRefSchema, type ToolRef } from "./types.js";
+import { resolveToolBinding } from "./registry.js";
+import { ToolRefSchema, type ToolFailure, type ToolRef } from "./types.js";
 
 /**
  * Static, JSON-safe `tool` node config. State keys are *top-level*
@@ -32,6 +33,30 @@ export type ToolNodeConfig = z.infer<typeof ToolNodeConfigSchema>;
 
 /** The executor-failure namespace this node reports under; the generic Runtime carries it opaquely. */
 export const TOOL_NODE_FAILURE_NAMESPACE = "tool";
+
+/**
+ * Deterministic structured classification of every Tool failure code for
+ * the Runtime Reliability Controller. Only a handler's explicit
+ * `retryable: true` produces a retryable category; authority, support-gate,
+ * and validation failures can never be retried.
+ */
+export function classifyToolFailure(failure: Pick<ToolFailure, "code" | "handlerFailureRetryable">): FailureCategory {
+  switch (failure.code) {
+    case "TOOL_AUTHORIZATION_REQUIRED":
+    case "TOOL_AUTHORIZATION_DENIED":
+      return "AUTHORIZATION";
+    case "TOOL_PERMISSION_UNSUPPORTED":
+      return "POLICY";
+    case "TOOL_EXECUTION_FAILED":
+      return failure.handlerFailureRetryable === true ? "TRANSIENT_DEPENDENCY" : "EXECUTION";
+    case "INVALID_TOOL_REQUEST":
+    case "TOOL_NOT_FOUND":
+    case "TOOL_INPUT_SCHEMA_MISMATCH":
+    case "TOOL_OUTPUT_SCHEMA_MISMATCH":
+    case "INVALID_TOOL_RESULT":
+      return "VALIDATION";
+  }
+}
 
 /**
  * The only facts a host resolver receives to locate the authority it has
@@ -107,13 +132,19 @@ export function createToolNodeExecutor(dependencies: ToolNodeDependencies): Node
       return verdict.ok ? { ok: true } : verdict;
     },
 
+    // Retry safety is the registered Tool's trusted declaration, never node config or state.
+    retrySafety({ node }): RetrySafety {
+      const verdict = validate(node.config);
+      return verdict.ok ? (resolveToolBinding(tools, verdict.config.toolRef)?.retrySafety ?? "unsafe") : "unsafe";
+    },
+
     async execute(context) {
       const verdict = validate(context.node.config);
       // Preflight already proved this config valid; reaching here means the
       // registry changed mid-run or the Runtime skipped preflight.
       if (!verdict.ok) throw new Error("Tool node config is invalid.");
       const { toolRef, inputStateKey, resultStateKey } = verdict.config;
-      const fail = (code: string) => ({ ok: false as const, failure: { namespace: TOOL_NODE_FAILURE_NAMESPACE, code } });
+      const fail = (code: ToolFailure["code"], handlerFailureRetryable?: true) => ({ ok: false as const, failure: { namespace: TOOL_NODE_FAILURE_NAMESPACE, code, category: classifyToolFailure({ code, handlerFailureRetryable }) } });
 
       let authorizationContext: AuthorizationContext | undefined;
       try {
@@ -127,9 +158,9 @@ export function createToolNodeExecutor(dependencies: ToolNodeDependencies): Node
       // validates it (a missing value is INVALID_TOOL_REQUEST, a
       // non-conforming one TOOL_INPUT_SCHEMA_MISMATCH) like any untrusted request.
       const request = { schemaVersion: 1, toolExecutionId: deriveToolExecutionId(context.runId, context.node.id), toolRef, input: context.state.values[inputStateKey] };
-      const outcome = await executeTool({ request, tools, authorizationContext: authorizationContext as AuthorizationContext });
-      // Only the Tool failure code goes upward; the authorization reason stays with direct callers.
-      if (!outcome.ok) return fail(outcome.failure.code);
+      const outcome = await executeTool({ request, tools, authorizationContext: authorizationContext as AuthorizationContext, signal: context.signal });
+      // Only the Tool failure code and its classification go upward; the authorization reason stays with direct callers.
+      if (!outcome.ok) return fail(outcome.failure.code, outcome.failure.handlerFailureRetryable);
       return { ok: true, statePatch: { [resultStateKey]: outcome.result } };
     },
   };

@@ -1,4 +1,4 @@
-import { ToolSpecSchema, type ToolSpec } from "@aao/contracts";
+import { RetrySafetySchema, ToolSpecSchema, type RetrySafety, type ToolSpec } from "@aao/contracts";
 import { isJsonSafe } from "@aao/runtime";
 import { compileToolSchema, type CompiledToolSchema } from "./schema-validator.js";
 import type { RegisteredTool, ToolHandler, ToolRef } from "./types.js";
@@ -47,6 +47,7 @@ export interface ToolBinding {
   readonly handler: Readonly<ToolHandler>;
   readonly inputSchema: CompiledToolSchema;
   readonly outputSchema: CompiledToolSchema;
+  readonly retrySafety: RetrySafety;
 }
 
 /**
@@ -67,6 +68,11 @@ export function createToolRegistry(): ToolRegistry {
       if (typeof tool.handler?.execute !== "function") {
         throw new Error(`ToolRegistry: tool "${spec.id}" version "${spec.version}" has no handler.execute function.`);
       }
+      const retrySafety = RetrySafetySchema.safeParse(tool.retrySafety ?? "unsafe");
+      if (!retrySafety.success) throw new Error(`ToolRegistry: tool "${spec.id}" version "${spec.version}" has an invalid retrySafety.`);
+      if (retrySafety.data === "safe" && !spec.permissionClasses.every((permissionClass) => permissionClass === "read_only")) {
+        throw new Error(`ToolRegistry: tool "${spec.id}" version "${spec.version}" may declare retrySafety "safe" only when every permission class is read_only.`);
+      }
       const key = toolKey(spec);
       if (tools.has(key)) throw new Error(`ToolRegistry: tool "${spec.id}" version "${spec.version}" is already registered.`);
 
@@ -75,7 +81,7 @@ export function createToolRegistry(): ToolRegistry {
       const outputSchema = compileToolSchema(cloneSpec(spec).outputSchema);
       if (!outputSchema.ok) throw new Error(`ToolRegistry: tool "${spec.id}" version "${spec.version}" has an unsupported outputSchema: ${outputSchema.issues.join("; ")}`);
 
-      tools.set(key, Object.freeze({ spec: deepFreeze(spec), handler: captureHandler(tool.handler), inputSchema: inputSchema.schema, outputSchema: outputSchema.schema }));
+      tools.set(key, Object.freeze({ spec: deepFreeze(spec), handler: captureHandler(tool.handler), inputSchema: inputSchema.schema, outputSchema: outputSchema.schema, retrySafety: retrySafety.data }));
     },
     getSpec(ref: ToolRef): ToolSpec | undefined {
       const tool = tools.get(toolKey(ref));

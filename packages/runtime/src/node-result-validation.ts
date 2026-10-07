@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { JsonObject, JsonValue } from "@aao/contracts";
+import { FailureCategorySchema, type JsonObject, type JsonValue } from "@aao/contracts";
 import { isJsonSafe } from "./json-safety.js";
 import type { NodeExecutionResult, NodeExecutorFailure } from "./types.js";
 
@@ -40,6 +40,7 @@ const NodeExecutorFailureSchema = z
   .object({
     namespace: z.string().regex(EXECUTOR_FAILURE_NAMESPACE_PATTERN),
     code: z.string().regex(EXECUTOR_FAILURE_CODE_PATTERN),
+    category: FailureCategorySchema.optional(),
   })
   .strict();
 
@@ -78,7 +79,8 @@ export function validateNodeExecutionResult(raw: unknown): NodeResultValidation 
     if (!failureShape.success) {
       return { ok: false, code: "INVALID_NODE_RESULT", message: "Node executor failure must be exactly { ok: false, failure: { namespace, code } } with a bounded namespace and code." };
     }
-    const failure: NodeExecutorFailure = { namespace: failureShape.data.failure.namespace, code: failureShape.data.failure.code };
+    const { namespace, code, category } = failureShape.data.failure;
+    const failure: NodeExecutorFailure = { namespace, code, ...(category !== undefined ? { category } : {}) };
     return { ok: true, result: { ok: false, failure } };
   }
 

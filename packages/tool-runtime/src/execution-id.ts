@@ -12,10 +12,10 @@ const TOOL_EXECUTION_ID_DOMAIN = "aao.tool-execution.v1";
  * unambiguous: no two distinct (runId, nodeId) pairs serialize to the same
  * text, unlike plain concatenation.
  *
- * Deterministic and pure — no randomness, clock, or counter. Runtime V1
- * executes a Tool node at most once per Run; future retry/resume semantics
- * will add an explicit attempt dimension to this derivation rather than an
- * ad hoc suffix. Direct `executeTool` callers supply their own id.
+ * Deterministic and pure — no randomness, clock, or counter. The id names
+ * the logical Tool Node execution: Runtime retry attempts (ADR-018) reuse
+ * it, and the attempt number lives in Runtime attempt accounting, never in
+ * an ad hoc suffix. Direct `executeTool` callers supply their own id.
  */
 export function deriveToolExecutionId(runId: string, nodeId: string): string {
   // Both already passed Runtime input validation; anything else is a caller bug, not a runtime failure.

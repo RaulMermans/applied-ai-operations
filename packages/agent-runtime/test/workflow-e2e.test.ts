@@ -185,6 +185,7 @@ describe("Agent workflow E2E: YAML → compiler → Runtime → Agent Node → A
       nodeId: "research",
       step: 1,
       executorFailure: { namespace: "agent", code: "MAX_AGENT_ITERATIONS_EXCEEDED" },
+      category: "EXECUTION", retryable: false, attempt: 1, maxAttempts: 1,
     });
     expect(result.execution?.run.status).toBe("FAILED");
     expect(result.execution?.nodeStatusesById).toEqual({ research: "FAILED", final: "PENDING" });

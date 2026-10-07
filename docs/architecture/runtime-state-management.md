@@ -173,7 +173,7 @@ Consistent with [ADR-010](../decisions/ADR-010-managed-runtime-state-and-lifecyc
 
 - **No durable resume.** `continueWaitingWorkflow` advances an in-process waiting Run after validation. There is no restoring a Run from a persisted snapshot.
 - **No persistence.** No database, filesystem run store, queue, or object storage. Everything is process-local and in-memory.
-- **No general cancellation or retry execution.** Approval cancellation is implemented at a waiting boundary; `RETRYING` remains unused.
+- **No general cancellation or durable retry.** Approval cancellation is implemented at a waiting boundary. Bounded in-process retries (Sprint 13) stay inside one `RUNNING` Node lifecycle; `RETRYING` remains unused and is reserved for future durable, scheduled retry.
 - **No reducer registry.** State patch semantics are unchanged from Sprint 4: a shallow top-level merge, nothing more, until a real Node/workflow demonstrates a need for domain-specific merge behavior.
 - **No tracing.** `NodeExecutionRecord` is still not the canonical AAO Trace — no latency, cost, tokens, or spans.
 
@@ -182,3 +182,7 @@ Runtime snapshots are recovery-*ready* data structures. They are not a durable-r
 ## Sprint 12 approval boundary
 
 An explicitly registered Approval Node now returns a bounded Runtime wait result. The Run enters `WAITING_FOR_APPROVAL`, the Approval Node enters `WAITING`, and downstream nodes remain pending. The version-2 safe snapshot includes an approval reference and fingerprint. A trusted host may resolve the process-local Approval and invoke validated in-process continuation through the same Runtime loop. Approval only confirms the exact request; Governance, Authorization, Agent ceilings, and Tool Runtime support still apply. See [approval engine](approval-engine.md) and [ADR-017](../decisions/ADR-017-human-approval-and-runtime-waitpoints.md).
+
+## Sprint 13 reliability boundary
+
+Attempts are Runtime metadata, not business state. Every attempt receives a clone of the same authoritative state. Only the accepted successful attempt's patch is applied, so `RunState.revision` changes at most once per Node. Failed and timed-out attempts commit nothing, and a late result from a timed-out attempt is ignored. Safe snapshot boundaries are unchanged and are never captured mid-attempt. Snapshot `schemaVersion` stays 2 because attempt evidence lives in history and failures. A snapshot never implies that a timed-out, still-running attempt can be resumed. Reliability is process-local, and durable retry accounting is Sprint 14 work. See [reliability runtime](reliability-runtime.md) and [ADR-018](../decisions/ADR-018-runtime-reliability-and-bounded-retries.md).

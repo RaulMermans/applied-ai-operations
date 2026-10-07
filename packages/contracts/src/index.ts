@@ -138,3 +138,15 @@ export { TraceEventSchema, type TraceEvent } from "./trace.js";
 export { ArtifactRefSchema, type ArtifactRef } from "./artifact.js";
 export { CapabilityPackRefSchema, type CapabilityPackRef } from "./capability-pack.js";
 export { CompanyConfigSchema, type CompanyConfig } from "./deployment.js";
+
+export {
+  RELIABILITY_LIMITS,
+  ReliabilityPolicySchema,
+  RetrySafetySchema,
+  FailureCategorySchema,
+  RETRYABLE_FAILURE_CATEGORIES,
+  isRetryableFailureCategory,
+  type ReliabilityPolicy,
+  type RetrySafety,
+  type FailureCategory,
+} from "./reliability.js";

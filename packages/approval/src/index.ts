@@ -91,7 +91,7 @@ export function createApprovalNodeExecutor(engine: ApprovalEngine, requesterForR
     async execute({ runId, node, state }) {
       const config = ApprovalNodeConfigSchema.parse(node.config);
       const subject = state.values[config.subjectStateKey];
-      if (subject === undefined || !isJsonSafe(subject)) return { ok: false, failure: { namespace: "approval", code: "INVALID_APPROVAL_CONTEXT" } };
+      if (subject === undefined || !isJsonSafe(subject)) return { ok: false, failure: { namespace: "approval", code: "INVALID_APPROVAL_CONTEXT", category: "VALIDATION" } };
       const requestedBy = PrincipalSchema.parse(requesterForRun(runId));
       const requestFingerprint = fingerprintApprovalSubject(runId, node.id, state.revision, subject);
       const approvalId = approvalIdForFingerprint(runId, node.id, requestFingerprint);
@@ -125,7 +125,7 @@ export async function continueApprovedWorkflow(engine: ApprovalEngine, request: 
   }
   try {
     const result = await continueWaitingWorkflow({ ...request, approval: record, currentRequestFingerprint });
-    if (!result.ok && ["INVALID_APPROVAL_CONTEXT", "APPROVAL_REQUEST_MISMATCH", "APPROVAL_STILL_PENDING"].includes(result.failure.code)) engine.releaseContinuation(record.approvalId);
+    if (!result.ok && ["INVALID_APPROVAL_CONTEXT", "APPROVAL_REQUEST_MISMATCH", "APPROVAL_STILL_PENDING", "INVALID_RUNTIME_INPUT"].includes(result.failure.code)) engine.releaseContinuation(record.approvalId);
     return result;
   } catch (error) { engine.releaseContinuation(record.approvalId); throw error; }
 }

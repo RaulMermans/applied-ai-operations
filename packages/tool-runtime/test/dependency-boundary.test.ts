@@ -96,10 +96,13 @@ describe("@aao/tool-runtime dependency boundary", () => {
     expect(Object.keys(packageJson.devDependencies ?? {}).sort()).toEqual(["@aao/governance", "@aao/workflow-dsl"]);
   });
 
-  it("contains no retry, timeout race, cache, persistence, or global mutable Tool state", () => {
+  it("contains no retry execution, timeout race, cache, persistence, or global mutable Tool state", () => {
     for (const file of sourceFiles) {
       const codeOnly = stripComments(readFileSync(file, "utf8"));
-      expect(codeOnly).not.toMatch(/retry|backoff|fallback|setTimeout|Promise\.race|AbortController|sqlite|postgres|redis|globalThis/i);
+      // Retry execution belongs only to the Runtime Reliability Controller (ADR-018). Tool Runtime may
+      // declare trusted metadata (`retrySafety`, a handler's `retryable` flag) but owns no attempts,
+      // loops, sleeps, timers, or races.
+      expect(codeOnly).not.toMatch(/\bretry\b|retries|retrying|attempt|maxAttempts|backoff|fallback|sleep|setTimeout|setInterval|Promise\.race|AbortController|sqlite|postgres|redis|globalThis/i);
       // Registries are created by factories; no module-level Map/Set/array holds Tool state.
       expect(codeOnly).not.toMatch(/^(?:export\s+)?(?:const|let|var)\s+\w+\s*=\s*new\s+(?:Map|Set)\b/m);
       // No authorization verdict is cached or remembered.

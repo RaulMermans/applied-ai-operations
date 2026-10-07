@@ -36,13 +36,17 @@ export function buildToolSpec(overrides: Partial<ToolSpec> = {}): ToolSpec {
   };
 }
 
-/** A handler that records every context it receives and answers from `respond`. */
-export function spyHandler(respond: (context: ToolHandlerContext) => ToolHandlerResult | Promise<ToolHandlerResult> = lookupResponse): ToolHandler & { calls: ToolHandlerContext[] } {
+/** A handler that records every JSON context it receives (and, separately, any cancellation signal) and answers from `respond`. */
+export function spyHandler(respond: (context: ToolHandlerContext) => ToolHandlerResult | Promise<ToolHandlerResult> = lookupResponse): ToolHandler & { calls: ToolHandlerContext[]; signals: (AbortSignal | undefined)[] } {
   const calls: ToolHandlerContext[] = [];
+  const signals: (AbortSignal | undefined)[] = [];
   return {
     calls,
+    signals,
     async execute(context) {
-      calls.push(JSON.parse(JSON.stringify(context)) as ToolHandlerContext);
+      const { signal, ...json } = context;
+      calls.push(JSON.parse(JSON.stringify(json)) as ToolHandlerContext);
+      signals.push(signal);
       return respond(context);
     },
   };

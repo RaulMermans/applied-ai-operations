@@ -42,6 +42,7 @@ export {
   createToolNodeExecutor,
   ToolNodeConfigSchema,
   TOOL_NODE_FAILURE_NAMESPACE,
+  classifyToolFailure,
   type ToolNodeConfig,
   type ToolNodeDependencies,
   type ToolAuthorizationTarget,

@@ -58,13 +58,14 @@ describe("safe executor-failure protocol — Runtime handling", () => {
       nodeId: "check",
       step: 2,
       executorFailure: { namespace: "quality_gate", code: "THRESHOLD_NOT_MET" },
+      category: "EXECUTION", retryable: false, attempt: 1, maxAttempts: 1,
     });
     expect(result.execution?.run.status).toBe("FAILED");
     expect(result.execution?.run.currentNodeId).toBeUndefined();
     expect(result.execution?.nodeStatusesById).toEqual({ intake: "SUCCEEDED", check: "FAILED", final: "PENDING" });
     // Only intake's patch was applied; the failing node contributed nothing.
     expect(result.execution?.state).toEqual({ runId: "run.executor-failure", revision: 1, values: { input: "x", seen: true } });
-    expect(result.execution?.history.at(-1)).toEqual({ nodeId: "check", kind: "evaluator", step: 2, status: "FAILED", stateRevisionBefore: 1, stateRevisionAfter: 1 });
+    expect(result.execution?.history.at(-1)).toEqual({ nodeId: "check", kind: "evaluator", step: 2, status: "FAILED", stateRevisionBefore: 1, stateRevisionAfter: 1, attemptCount: 1, attemptFailures: [{ attempt: 1, category: "EXECUTION", causeCode: "THRESHOLD_NOT_MET" }] });
     expect(finalSpy).not.toHaveBeenCalled();
     expect(initialState.values).toEqual({ input: "x" });
     expect(result.latestSnapshot?.stateSnapshot.revision).toBe(1);
@@ -119,7 +120,7 @@ describe("safe executor-failure protocol — Runtime handling", () => {
     }).result;
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.failure).toEqual({ code: "NODE_EXECUTION_FAILED", message: 'Node "check" (kind "evaluator") threw during execution.', nodeId: "check", step: 2 });
+    expect(result.failure).toEqual({ code: "NODE_EXECUTION_FAILED", message: 'Node "check" (kind "evaluator") threw during execution.', nodeId: "check", step: 2, category: "INTERNAL", retryable: false, attempt: 1, maxAttempts: 1 });
     expect(result.failure).not.toHaveProperty("executorFailure");
     // Nothing is inferred from the exception, even when it *looks* like a structured failure.
     expect(JSON.stringify(result)).not.toMatch(/SECRET|example\.com|MODEL_ROUTE_NOT_FOUND/);

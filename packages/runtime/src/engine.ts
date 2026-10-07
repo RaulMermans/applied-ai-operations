@@ -2,8 +2,8 @@ import type { NodeId, RunRecord, RunState } from "@aao/contracts";
 import { createSystemClock, type RuntimeClock } from "./clock.js";
 import { captureExecutionSnapshot, validateSnapshotAgainstPlan, type RuntimeExecutionSnapshot } from "./execution-snapshot.js";
 import { initializeNodeStatuses, transitionNodeStatus, type NodeStatusMap } from "./node-lifecycle.js";
-import { validateNodeExecutionResult } from "./node-result-validation.js";
 import { runPreflight } from "./preflight.js";
+import { executeNodeAttempts, resolveReliability, type ResolvedReliability } from "./reliability.js";
 import { createRunRecord, setCurrentNodeId, transitionRunRecord } from "./run-lifecycle.js";
 import { validateRuntimeInput } from "./runtime-input-validation.js";
 import { applyStatePatch, cloneRunState } from "./state.js";
@@ -27,7 +27,8 @@ const DEFAULT_MAX_STEPS_ALLOWANCE = 5;
  * boundary. See `docs/architecture/runtime-state-management.md` and
  * ADR-010 for the full state model this function implements, and
  * `docs/architecture/runtime-v1.md` for what Runtime V1 deliberately does
- * not support yet (conditional routing, retries, persistence, durable resume).
+ * not support yet (conditional routing, persistence, durable resume). Each
+ * Node executes through the bounded Reliability Controller (ADR-018).
  */
 export async function executeWorkflow(request: ExecuteWorkflowRequest): Promise<WorkflowExecutionResult> {
   // The request itself may not be trustworthy enough to construct a Run at
@@ -39,6 +40,9 @@ export async function executeWorkflow(request: ExecuteWorkflowRequest): Promise<
   if (inputFailure) return { ok: false, failure: inputFailure };
 
   const { runId, plan, registry } = request;
+  // Trusted reliability configuration is validated against the plan before a Run exists, like any other input.
+  const resolved = resolveReliability(request.options, plan);
+  if (!resolved.ok) return { ok: false, failure: resolved.failure };
   const clock: RuntimeClock = request.options?.clock ?? createSystemClock();
   const maxSteps = request.options?.maxSteps ?? Object.keys(plan.nodesById).length + DEFAULT_MAX_STEPS_ALLOWANCE;
 
@@ -79,7 +83,7 @@ export async function executeWorkflow(request: ExecuteWorkflowRequest): Promise<
   const execution: RuntimeExecutionState = { run, state, nodeStatusesById, step, history };
   const latestSnapshot: RuntimeExecutionSnapshot = captureExecutionSnapshot(execution, clock.now());
 
-  return runLoop({ runId, plan, registry, clock, maxSteps, execution, latestSnapshot, currentNodeId });
+  return runLoop({ runId, plan, registry, clock, maxSteps, reliability: resolved.reliability, execution, latestSnapshot, currentNodeId });
 }
 
 /** Validated in-process continuation. The exact request is checked before consuming the waiting execution object. */
@@ -91,6 +95,8 @@ export async function continueWaitingWorkflow(request: ContinueWaitingWorkflowRe
   if (approval.approvalId !== wait.referenceId || approval.runId !== execution.run.runId || approval.nodeId !== wait.nodeId || approval.requestFingerprint !== wait.requestFingerprint || request.currentRequestFingerprint !== wait.requestFingerprint) return invalid("APPROVAL_REQUEST_MISMATCH");
   if (!["pending", "approved", "rejected", "expired", "cancelled"].includes(approval.status)) return invalid("INVALID_APPROVAL_CONTEXT");
   if (approval.status === "pending") return invalid("APPROVAL_STILL_PENDING");
+  const resolved = resolveReliability(request.options, plan);
+  if (!resolved.ok) return { ok: false, failure: resolved.failure, execution };
   const clock = request.options?.clock ?? createSystemClock();
   let snapshot: RuntimeExecutionSnapshot;
   try { snapshot = captureExecutionSnapshot(execution, clock.now()); }
@@ -105,20 +111,21 @@ export async function continueWaitingWorkflow(request: ContinueWaitingWorkflowRe
   execution.nodeStatusesById = transitionNodeStatus(execution.nodeStatusesById, wait.nodeId, approval.status === "approved" ? "SUCCEEDED" : terminal);
   execution.run = transitionRunRecord(execution.run, approval.status === "approved" ? "RUNNING" : terminal, clock.now());
   delete execution.wait;
-  execution.history = [...execution.history, { nodeId: node.id, kind: node.kind, step: execution.step, status: approval.status === "approved" ? "SUCCEEDED" : "FAILED", stateRevisionBefore: execution.state.revision, stateRevisionAfter: execution.state.revision }];
+  // attemptCount 1: the single attempt that requested the wait. Approval nodes cannot carry a retry policy, and continuation invokes no executor.
+  execution.history = [...execution.history, { nodeId: node.id, kind: node.kind, step: execution.step, status: approval.status === "approved" ? "SUCCEEDED" : "FAILED", stateRevisionBefore: execution.state.revision, stateRevisionAfter: execution.state.revision, attemptCount: 1 }];
   if (approval.status !== "approved") {
     execution.run = setCurrentNodeId(execution.run, undefined);
     const code = approval.status === "rejected" ? "APPROVAL_REJECTED" : approval.status === "expired" ? "APPROVAL_EXPIRED" : "APPROVAL_CANCELLED";
-    return { ok: false, failure: { code, message: code, nodeId: node.id }, execution, latestSnapshot: captureExecutionSnapshot(execution, clock.now()) };
+    return { ok: false, failure: { code, message: code, nodeId: node.id, category: "APPROVAL", retryable: false }, execution, latestSnapshot: captureExecutionSnapshot(execution, clock.now()) };
   }
   execution.nodeStatusesById = transitionNodeStatus(execution.nodeStatusesById, next!, "READY");
   execution.run = setCurrentNodeId(execution.run, next);
   const latestSnapshot = captureExecutionSnapshot(execution, clock.now());
-  return runLoop({ runId: execution.run.runId, plan, registry, clock, maxSteps: request.options?.maxSteps ?? Object.keys(plan.nodesById).length + DEFAULT_MAX_STEPS_ALLOWANCE, execution, latestSnapshot, currentNodeId: next! });
+  return runLoop({ runId: execution.run.runId, plan, registry, clock, maxSteps: request.options?.maxSteps ?? Object.keys(plan.nodesById).length + DEFAULT_MAX_STEPS_ALLOWANCE, reliability: resolved.reliability, execution, latestSnapshot, currentNodeId: next! });
 }
 
-async function runLoop(params: { runId: ExecuteWorkflowRequest["runId"]; plan: ExecuteWorkflowRequest["plan"]; registry: ExecuteWorkflowRequest["registry"]; clock: RuntimeClock; maxSteps: number; execution: RuntimeExecutionState; latestSnapshot: RuntimeExecutionSnapshot; currentNodeId: NodeId }): Promise<WorkflowExecutionResult> {
-  const { runId, plan, registry, clock, maxSteps } = params;
+async function runLoop(params: { runId: ExecuteWorkflowRequest["runId"]; plan: ExecuteWorkflowRequest["plan"]; registry: ExecuteWorkflowRequest["registry"]; clock: RuntimeClock; maxSteps: number; reliability: ResolvedReliability; execution: RuntimeExecutionState; latestSnapshot: RuntimeExecutionSnapshot; currentNodeId: NodeId }): Promise<WorkflowExecutionResult> {
+  const { runId, plan, registry, clock, maxSteps, reliability } = params;
   let { execution, latestSnapshot, currentNodeId } = params;
   let { run, state, nodeStatusesById, step, history } = execution;
   const terminalNodeIds = new Set(plan.terminalNodeIds);
@@ -161,63 +168,32 @@ async function runLoop(params: { runId: ExecuteWorkflowRequest["runId"]; plan: E
 
     nodeStatusesById = transitionNodeStatus(nodeStatusesById, node.id, "RUNNING");
 
-    let rawResult: unknown;
-    try {
-      rawResult = await executor.execute({ runId, node: cloneNodeDefinition(node), state: cloneRunState(state), step });
-    } catch {
-      // Deliberately generic: the thrown value (Error.message, stack, or any
-      // other shape) is never exposed here — see engine-safety tests. Only
-      // safe, deterministic metadata reaches the public failure.
+    // Retries are internal to this one RUNNING lifecycle: no READY/RUNNING
+    // bounce, no RETRYING Run status, no snapshot mid-attempt. The controller
+    // returns at most one accepted outcome; only this loop commits it.
+    const outcome = await executeNodeAttempts({ runId, node, executor, state, step, policy: reliability.policyFor(node.id), sleeper: reliability.sleeper });
+    const attemptEvidence = { attemptCount: outcome.attemptCount, ...(outcome.attemptFailures.length > 0 ? { attemptFailures: outcome.attemptFailures } : {}) };
+
+    if (outcome.kind === "failure") {
+      // No state patch is ever applied from a failed, invalid, or timed-out
+      // attempt — the revision before/after this record are identical.
       nodeStatusesById = transitionNodeStatus(nodeStatusesById, node.id, "FAILED");
-      history = [...history, { nodeId: node.id, kind: node.kind, step, status: "FAILED", stateRevisionBefore: state.revision, stateRevisionAfter: state.revision }];
+      history = [...history, { nodeId: node.id, kind: node.kind, step, status: "FAILED", stateRevisionBefore: state.revision, stateRevisionAfter: state.revision, ...attemptEvidence }];
       execution = { run, state, nodeStatusesById, step, history };
-      return fail({ code: "NODE_EXECUTION_FAILED", message: `Node "${node.id}" (kind "${node.kind}") threw during execution.`, nodeId: node.id, step });
+      return fail(outcome.failure);
     }
 
-    const validated = validateNodeExecutionResult(rawResult);
-    if (!validated.ok) {
-      // No state patch is ever applied from a result that failed validation
-      // — the revision before/after this record are identical.
-      nodeStatusesById = transitionNodeStatus(nodeStatusesById, node.id, "FAILED");
-      history = [...history, { nodeId: node.id, kind: node.kind, step, status: "FAILED", stateRevisionBefore: state.revision, stateRevisionAfter: state.revision }];
-      execution = { run, state, nodeStatusesById, step, history };
-      return fail({ code: validated.code, message: `Node "${node.id}": ${validated.message}`, nodeId: node.id, step });
-    }
-
-    if (!validated.result.ok) {
-      // An expected, executor-reported failure: the result was well-formed,
-      // so only its bounded { namespace, code } is carried through — as
-      // opaque subordinate causality the Runtime never interprets. No patch
-      // is applied, exactly like a throw.
-      const executorFailure = validated.result.failure;
-      nodeStatusesById = transitionNodeStatus(nodeStatusesById, node.id, "FAILED");
-      history = [...history, { nodeId: node.id, kind: node.kind, step, status: "FAILED", stateRevisionBefore: state.revision, stateRevisionAfter: state.revision }];
-      execution = { run, state, nodeStatusesById, step, history };
-      return fail({
-        code: "NODE_EXECUTION_FAILED",
-        message: `Node "${node.id}" (kind "${node.kind}") reported an executor failure.`,
-        nodeId: node.id,
-        step,
-        executorFailure: { ...executorFailure },
-      });
-    }
-
-    if ("wait" in validated.result) {
-      if (node.kind !== "approval") {
-        nodeStatusesById = transitionNodeStatus(nodeStatusesById, node.id, "FAILED");
-        history = [...history, { nodeId: node.id, kind: node.kind, step, status: "FAILED", stateRevisionBefore: state.revision, stateRevisionAfter: state.revision }];
-        execution = { run, state, nodeStatusesById, step, history };
-        return fail({ code: "INVALID_NODE_RESULT", message: "Only an approval node may request an approval wait.", nodeId: node.id, step });
-      }
+    if (outcome.kind === "wait") {
       nodeStatusesById = transitionNodeStatus(nodeStatusesById, node.id, "WAITING");
       run = transitionRunRecord(run, "WAITING_FOR_APPROVAL", clock.now());
-      execution = { run, state, nodeStatusesById, step, history, wait: { ...validated.result.wait, nodeId: node.id } };
+      execution = { run, state, nodeStatusesById, step, history, wait: { ...outcome.wait, nodeId: node.id } };
       latestSnapshot = captureExecutionSnapshot(execution, clock.now());
       return { ok: true, execution, latestSnapshot };
     }
 
     const stateRevisionBefore = state.revision;
-    state = applyStatePatch(state, validated.result.statePatch);
+    // Commit-on-success: exactly one accepted attempt's patch, applied once.
+    state = applyStatePatch(state, outcome.statePatch);
     const stateRevisionAfter = state.revision;
 
     nodeStatusesById = transitionNodeStatus(nodeStatusesById, node.id, "SUCCEEDED");
@@ -228,9 +204,10 @@ async function runLoop(params: { runId: ExecuteWorkflowRequest["runId"]; plan: E
         kind: node.kind,
         step,
         status: "SUCCEEDED",
-        ...(validated.result.output !== undefined ? { output: validated.result.output } : {}),
+        ...(outcome.output !== undefined ? { output: outcome.output } : {}),
         stateRevisionBefore,
         stateRevisionAfter,
+        ...attemptEvidence,
       },
     ];
 
@@ -238,7 +215,7 @@ async function runLoop(params: { runId: ExecuteWorkflowRequest["runId"]; plan: E
       run = setCurrentNodeId(transitionRunRecord(run, "COMPLETED", clock.now()), undefined);
       execution = { run, state, nodeStatusesById, step, history };
       latestSnapshot = captureExecutionSnapshot(execution, clock.now());
-      const output = validated.result.output;
+      const output = outcome.output;
       return { ok: true, execution, latestSnapshot, ...(output !== undefined ? { output } : {}) };
     }
 
@@ -270,8 +247,4 @@ async function runLoop(params: { runId: ExecuteWorkflowRequest["runId"]; plan: E
     execution = { run, state, nodeStatusesById, step, history };
     latestSnapshot = captureExecutionSnapshot(execution, clock.now());
   }
-}
-
-function cloneNodeDefinition<T>(node: T): T {
-  return JSON.parse(JSON.stringify(node)) as T;
 }

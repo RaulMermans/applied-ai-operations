@@ -20,12 +20,14 @@ export interface ExecuteToolParams extends ToolRuntimeDependencies {
    * It is a separate parameter, never read from `request.input`.
    */
   authorizationContext: AuthorizationContext;
+  /** Optional cooperative cancellation forwarded to the handler; never changes how a result is validated. */
+  signal?: AbortSignal;
 }
 
 /** The only handler result shapes accepted. Strict: any extra field (message, stack, details, headers, ...) is rejected, never carried. */
 const HandlerResultSchema = z.discriminatedUnion("ok", [
   z.object({ ok: z.literal(true), output: z.unknown() }).strict(),
-  z.object({ ok: z.literal(false), code: HandlerFailureCodeSchema }).strict(),
+  z.object({ ok: z.literal(false), code: HandlerFailureCodeSchema, retryable: z.literal(true).optional() }).strict(),
 ]);
 
 /**
@@ -106,7 +108,7 @@ export async function executeTool(params: ExecuteToolParams): Promise<ToolExecut
 
   let raw: unknown;
   try {
-    raw = await tool.handler.execute({ toolExecutionId, tool: { ...toolRef }, input: clone(request.input) });
+    raw = await tool.handler.execute({ toolExecutionId, tool: { ...toolRef }, input: clone(request.input), ...(params.signal ? { signal: params.signal } : {}) });
   } catch {
     // Never expose or parse the thrown value (message, stack, URL, token, ...).
     return failWith({ code: "TOOL_EXECUTION_FAILED", message: `Tool "${toolRef.id}" version "${toolRef.version}" handler failed.` });
@@ -121,6 +123,7 @@ export async function executeTool(params: ExecuteToolParams): Promise<ToolExecut
       code: "TOOL_EXECUTION_FAILED",
       message: `Tool "${toolRef.id}" version "${toolRef.version}" handler reported a failure.`,
       handlerFailureCode: shape.data.code,
+      ...(shape.data.retryable ? { handlerFailureRetryable: true as const } : {}),
     });
   }
   const output = shape.data.output;

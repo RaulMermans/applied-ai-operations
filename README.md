@@ -33,15 +33,15 @@ Not yet implemented:
 
 - Agent capabilities beyond bounded reasoning. Agents have NO tool use, NO external actions, NO MCP, NO delegation, NO long-term memory, NO durable Agent recovery, NO automatic retries, and NO Reflexion — they are bounded reasoning components, not autonomous workers
 - evaluator node execution
-- Tools requiring `external_side_effect`, `destructive`, or `sensitive_data` (refused by the Tool Runtime), Tool retries, timeouts/cancellation, idempotency, rollback, and durable Tool recovery
+- Tools requiring `external_side_effect`, `destructive`, or `sensitive_data` (refused by the Tool Runtime), retries of `write_draft` or side-effecting Tools, idempotency, rollback, and durable Tool recovery
 - general Integration Fabric, enterprise provider integrations, MCP HTTP/resources/prompts/sampling, OAuth, and credentials
 - authentication, IAM/SSO, and durable authorization state (the host attests the principal; governance configuration is in memory)
 - a dynamic policy language and automated approval-policy exceptions
 - Agent Tool calls
-- model retries, fallback, adaptive/cost routing, streaming, prompt templating, or any configured live model provider/credentials
+- model or Agent retries, fallback, adaptive/cost routing, streaming, prompt templating, or any configured live model provider/credentials
 - conditional routing evaluation
 - integrations (Integration Fabric)
-- persistence, durability, retries, crash recovery, or retry execution
+- persistence, durability, durable retries, exactly-once execution, crash recovery, circuit breakers, or distributed retry queues
 - observability/tracing
 - runtime evals
 - Control Center UI
@@ -83,3 +83,7 @@ No deployment target, cloud infrastructure, live model provider, or enterprise M
 ## Human approval boundary
 
 AAO workflows can pause at an exact approval request, expose a structured pending Approval, and continue only after an eligible host-attested user resolves it. This is in-process only; pending approvals and snapshots are not durable. Tool Runtime still supports only `read_only` and `write_draft`; approval does not enable external side effects, destructive operations, or sensitive-data handling. See [approval engine](docs/architecture/approval-engine.md) and [ADR-017](docs/decisions/ADR-017-human-approval-and-runtime-waitpoints.md).
+
+## Runtime reliability
+
+AAO provides bounded Runtime reliability with explicit retry policies, structured failure classification, attempt timeouts, retry-safety controls, and protection against late timed-out results mutating authoritative execution state. Retries are off by default (one attempt). They require trusted host configuration (`maxAttempts ≤ 3`), a structured retryable failure, and an operation explicitly declared retry-safe. Today that means `read_only` Tools registered as safe, or custom executors that declare it. Reliability is process-local: there is no durable recovery, durable idempotency, exactly-once execution, or side-effect retry. See [reliability runtime](docs/architecture/reliability-runtime.md) and [ADR-018](docs/decisions/ADR-018-runtime-reliability-and-bounded-retries.md).

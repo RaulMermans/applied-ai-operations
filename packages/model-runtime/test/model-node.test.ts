@@ -114,6 +114,7 @@ describe("model node — execution", () => {
       nodeId: "classify",
       step: 2,
       executorFailure: { namespace: "model", code: "INVALID_MODEL_REQUEST" },
+      category: "EXECUTION", retryable: false, attempt: 1, maxAttempts: 1,
     });
     expect(adapter.calls).toEqual([]);
     expect(result.execution?.state).toEqual(badState);
@@ -141,6 +142,7 @@ describe("model node — execution", () => {
       nodeId: "classify",
       step: 2,
       executorFailure: { namespace: "model", code: "MODEL_ROUTE_NOT_FOUND" },
+      category: "EXECUTION", retryable: false, attempt: 1, maxAttempts: 1,
     });
     expect(adapter.calls).toEqual([]);
     expect(result.execution?.run.status).toBe("FAILED");

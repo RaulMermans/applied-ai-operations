@@ -50,7 +50,7 @@ Runtime-managed patch     success: { [resultStateKey]: AgentResult } → one rev
 
 Workflow-owned Agent execution ids are deterministically derived from Run + Node identity into a bounded canonical identifier: `agent.<sha256 hex>` over the unambiguous JSON array `[domain, runId, nodeId]` (70 characters regardless of how long the ≤256-character Run/Node ids are, so a workflow that passes preflight can never fail on an over-long derived id, and the `.i<n>` invocation suffix always fits). No randomness, clock, or counter. Direct `executeAgent` callers still supply their own `agentExecutionId`.
 
-Runtime V1 currently assumes one Agent execution attempt per Agent Node per Run. Future retry/resume semantics will add an explicit attempt dimension to this derivation.
+The Agent executor declares no retry safety, so the Runtime never retries an Agent Node (ADR-018): an Agent may orchestrate several model calls, and safe classification cannot yet be guaranteed. One Agent execution attempt per Agent Node per Run therefore still holds.
 
 The Agent Node is **atomic** to the parent Runtime: `READY → RUNNING → SUCCEEDED | FAILED`. Agent iterations are not workflow steps, do not increment `RunState.revision`, never mutate workflow state, and never create a safe workflow snapshot mid-Agent. Without an explicitly registered agent executor, an agent node fails preflight with `NODE_EXECUTOR_NOT_FOUND`.
 

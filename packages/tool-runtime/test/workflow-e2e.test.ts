@@ -104,6 +104,7 @@ describe("Tool workflow E2E: YAML → compiler → Runtime → Tool Node → Too
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(handler.calls).toEqual([{ toolExecutionId: deriveToolExecutionId("run.tool.ok", "lookup"), tool: { ...LOOKUP_REF }, input: { query: "alpha" } }]);
+    expect(handler.signals).toEqual([expect.any(AbortSignal)]);
     expect(nodeExecutions).toEqual(["lookup", "final"]);
     expect(result.execution.run.status).toBe("COMPLETED");
     expect(result.execution.nodeStatusesById).toEqual({ lookup: "SUCCEEDED", final: "SUCCEEDED" });
@@ -132,7 +133,8 @@ describe("Tool workflow E2E: YAML → compiler → Runtime → Tool Node → Too
       message: 'Node "lookup" (kind "tool") reported an executor failure.',
       nodeId: "lookup",
       step: 1,
-      executorFailure: { namespace: "tool", code: "TOOL_INPUT_SCHEMA_MISMATCH" },
+      executorFailure: { namespace: "tool", code: "TOOL_INPUT_SCHEMA_MISMATCH", category: "VALIDATION" },
+      category: "VALIDATION", retryable: false, attempt: 1, maxAttempts: 1,
     });
     expect(result.execution?.run.status).toBe("FAILED");
     expect(result.execution?.nodeStatusesById).toEqual({ lookup: "FAILED", final: "PENDING" });
@@ -148,11 +150,11 @@ describe("Tool workflow E2E: YAML → compiler → Runtime → Tool Node → Too
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(handler.calls).toHaveLength(1);
-    expect(result.failure).toMatchObject({ code: "NODE_EXECUTION_FAILED", nodeId: "lookup", executorFailure: { namespace: "tool", code: "TOOL_OUTPUT_SCHEMA_MISMATCH" } });
+    expect(result.failure).toMatchObject({ code: "NODE_EXECUTION_FAILED", nodeId: "lookup", executorFailure: { namespace: "tool", code: "TOOL_OUTPUT_SCHEMA_MISMATCH", category: "VALIDATION" }, category: "VALIDATION", retryable: false, attempt: 1, maxAttempts: 1 });
     expect(result.execution?.run.status).toBe("FAILED");
     expect(result.execution?.nodeStatusesById).toEqual({ lookup: "FAILED", final: "PENDING" });
     expect(result.execution?.state).toEqual(initialState);
-    expect(result.execution?.history).toEqual([{ nodeId: "lookup", kind: "tool", step: 1, status: "FAILED", stateRevisionBefore: 0, stateRevisionAfter: 0 }]);
+    expect(result.execution?.history).toMatchObject([{ nodeId: "lookup", kind: "tool", step: 1, status: "FAILED", stateRevisionBefore: 0, stateRevisionAfter: 0, attemptCount: 1 }]);
     expect(validateSnapshotAgainstPlan(result.latestSnapshot, plan)).toBeUndefined();
     expect(JSON.stringify(result)).not.toContain("MALFORMED-OUTPUT");
   });
@@ -164,8 +166,9 @@ describe("Tool workflow E2E: YAML → compiler → Runtime → Tool Node → Too
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(handler.calls).toHaveLength(1);
-    // The generic Runtime carries only { namespace, code }: it never learns Tool handler semantics.
-    expect(result.failure.executorFailure).toEqual({ namespace: "tool", code: "TOOL_EXECUTION_FAILED" });
+    // The generic Runtime carries only { namespace, code, category }: it never learns Tool handler semantics.
+    // A handler failure without an explicit retryable flag is EXECUTION — unknown failures fail closed.
+    expect(result.failure.executorFailure).toEqual({ namespace: "tool", code: "TOOL_EXECUTION_FAILED", category: "EXECUTION" });
     expect(result.execution?.nodeStatusesById).toEqual({ lookup: "FAILED", final: "PENDING" });
     expect(result.execution?.state).toEqual(initialState);
     expect(validateSnapshotAgainstPlan(result.latestSnapshot, plan)).toBeUndefined();
@@ -187,7 +190,8 @@ describe("Tool workflow E2E: YAML → compiler → Runtime → Tool Node → Too
       message: 'Node "lookup" (kind "tool") reported an executor failure.',
       nodeId: "lookup",
       step: 1,
-      executorFailure: { namespace: "tool", code: "TOOL_EXECUTION_FAILED" },
+      executorFailure: { namespace: "tool", code: "TOOL_EXECUTION_FAILED", category: "EXECUTION" },
+      category: "EXECUTION", retryable: false, attempt: 1, maxAttempts: 1,
     });
     expect(result.execution?.state).toEqual(initialState);
     expect(JSON.stringify(result)).not.toMatch(/secret|token|internal\.example|stack|Error/i);
@@ -253,14 +257,15 @@ describe("Tool workflow E2E: YAML → compiler → Runtime → Tool Node → Too
       message: 'Node "lookup" (kind "tool") reported an executor failure.',
       nodeId: "lookup",
       step: 1,
-      executorFailure: { namespace: "tool", code: "TOOL_AUTHORIZATION_DENIED" },
+      executorFailure: { namespace: "tool", code: "TOOL_AUTHORIZATION_DENIED", category: "AUTHORIZATION" },
+      category: "AUTHORIZATION", retryable: false, attempt: 1, maxAttempts: 1,
     });
     // The generic Runtime never sees the authorization reason.
     expect(JSON.stringify(result)).not.toContain("PERMISSION_NOT_GRANTED");
     expect(result.execution?.run.status).toBe("FAILED");
     expect(result.execution?.nodeStatusesById).toEqual({ lookup: "FAILED", final: "PENDING" });
     expect(result.execution?.state).toEqual(initialState);
-    expect(result.execution?.history).toEqual([{ nodeId: "lookup", kind: "tool", step: 1, status: "FAILED", stateRevisionBefore: 0, stateRevisionAfter: 0 }]);
+    expect(result.execution?.history).toMatchObject([{ nodeId: "lookup", kind: "tool", step: 1, status: "FAILED", stateRevisionBefore: 0, stateRevisionAfter: 0, attemptCount: 1 }]);
     expect(result.latestSnapshot?.stateSnapshot).toMatchObject({ revision: 0 });
     expect(validateSnapshotAgainstPlan(result.latestSnapshot, plan)).toBeUndefined();
     expect(RuntimeExecutionSnapshotSchema.parse(JSON.parse(JSON.stringify(result.latestSnapshot)))).toEqual(result.latestSnapshot);

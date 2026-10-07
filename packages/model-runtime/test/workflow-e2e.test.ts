@@ -148,6 +148,7 @@ describe("AI workflow E2E: YAML → compiler → managed Runtime → model node 
       nodeId: "answer",
       step: 1,
       executorFailure: { namespace: "model", code: "MODEL_INVOCATION_FAILED" },
+      category: "EXECUTION", retryable: false, attempt: 1, maxAttempts: 1,
     });
     expect(result.execution?.run.status).toBe("FAILED");
     expect(result.execution?.nodeStatusesById).toEqual({ answer: "FAILED", final: "PENDING" });

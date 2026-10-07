@@ -127,6 +127,7 @@ describe("agent node — execution", () => {
       nodeId: "research",
       step: 2,
       executorFailure: { namespace: "agent", code: "INVALID_AGENT_REQUEST" },
+      category: "EXECUTION", retryable: false, attempt: 1, maxAttempts: 1,
     });
     expect(world.primary.calls).toEqual([]);
     expect(result.execution?.state).toEqual(badState);

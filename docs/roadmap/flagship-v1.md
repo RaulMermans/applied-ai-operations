@@ -44,14 +44,15 @@ Complete: Tool Registry, safe Tool execution, deterministic Authorization, and t
 | Sprint / outcome | Scope | Status |
 | --- | --- | --- |
 | Sprint 11 — Actor, Role & Policy Governance | Host-attested actors, explicit role bindings, deterministic deny policies, resolved authority feeding existing Authorization. | Complete (`SPRINT_11_GOVERNANCE_MODEL_COMPLETE`) — see [ADR-016](../decisions/ADR-016-actor-role-policy-governance.md) |
-| Sprint 12 — Approval Engine | Process-local exact-request human approval waitpoints, eligible resolver checks, and validated in-process continuation; no real external effects or durable recovery. | Complete (`SPRINT_12_APPROVAL_ENGINE_COMPLETE`) — see [ADR-017](../decisions/ADR-017-human-approval-and-runtime-waitpoints.md) |
+| Sprint 12 — Approval Engine | Process-local exact-request human approval waitpoints, eligible resolver checks (trusted identity + required role membership, corrected in the Sprint 13 closure gate), and validated in-process continuation; no real external effects or durable recovery. | Complete (`SPRINT_12_APPROVAL_ENGINE_COMPLETE`) — see [ADR-017](../decisions/ADR-017-human-approval-and-runtime-waitpoints.md) |
+| Sprint 13 — Reliability Runtime | One Runtime-owned Reliability Controller: trusted hard-capped per-Node policies (default one attempt), a single structured failure taxonomy, explicit retry safety (only `read_only` Tools declared safe), per-attempt timeouts with cooperative `AbortSignal`, commit-on-success, late-result protection, and bounded attempt evidence. Process-local; no durable retries, idempotency, side-effect retry, tracing, or persistence. | Complete (`SPRINT_13_RELIABILITY_RUNTIME_COMPLETE`) — see [ADR-018](../decisions/ADR-018-runtime-reliability-and-bounded-retries.md) |
 
 ## Forward roadmap
 
 | Sprint | Outcome | Status |
 | --- | --- | --- |
-| 13 | Reliability Runtime | Planned |
-| 14 | Durable Execution | Planned |
+| 13 | Reliability Runtime | Complete |
+| 14 | Durable Execution — persistent Runs, checkpoints, recovery and resume after restart, durable approval state, durable retry accounting, idempotency / replay protection | Next |
 | 15 | Trace Runtime | Planned |
 | 16 | Metrics & Audit | Planned |
 | 17 | Evaluation Runtime | Planned |

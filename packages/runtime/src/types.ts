@@ -1,4 +1,4 @@
-import type { JsonObject, JsonValue, NodeDefinition, NodeId, NodeKind, RunId, RunRecord, RunState } from "@aao/contracts";
+import type { FailureCategory, JsonObject, JsonValue, NodeDefinition, NodeId, NodeKind, ReliabilityPolicy, RetrySafety, RunId, RunRecord, RunState } from "@aao/contracts";
 import type { CompiledWorkflowPlan } from "@aao/workflow-dsl";
 import type { RuntimeClock } from "./clock.js";
 import type { NodeStatusMap } from "./node-lifecycle.js";
@@ -23,6 +23,13 @@ export interface NodeExecutor {
    * a failed validation, never propagated.
    */
   validateConfig?(context: NodePreflightContext): NodePreflightResult;
+  /**
+   * Optional, trusted, deterministic retry-safety declaration for one node
+   * (ADR-018). Absent, thrown, or anything other than `"safe"` means
+   * `"unsafe"`: the Runtime never retries the node, whatever the policy.
+   * Never derived from model output, workflow state, or failure messages.
+   */
+  retrySafety?(context: NodePreflightContext): RetrySafety;
   execute(context: NodeExecutionContext): Promise<NodeExecutionResult>;
 }
 
@@ -47,6 +54,10 @@ export interface NodeExecutionContext {
   node: NodeDefinition;
   state: RunState;
   step: number;
+  /** 1-based Runtime attempt number within this Node execution. Every attempt receives the same authoritative input state. */
+  attempt: number;
+  /** Aborted when the Runtime abandons this attempt (timeout). Cooperative and best-effort: a late result is ignored either way. */
+  signal: AbortSignal;
 }
 
 /** Serializable coordination metadata; the RunRecord remains lifecycle truth. */
@@ -70,6 +81,11 @@ export interface RuntimeWaitState {
 export interface NodeExecutorFailure {
   namespace: string;
   code: string;
+  /**
+   * Optional structured classification from the trusted executor. Absent
+   * means `EXECUTION` (non-retryable): unknown failures fail closed.
+   */
+  category?: FailureCategory;
 }
 
 /**
@@ -123,6 +139,26 @@ export interface RuntimeOptions {
    * deterministic one so lifecycle timestamps are assertable.
    */
   clock?: RuntimeClock;
+  /**
+   * Trusted, host-supplied reliability configuration (ADR-018). Workflow
+   * source, workflow state, and executor output can never reach it. Nodes
+   * without a policy get the default single attempt.
+   */
+  reliability?: RuntimeReliabilityOptions;
+  /** The Runtime's explicit delay boundary for timeouts and retry delays. Defaults to `createSystemSleeper()`; tests inject a deterministic one. */
+  sleeper?: RuntimeSleeper;
+}
+
+export interface RuntimeReliabilityOptions {
+  policiesByNodeId?: Record<NodeId, ReliabilityPolicy>;
+}
+
+/**
+ * Resolves after `ms`, or promptly once `signal` aborts. The Runtime always
+ * aborts a timer it no longer needs, so no timer outlives its attempt.
+ */
+export interface RuntimeSleeper {
+  sleep(ms: number, signal?: AbortSignal): Promise<void>;
 }
 
 /**
@@ -170,6 +206,17 @@ export interface NodeExecutionRecord {
   output?: JsonValue;
   stateRevisionBefore: number;
   stateRevisionAfter: number;
+  /** Executor invocations made for this Node execution (Runtime metadata, never business state). */
+  attemptCount: number;
+  /** One bounded entry per failed attempt, in order; absent when no attempt failed. */
+  attemptFailures?: NodeAttemptFailure[];
+}
+
+export interface NodeAttemptFailure {
+  attempt: number;
+  category: FailureCategory;
+  /** The attempt's executor failure code, or the Runtime failure code when no executor code exists. */
+  causeCode: string;
 }
 
 /**
@@ -205,6 +252,8 @@ export type RuntimeFailureCode =
   | "INVALID_NODE_RESULT"
   | "INVALID_STATE_PATCH"
   | "MAX_STEPS_EXCEEDED"
+  | "NODE_ATTEMPT_TIMEOUT"
+  | "NODE_RETRY_EXHAUSTED"
   | "INVALID_EXECUTION_SNAPSHOT"
   | "INVALID_APPROVAL_CONTEXT"
   | "APPROVAL_STILL_PENDING"
@@ -226,6 +275,13 @@ export interface RuntimeFailure {
    * "MODEL_ROUTE_NOT_FOUND" }`). Never present for a thrown executor.
    */
   executorFailure?: NodeExecutorFailure;
+  /** Reliability envelope, present on every Node execution failure. `retryable` describes the failure's nature, not whether a retry occurred. */
+  category?: FailureCategory;
+  retryable?: boolean;
+  attempt?: number;
+  maxAttempts?: number;
+  /** On `NODE_RETRY_EXHAUSTED` only: the last attempt's bounded underlying code. */
+  causeCode?: string;
 }
 
 /**

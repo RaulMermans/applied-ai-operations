@@ -24,7 +24,7 @@ flowchart TB
 
 ## Canonical domain contracts
 
-Company configuration supplies actors, roles, bindings, and deny policies to `@aao/governance`. Its deterministic resolver turns host-attested identity into effective authority. Existing `@aao/authorization` checks requested permissions and the Agent ceiling; `@aao/tool-runtime` enforces runtime support and executes supported Tools. See [governance](docs/architecture/governance.md) and [ADR-016](docs/decisions/ADR-016-actor-role-policy-governance.md). Approval is a separate, process-local gate after Governance and Authorization (ADR-017); it never grants authority.
+Company configuration supplies actors, roles, bindings, and deny policies to `@aao/governance`. Its deterministic resolver turns host-attested identity into effective authority. Existing `@aao/authorization` checks requested permissions and the Agent ceiling; `@aao/tool-runtime` enforces runtime support and executes supported Tools. See [governance](docs/architecture/governance.md) and [ADR-016](docs/decisions/ADR-016-actor-role-policy-governance.md). Approval is a separate, process-local gate after Governance and Authorization (ADR-017); it never grants authority. Approver eligibility is trusted identity plus required-role membership, not possession of the action's permissions.
 
 `@aao/contracts` (`packages/contracts`) is the canonical, framework-neutral, vendor-neutral semantic boundary for AAO: runtime-validatable Zod schemas, with TypeScript types inferred from them, for Workflow, Node, Edge, Run, State, Checkpoint, Agent, Skill, Model Policy, Tool, Capability, Permission, Policy Decision, Approval, Eval, Trace, Artifact, Capability Pack references, and Company Configuration. The dependency direction is one-way:
 
@@ -71,11 +71,11 @@ Node Registry
 Registered Node Executor (trusted, code-registered — never authored by workflow source)
 ```
 
-Runtime V1 executes only unconditional routing with explicitly registered executors; conditional workflows and node kinds without a registered executor (`evaluator` — and `model`/`agent`/`tool` unless the caller registers the Model Runtime's/Agent Runtime's/Tool Runtime's executor) fail a deterministic preflight check before any node executes, rather than partially executing. See [ADR-009](docs/decisions/ADR-009-node-registry-and-runtime-v1.md) and [runtime V1](docs/architecture/runtime-v1.md) for the full pipeline, state semantics, and failure taxonomy, and what remains deliberately deferred (conditional routing, evaluator execution, retries, persistence, durability, parallel execution).
+Runtime V1 executes only unconditional routing with explicitly registered executors; conditional workflows and node kinds without a registered executor (`evaluator` — and `model`/`agent`/`tool` unless the caller registers the Model Runtime's/Agent Runtime's/Tool Runtime's executor) fail a deterministic preflight check before any node executes, rather than partially executing. See [ADR-009](docs/decisions/ADR-009-node-registry-and-runtime-v1.md) and [runtime V1](docs/architecture/runtime-v1.md) for the full pipeline, state semantics, and failure taxonomy, and what remains deliberately deferred (conditional routing, evaluator execution, persistence, durability, parallel execution). Bounded in-process retries and attempt timeouts were added in Sprint 13; see below.
 
 ## Managed runtime state and lifecycle
 
-`@aao/runtime` also maintains one authoritative representation of execution state at every safe boundary: an authoritative Run lifecycle (`RunRecord`), an authoritative Node lifecycle (`NodeStatusMap`), revisioned `RunState`, and a safe, in-memory `RuntimeExecutionSnapshot` — never a durable checkpoint. See [ADR-010](docs/decisions/ADR-010-managed-runtime-state-and-lifecycle.md) and [runtime state management](docs/architecture/runtime-state-management.md) for the full model and what remains deliberately deferred (durable resume, persistence, retry execution, tracing).
+`@aao/runtime` also maintains one authoritative representation of execution state at every safe boundary: an authoritative Run lifecycle (`RunRecord`), an authoritative Node lifecycle (`NodeStatusMap`), revisioned `RunState`, and a safe, in-memory `RuntimeExecutionSnapshot` — never a durable checkpoint. See [ADR-010](docs/decisions/ADR-010-managed-runtime-state-and-lifecycle.md) and [runtime state management](docs/architecture/runtime-state-management.md) for the full model and what remains deliberately deferred (durable resume, persistence, durable retry, tracing).
 
 ## Model Runtime and capability routing
 
@@ -108,7 +108,7 @@ It reuses canonical `AgentSpec` plus a runtime binding (instructions, `maxIterat
 ToolExecutionRequest → Tool Registry → permission support gate → authorization → inputSchema → trusted handler → output JSON safety + outputSchema → ToolResult
 ```
 
-It reuses canonical `ToolSpec` plus a trusted handler binding, an explicit version-exact Tool Registry that compiles both JSON Schemas with strict Ajv at registration (fail closed), and one `executeTool` path that invokes a handler at most once (no retry, fallback, or timeout race), redacts thrown errors, and preserves only a bounded handler failure code. Tool Runtime V1 executes only Tools whose permission classes are all `read_only`/`write_draft`; `external_side_effect`, `destructive`, and `sensitive_data` fail closed, including in Tool Node preflight. That gate is not authorization: registered ≠ supported ≠ authorized. The public Tool Registry is inspection-only, so `executeTool` is the only path to a registered handler. The Tool Runtime remains MCP-unaware; the connector below supplies normal handlers. There is no general Integration Fabric, credentials, Agent Tool use, or persistence. See [ADR-013](docs/decisions/ADR-013-tool-registry-and-safe-execution-boundary.md) and [tool runtime](docs/architecture/tool-runtime.md).
+It reuses canonical `ToolSpec` plus a trusted handler binding, an explicit version-exact Tool Registry that compiles both JSON Schemas with strict Ajv at registration (fail closed), and one `executeTool` path that invokes a handler at most once per call (no retry loop, fallback, or timeout race inside Tool Runtime; Runtime-owned retries are below), redacts thrown errors, and preserves only a bounded handler failure code. Tool Runtime V1 executes only Tools whose permission classes are all `read_only`/`write_draft`; `external_side_effect`, `destructive`, and `sensitive_data` fail closed, including in Tool Node preflight. That gate is not authorization: registered ≠ supported ≠ authorized. The public Tool Registry is inspection-only, so `executeTool` is the only path to a registered handler. The Tool Runtime remains MCP-unaware; the connector below supplies normal handlers. There is no general Integration Fabric, credentials, Agent Tool use, or persistence. See [ADR-013](docs/decisions/ADR-013-tool-registry-and-safe-execution-boundary.md) and [tool runtime](docs/architecture/tool-runtime.md).
 
 ## Authorization
 
@@ -133,6 +133,17 @@ Discovery → explicit trusted binding → Tool Registry → executeTool
 
 SDK types, subprocess configuration, and sessions stay inside infrastructure configuration. The generic Runtime, Agent Runtime, Authorization, and Tool Runtime remain MCP-unaware. No HTTP, OAuth, resources, prompts, sampling, Agent Tool use, retry, reconnect, or persistence is implemented. See [ADR-015](docs/decisions/ADR-015-mcp-integration-boundary-and-tool-adapter-sessions.md) and [MCP connector](docs/architecture/mcp-connector.md).
 
+## Runtime reliability
+
+Sprint 13 adds one Reliability Controller inside `@aao/runtime`, called once per Node execution from the single Runtime loop. It is not a second engine:
+
+```text
+trusted ReliabilityPolicy (host options, hard caps) → attempt (cloned state, AbortSignal, optional timeout)
+→ structured failure category → retryable? + retry-safe? + budget left? → retry or terminate → ONE accepted outcome
+```
+
+The default is one attempt. A retry needs a retryable category (`TIMEOUT`, `TRANSIENT_DEPENDENCY`, `RATE_LIMIT`), a trusted executor retry-safety declaration (Tool Node: only `read_only` Tools registered `retrySafety: "safe"`), and remaining budget (`maxAttempts ≤ 3`). Unknown failures, thrown values, validation, Authorization/Governance denials, the support gate, and approval outcomes are never retried. Failed and timed-out attempts commit no state, and late results are ignored. Nodes stay `RUNNING` across attempts. Reliability is process-local; durable retry accounting and idempotency belong to Sprint 14. See [ADR-018](docs/decisions/ADR-018-runtime-reliability-and-bounded-retries.md) and [reliability runtime](docs/architecture/reliability-runtime.md).
+
 ## Canonical architecture documents
 
 - [Product contract](docs/product/product-contract.md) — product purpose, boundaries, V1 proof, and success criteria.
@@ -145,6 +156,7 @@ SDK types, subprocess configuration, and sessions stay inside infrastructure con
 - [Tool runtime](docs/architecture/tool-runtime.md) — Tool Registry, JSON Schema policy, permission support gate, handler contract, and the tool node.
 - [Authorization](docs/architecture/authorization.md) — host-attested Authorization Context, the deterministic evaluator, Agent ceiling, and enforcement inside `executeTool`.
 - [Approval engine](docs/architecture/approval-engine.md) — human resolution and Runtime waitpoints.
+- [Reliability runtime](docs/architecture/reliability-runtime.md) — trusted bounded retry policy, failure taxonomy, retry safety, attempt timeouts, and late-result protection.
 - [Governance](docs/architecture/governance.md) — host-attested actors, role bindings, deny policies, and resolved authority before Authorization.
 - [MCP connector](docs/architecture/mcp-connector.md) — isolated stdio sessions, bounded discovery, explicit Tool bindings, and normalized failures.
 - [System boundaries](docs/architecture/system-boundaries.md) — architectural layers and ownership.

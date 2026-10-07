@@ -19,6 +19,9 @@ export type {
   NodePreflightResult,
   NodeRegistry,
   RuntimeOptions,
+  RuntimeReliabilityOptions,
+  RuntimeSleeper,
+  NodeAttemptFailure,
   ExecuteWorkflowRequest,
   ContinueWaitingWorkflowRequest,
   RuntimeWaitState,
@@ -37,6 +40,8 @@ export { validateRuntimeInput } from "./runtime-input-validation.js";
 export { validateNodeExecutionResult } from "./node-result-validation.js";
 export { isJsonSafe } from "./json-safety.js";
 export { executeWorkflow, continueWaitingWorkflow } from "./engine.js";
+
+export { DEFAULT_RELIABILITY_POLICY, createSystemSleeper } from "./reliability.js";
 
 export type { RuntimeClock } from "./clock.js";
 export { createSystemClock } from "./clock.js";

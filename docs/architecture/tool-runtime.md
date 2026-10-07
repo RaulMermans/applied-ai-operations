@@ -120,7 +120,7 @@ Handlers get no workflow state, `process.env`, credentials, database, MCP sessio
 
 ## Execution identity
 
-Direct callers own `toolExecutionId`. The Tool Node derives it as `tool.<sha256 hex>` over the unambiguous JSON `[domain, runId, nodeId]` (69 characters). It is deterministic and bounded for maximum-length (256) Run and Node ids, and it uses no randomness or clock. Runtime V1 assumes one Tool attempt per Tool Node per Run. Future retry/resume adds an explicit attempt dimension.
+Direct callers own `toolExecutionId`. The Tool Node derives it as `tool.<sha256 hex>` over the unambiguous JSON `[domain, runId, nodeId]` (69 characters). It is deterministic and bounded for maximum-length (256) Run and Node ids, and it uses no randomness or clock. The id names the logical Tool Node execution and is identical on every Runtime attempt (Sprint 13); the attempt dimension lives in Runtime attempt accounting, not in the id.
 
 ## Determinism
 
@@ -129,4 +129,8 @@ Direct callers own `toolExecutionId`. The Tool Node derives it as `tool.<sha256 
 
 ## Current Tool Runtime non-goals
 
-MCP protocol ownership (implemented separately in `@aao/mcp-connector`, ADR-015), Integration Fabric, capability resolution, OAuth and credentials, connectors, Agent Tool use (`AgentDecision` stays `CONTINUE | COMPLETE`), external side effects, destructive or sensitive-data execution, retries, fallback, timeouts, cancellation, idempotency, replay protection, rollback, compensation, verification, persistence, caching, and Tool memory.
+MCP protocol ownership (implemented separately in `@aao/mcp-connector`, ADR-015), Integration Fabric, capability resolution, OAuth and credentials, connectors, Agent Tool use (`AgentDecision` stays `CONTINUE | COMPLETE`), external side effects, destructive or sensitive-data execution, retry loops inside Tool Runtime, fallback, idempotency, replay protection, rollback, compensation, verification, persistence, caching, and Tool memory.
+
+## Sprint 13 reliability boundary
+
+`executeTool` still invokes a handler at most once per call; Tool Runtime owns no retry loop, sleep, or timeout race. It contributes trusted metadata only. `RegisteredTool.retrySafety` defaults to `"unsafe"` and may be `"safe"` only when every permission class is `read_only`; `write_draft` Tools are never Runtime-retried. A handler may return `{ ok: false, code, retryable: true }` to declare an explicitly transient failure (`ToolFailure.handlerFailureRetryable`). The Tool Node classifies each failure code (`classifyToolFailure`) and forwards the Runtime's cooperative `AbortSignal` to the handler as `ToolHandlerContext.signal`. Authorization, support-gate, and validation failures are never retryable. Unsupported permission classes still fail preflight with zero handler calls under any retry policy. See [reliability runtime](reliability-runtime.md) and [ADR-018](../decisions/ADR-018-runtime-reliability-and-bounded-retries.md).

@@ -308,3 +308,84 @@ describe("approval workflow", () => {
     expect(calls).toBe(0);
   });
 });
+
+describe("approval + runtime reliability (Sprint 13)", () => {
+  const reliableYaml = yaml.replace("toolRef: { id: local.draft, version: \"1.0.0\" }", "toolRef: { id: local.lookup, version: \"1.0.0\" }");
+  function reliableWorld(script: Array<{ ok: true; output: unknown } | { ok: false; code: string; retryable?: true }>, toolOptions: { permissionClasses?: PermissionClass[]; retrySafety?: "safe" } = {}) {
+    const compiled = compileWorkflowSource(reliableYaml, "yaml");
+    if (!compiled.ok) throw new Error(JSON.stringify(compiled.diagnostics));
+    const runtimeClock = clock();
+    const engine = createApprovalEngine({ governance, clock: runtimeClock });
+    const tools = createToolRegistry();
+    let toolCalls = 0;
+    tools.register({ spec: { schemaVersion: 1, id: "local.lookup", version: "1.0.0", name: "Lookup", inputSchema: { type: "object" }, outputSchema: { type: "object" }, permissionClasses: toolOptions.permissionClasses ?? ["read_only"] }, ...(toolOptions.retrySafety ? { retrySafety: toolOptions.retrySafety } : {}), handler: { async execute() { return script[Math.min(toolCalls++, script.length - 1)]! as never; } } });
+    let proposalExecutions = 0;
+    let approvalExecutions = 0;
+    const approvalExecutor = createApprovalNodeExecutor(engine, () => alice);
+    const registry = createNodeRegistry();
+    registry.register({ kind: "deterministic", async execute() { proposalExecutions++; return { ok: true, statePatch: { proposal: { action: "lookup", target: "account-a" } } }; } });
+    registry.register({ ...approvalExecutor, async execute(context) { approvalExecutions++; return approvalExecutor.execute(context); } });
+    registry.register(createToolNodeExecutor({ tools, resolveAuthorizationContext: () => ({ schemaVersion: 1, principal: alice, grantedPermissionClasses: ["read_only", "write_draft", "external_side_effect"] }) }));
+    registry.register(finalOutputExecutor);
+    const delays: number[] = [];
+    const options = { clock: runtimeClock, sleeper: { sleep: async (ms: number) => { delays.push(ms); } }, reliability: { policiesByNodeId: { draft: { maxAttempts: 3, retryDelayMs: 20 } } } };
+    const runId = "run.approval.reliable";
+    return { plan: compiled.plan, engine, registry, options, delays, counts: () => ({ toolCalls, proposalExecutions, approvalExecutions }), start: () => executeWorkflow({ runId, plan: compiled.plan, registry, initialState: { runId, revision: 0, values: {} }, options }) };
+  }
+
+  it("wait → approve → continue → Tool transient → Runtime retry → success; nothing upstream replays", async () => {
+    const w = reliableWorld([{ ok: false, code: "DEPENDENCY_TEMPORARILY_UNAVAILABLE", retryable: true }, { ok: true, output: { found: true } }], { retrySafety: "safe" });
+    const waiting = await w.start();
+    if (!waiting.ok) throw new Error("wait failed");
+    expect(waiting.execution.run.status).toBe("WAITING_FOR_APPROVAL");
+    expect(w.counts()).toEqual({ toolCalls: 0, proposalExecutions: 1, approvalExecutions: 1 });
+    w.engine.approve(waiting.execution.wait!.referenceId, bob);
+    const completed = await continueApprovedWorkflow(w.engine, { plan: w.plan, registry: w.registry, execution: waiting.execution, options: w.options });
+    expect(completed.ok).toBe(true);
+    if (!completed.ok) return;
+    expect(w.counts()).toEqual({ toolCalls: 2, proposalExecutions: 1, approvalExecutions: 1 });
+    expect(w.delays).toEqual([20]);
+    expect(completed.execution.run.status).toBe("COMPLETED");
+    expect(completed.execution.state.revision).toBe(2);
+    expect(completed.execution.history.map((record) => [record.nodeId, record.status, record.attemptCount])).toEqual([["proposal", "SUCCEEDED", 1], ["approval", "SUCCEEDED", 1], ["draft", "SUCCEEDED", 2], ["final", "SUCCEEDED", 1]]);
+    expect(completed.execution.state.values.draftResult).toMatchObject({ output: { found: true } });
+    const replay = await continueApprovedWorkflow(w.engine, { plan: w.plan, registry: w.registry, execution: waiting.execution, options: w.options });
+    expect(replay.ok).toBe(false);
+    expect(w.counts()).toEqual({ toolCalls: 2, proposalExecutions: 1, approvalExecutions: 1 });
+  });
+
+  it("an Approval Node can never carry a retry policy, at start or at continuation; a bad continuation leaves the approval usable", async () => {
+    const w = reliableWorld([{ ok: true, output: {} }], { retrySafety: "safe" });
+    const bad = { ...w.options, reliability: { policiesByNodeId: { approval: { maxAttempts: 2 } } } };
+    const rejected = await executeWorkflow({ runId: "run.approval.retry", plan: w.plan, registry: w.registry, initialState: { runId: "run.approval.retry", revision: 0, values: {} }, options: bad });
+    expect(!rejected.ok && rejected.failure.code).toBe("INVALID_RUNTIME_INPUT");
+    expect(w.counts().proposalExecutions).toBe(0);
+    const waiting = await w.start();
+    if (!waiting.ok) throw new Error("wait failed");
+    w.engine.approve(waiting.execution.wait!.referenceId, bob);
+    const badContinuation = await continueApprovedWorkflow(w.engine, { plan: w.plan, registry: w.registry, execution: waiting.execution, options: bad });
+    expect(!badContinuation.ok && badContinuation.failure.code).toBe("INVALID_RUNTIME_INPUT");
+    expect(waiting.execution.run.status).toBe("WAITING_FOR_APPROVAL");
+    const completed = await continueApprovedWorkflow(w.engine, { plan: w.plan, registry: w.registry, execution: waiting.execution, options: w.options });
+    expect(completed.ok).toBe(true);
+    expect(w.counts()).toEqual({ toolCalls: 1, proposalExecutions: 1, approvalExecutions: 1 });
+  });
+
+  it("rejection is a terminal APPROVAL failure; downstream retry policy creates no execution", async () => {
+    const w = reliableWorld([{ ok: true, output: {} }], { retrySafety: "safe" });
+    const waiting = await w.start();
+    if (!waiting.ok) throw new Error("wait failed");
+    w.engine.reject(waiting.execution.wait!.referenceId, bob);
+    const result = await continueApprovedWorkflow(w.engine, { plan: w.plan, registry: w.registry, execution: waiting.execution, options: w.options });
+    expect(!result.ok && result.failure).toMatchObject({ code: "APPROVAL_REJECTED", category: "APPROVAL", retryable: false });
+    expect(w.counts().toolCalls).toBe(0);
+  });
+
+  it("approved workflow + external_side_effect Tool + maxAttempts 3 → unsupported, zero handler calls", async () => {
+    const w = reliableWorld([{ ok: true, output: {} }], { permissionClasses: ["external_side_effect"] });
+    const result = await w.start();
+    expect(!result.ok && result.failure.code).toBe("RUNTIME_PREFLIGHT_FAILED");
+    expect(JSON.stringify(!result.ok && result.failure)).toContain("TOOL_PERMISSION_UNSUPPORTED");
+    expect(w.counts()).toEqual({ toolCalls: 0, proposalExecutions: 0, approvalExecutions: 0 });
+  });
+});

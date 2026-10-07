@@ -163,7 +163,9 @@ describe("executeWorkflow — safety", () => {
     expect(result.failure.step).toBe(1);
     // Only the documented safe fields are present — no smuggled "stack",
     // "error", "cause", or similar field carrying the raw thrown value.
-    expect(Object.keys(result.failure).sort()).toEqual(["code", "message", "nodeId", "step"]);
+    expect(Object.keys(result.failure).sort()).toEqual(["attempt", "category", "code", "maxAttempts", "message", "nodeId", "retryable", "step"]);
+    // A thrown value is never classified from its content: it is INTERNAL and non-retryable.
+    expect(result.failure).toMatchObject({ category: "INTERNAL", retryable: false, attempt: 1, maxAttempts: 1 });
   });
 
   it("redacts obvious secret text from a thrown non-Error object across the entire public failure", async () => {

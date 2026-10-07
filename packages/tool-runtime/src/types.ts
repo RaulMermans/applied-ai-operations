@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { AuthorizationDenialReasonCodeSchema, type AuthorizationAllow } from "@aao/authorization";
-import { JsonValueSchema, PermissionClassSchema, ToolIdSchema, entityVersionSchema, identifierSchema, type JsonValue, type ToolSpec } from "@aao/contracts";
+import { JsonValueSchema, PermissionClassSchema, ToolIdSchema, entityVersionSchema, identifierSchema, type JsonValue, type RetrySafety, type ToolSpec } from "@aao/contracts";
 
 // --- Tool reference -----------------------------------------------------------
 
@@ -39,10 +39,17 @@ export interface ToolHandlerContext {
   toolExecutionId: string;
   tool: ToolRef;
   input: JsonValue;
+  /** Present when the caller can abandon this execution (a Runtime attempt timeout). Cooperative and best-effort. */
+  signal?: AbortSignal;
 }
 
-/** What a handler returns: JSON output, or a safe machine-readable failure code. Expected failures are values, not exceptions. */
-export type ToolHandlerResult = { ok: true; output: JsonValue } | { ok: false; code: string };
+/**
+ * What a handler returns: JSON output, or a safe machine-readable failure
+ * code. Expected failures are values, not exceptions. `retryable: true` is
+ * the handler's only way to declare an explicitly transient dependency
+ * failure; whether a retry happens is still decided by the Runtime (ADR-018).
+ */
+export type ToolHandlerResult = { ok: true; output: JsonValue } | { ok: false; code: string; retryable?: true };
 
 /** A trusted, provider-neutral Tool implementation. Invoked at most once per Tool execution request. */
 export interface ToolHandler {
@@ -58,6 +65,13 @@ export interface ToolHandler {
 export interface RegisteredTool {
   spec: ToolSpec;
   handler: ToolHandler;
+  /**
+   * Trusted retry-safety declaration (ADR-018). Defaults to `"unsafe"`.
+   * `"safe"` is accepted only for Tools whose every permission class is
+   * `read_only`: a `write_draft` Tool can duplicate artifacts, so it is
+   * never Runtime-retried in Sprint 13. Not part of `ToolSpec`.
+   */
+  retrySafety?: RetrySafety;
 }
 
 // --- Request ------------------------------------------------------------------
@@ -132,6 +146,8 @@ export const ToolFailureSchema = z
     toolExecutionId: identifierSchema.optional(),
     toolRef: ToolRefSchema.optional(),
     handlerFailureCode: HandlerFailureCodeSchema.optional(),
+    /** Present only when the handler returned `retryable: true` with its bounded failure code. */
+    handlerFailureRetryable: z.literal(true).optional(),
     unsupportedPermissionClasses: z.array(PermissionClassSchema).optional(),
     authorizationReasonCode: AuthorizationDenialReasonCodeSchema.optional(),
     issues: z.array(z.string()).optional(),

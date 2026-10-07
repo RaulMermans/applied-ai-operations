@@ -125,6 +125,7 @@ describe("tool node — execution", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(handler.calls).toEqual([{ toolExecutionId: deriveToolExecutionId("run.tool", "lookup"), tool: { ...LOOKUP_REF }, input: { query: "alpha" } }]);
+    expect(handler.signals).toEqual([expect.any(AbortSignal)]);
     expect(result.execution.state.revision).toBe(1);
     expect(result.execution.state.values.lookupResult).toEqual({
       schemaVersion: 1,
@@ -151,6 +152,7 @@ describe("tool node — execution", () => {
     ["missing input", {}, "INVALID_TOOL_REQUEST"],
     ["schema-violating input", { lookupInput: { query: 42 } }, "TOOL_INPUT_SCHEMA_MISMATCH"],
   ])("%s → node FAILED with executorFailure { tool, %s }; handler not called; state untouched", async (_label, values, code) => {
+    const category = "VALIDATION";
     const { registry, handler } = setup();
     const badState = { runId: "run.tool", revision: 0, values } as typeof initialState;
     const result = await executeWorkflow({ runId: "run.tool", plan: planWith(GOOD_CONFIG), initialState: badState, registry, options: { clock: clock() } });
@@ -159,7 +161,8 @@ describe("tool node — execution", () => {
       message: 'Node "lookup" (kind "tool") reported an executor failure.',
       nodeId: "lookup",
       step: 2,
-      executorFailure: { namespace: "tool", code },
+      executorFailure: { namespace: "tool", code, category },
+      category, retryable: false, attempt: 1, maxAttempts: 1,
     });
     expect(handler.calls).toEqual([]);
     expect(result.execution?.state).toEqual(badState);
@@ -205,13 +208,15 @@ describe("tool node — authorization", () => {
     }, "TOOL_AUTHORIZATION_REQUIRED"],
     ["resolver rejects", () => Promise.reject({ token: SECRET }), "TOOL_AUTHORIZATION_REQUIRED"],
   ])("%s → node FAILED with { tool, %s }; handler 0; Run FAILED; state unchanged; snapshot valid; nothing leaked", async (_label, resolve, code) => {
+    const category = "AUTHORIZATION";
     const { handler, plan, state, result } = await run(resolve);
     expect(!result.ok && result.failure).toEqual({
       code: "NODE_EXECUTION_FAILED",
       message: 'Node "lookup" (kind "tool") reported an executor failure.',
       nodeId: "lookup",
       step: 2,
-      executorFailure: { namespace: "tool", code },
+      executorFailure: { namespace: "tool", code, category },
+      category, retryable: false, attempt: 1, maxAttempts: 1,
     });
     expect(handler.calls).toEqual([]);
     expect(result.execution?.run.status).toBe("FAILED");
@@ -230,13 +235,13 @@ describe("tool node — authorization", () => {
       principal: { id: "root", type: "system" },
     };
     const { handler, result } = await run(() => authContext([]), values);
-    expect(!result.ok && result.failure.executorFailure).toEqual({ namespace: "tool", code: "TOOL_AUTHORIZATION_DENIED" });
+    expect(!result.ok && result.failure.executorFailure).toEqual({ namespace: "tool", code: "TOOL_AUTHORIZATION_DENIED", category: "AUTHORIZATION" });
     expect(handler.calls).toEqual([]);
   });
 
   it("unauthorized + invalid input in state → authorization denial, not TOOL_INPUT_SCHEMA_MISMATCH", async () => {
     const { handler, result } = await run(() => authContext([]), { lookupInput: { query: 42 } });
-    expect(!result.ok && result.failure.executorFailure).toEqual({ namespace: "tool", code: "TOOL_AUTHORIZATION_DENIED" });
+    expect(!result.ok && result.failure.executorFailure).toEqual({ namespace: "tool", code: "TOOL_AUTHORIZATION_DENIED", category: "AUTHORIZATION" });
     expect(handler.calls).toEqual([]);
   });
 });

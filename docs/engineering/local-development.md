@@ -115,6 +115,14 @@ wait $W_PID 2>/dev/null
 
 Both processes log structured JSON lines (`started`, `shutting_down`, `stopped`) to stdout and exit `0` after a clean shutdown, with no process left behind.
 
+Built-package acceptance smokes for the Tool, Approval, and Reliability layers use only `dist/` output:
+
+```sh
+node packages/tool-runtime/test/governance-smoke.mjs     # SPRINT_11_GOVERNANCE_SMOKE_OK
+node packages/approval/smoke.mjs                         # SPRINT_12_APPROVAL_ENGINE_SMOKE_OK
+node packages/tool-runtime/test/reliability-smoke.mjs    # SPRINT_13_RELIABILITY_RUNTIME_SMOKE_OK
+```
+
 ## Local-first, no-deployment stance
 
 There is no Docker, Kubernetes, database, message queue, cloud infrastructure, or deployment configuration in this repository. `apps/control-plane` and `apps/worker` are separate local processes you run directly with Node; nothing here assumes a hosting target. See [ADR-005](../decisions/ADR-005-local-first-typescript-architecture.md) and [ADR-006](../decisions/ADR-006-local-process-topology-and-engineering-foundation.md).

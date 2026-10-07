@@ -85,6 +85,10 @@ None of these three files imports `ai`, an OpenAI/Anthropic/Gemini SDK, or LangC
 
 The `external_side_effect` → human-approval-before-execution rule and the `destructive` → explicit-confirmation, no-autonomous-execution rule from `docs/security/permission-model.md` are preserved as documentation, not re-implemented as enforcement logic — Approval waitpoints are now implemented in `@aao/approval`, while current Governance, Authorization, and Tool Runtime do not execute these classes.
 
+## Reliability contracts
+
+- **Reliability** (`reliability.ts`, Sprint 13) — `ReliabilityPolicy` (strict `{ maxAttempts, attemptTimeoutMs?, retryDelayMs? }` bounded by frozen `RELIABILITY_LIMITS`), `RetrySafety` (`safe` | `unsafe`), and the single `FailureCategory` taxonomy with `RETRYABLE_FAILURE_CATEGORIES` (`TIMEOUT`, `TRANSIENT_DEPENDENCY`, `RATE_LIMIT`). Policies are trusted host configuration, never workflow-authored. See [ADR-018](../decisions/ADR-018-runtime-reliability-and-bounded-retries.md).
+
 ## Evaluation / observability contracts
 
 - **EvalDefinition** (`evaluation.ts`) — `schemaVersion`, `id`, `version`, `name`, `description?`, `mode` (`OFFLINE` / `RUNTIME`), `targetType?` (`run`, `node`, `tool_use`, `artifact`, `trajectory`, `authorization`). GPA/trajectory evaluation is not hardcoded; it is expected to become one evaluator family under `trajectory`.

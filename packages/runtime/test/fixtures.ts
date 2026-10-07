@@ -94,3 +94,40 @@ export function buildTestClock(start = "2026-01-01T00:00:00.000Z"): RuntimeClock
     },
   };
 }
+
+/**
+ * A deterministic, test-only `RuntimeSleeper`. Retry delays (no signal)
+ * resolve immediately and are recorded. Attempt timeouts (with a signal)
+ * are recorded and, by default, hold until the Runtime aborts them — i.e.
+ * the attempt wins; `fireTimeout(index)` makes the index-th timeout (0-based)
+ * expire immediately instead. No real time ever passes.
+ */
+export function buildTestSleeper(fireTimeout: (index: number) => boolean = () => false) {
+  const delays: number[] = [];
+  const timeouts: { ms: number; signal: AbortSignal }[] = [];
+  return {
+    delays,
+    timeouts,
+    sleep(ms: number, signal?: AbortSignal): Promise<void> {
+      if (signal === undefined) {
+        delays.push(ms);
+        return Promise.resolve();
+      }
+      const index = timeouts.length;
+      timeouts.push({ ms, signal });
+      if (fireTimeout(index)) return Promise.resolve();
+      return new Promise((resolve) => signal.addEventListener("abort", () => resolve(), { once: true }));
+    },
+  };
+}
+
+/** A manually settled promise, for attempts whose completion a test controls. */
+export function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}

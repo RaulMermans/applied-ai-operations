@@ -47,3 +47,7 @@ The production node transition contract belongs with the later workflow DSL and 
 ## Sprint 12 approval boundary
 
 An explicitly registered Approval Node now returns a bounded Runtime wait result. The Run enters `WAITING_FOR_APPROVAL`, the Approval Node enters `WAITING`, and downstream nodes remain pending. The version-2 safe snapshot includes an approval reference and fingerprint. A trusted host may resolve the process-local Approval and invoke validated in-process continuation through the same Runtime loop. Approval only confirms the exact request; Governance, Authorization, Agent ceilings, and Tool Runtime support still apply. See [approval engine](approval-engine.md) and [ADR-017](../decisions/ADR-017-human-approval-and-runtime-waitpoints.md).
+
+## Sprint 13 reliability boundary
+
+Retries do not add lifecycle states. A retrying Node stays `RUNNING` and its Run stays `RUNNING` until one final outcome: `SUCCEEDED`, or `FAILED` (including `NODE_RETRY_EXHAUSTED`). There is no `READY → RUNNING` bounce per attempt. The canonical `RETRYING` Run status is intentionally unused by in-process retries; it is reserved for a future durable, scheduled retry. Approval waits are not failures and are never retried. See [reliability runtime](reliability-runtime.md) and [ADR-018](../decisions/ADR-018-runtime-reliability-and-bounded-retries.md).
