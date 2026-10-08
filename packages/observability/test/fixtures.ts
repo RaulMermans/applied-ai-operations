@@ -2,13 +2,13 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach } from "vitest";
-import type { PermissionClass, TraceEvent } from "@aao/contracts";
+import type { PermissionClass, Principal, TraceEvent } from "@aao/contracts";
 import { createApprovalEngine, createApprovalNodeExecutor } from "@aao/approval";
 import { createGovernanceRegistry } from "@aao/governance";
 import { createNodeRegistry, finalOutputExecutor, type NodeExecutor, type RuntimeReliabilityOptions, type RuntimeSleeper } from "@aao/runtime";
 import { createToolNodeExecutor, createToolRegistry, type ToolHandlerResult } from "@aao/tool-runtime";
 import { compileWorkflowSource, type CompiledWorkflowPlan } from "@aao/workflow-dsl";
-import { createInMemoryTraceStore, createTraceRecorder, type TraceStore } from "../src/index.js";
+import { createAuditRecorder, createInMemoryTraceStore, createTraceRecorder, type AuditStore, type TraceStore } from "../src/index.js";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -119,14 +119,21 @@ export interface WorldOptions {
   reliability?: RuntimeReliabilityOptions;
   sleeper?: RuntimeSleeper;
   tracing?: boolean;
+  /** Sprint 16: wire an Audit recorder over this store into the Approval Engine and Tool Node. */
+  auditStore?: AuditStore;
+  auditClock?: { now(): string };
+  /** One shared clock for Runtime, Trace, Approval, and Audit (resolution-time tests). */
+  clock?: { now(): string };
+  requester?: Principal;
 }
 
 /** Everything one "process" builds from scratch: registries, approval engine, Tool with a call spy, trace store and recorder. */
 export function world(options: WorldOptions = {}) {
   const plan = options.plan ?? compile(flagshipYaml);
   const store = options.store ?? createInMemoryTraceStore();
-  const recorder = createTraceRecorder({ store, clock: options.traceClock ?? clockAt(0) });
-  const approvals = createApprovalEngine({ governance: governance(), clock: clockAt(100) });
+  const recorder = createTraceRecorder({ store, clock: options.traceClock ?? options.clock ?? clockAt(0) });
+  const auditRecorder = options.auditStore ? createAuditRecorder({ store: options.auditStore, clock: options.auditClock ?? options.clock ?? clockAt(500) }) : undefined;
+  const approvals = createApprovalEngine({ governance: governance(), clock: options.clock ?? clockAt(100), ...(auditRecorder ? { audit: auditRecorder } : {}) });
   const calls: Array<{ toolExecutionId: string; input: unknown }> = [];
   const tools = createToolRegistry();
   tools.register({
@@ -151,16 +158,16 @@ export function world(options: WorldOptions = {}) {
   };
   const registry = createNodeRegistry();
   registry.register(deterministic);
-  registry.register(createApprovalNodeExecutor(approvals, () => alice));
-  registry.register(createToolNodeExecutor({ tools, resolveAuthorizationContext: () => ({ schemaVersion: 1, principal: alice, grantedPermissionClasses: options.grants ?? ["read_only", "write_draft"] }) }));
+  registry.register(createApprovalNodeExecutor(approvals, () => options.requester ?? alice));
+  registry.register(createToolNodeExecutor({ tools, resolveAuthorizationContext: () => ({ schemaVersion: 1, principal: alice, grantedPermissionClasses: options.grants ?? ["read_only", "write_draft"] }), ...(auditRecorder ? { audit: auditRecorder } : {}) }));
   registry.register(finalOutputExecutor);
   const runtimeOptions = {
-    clock: clockAt(0),
+    clock: options.clock ?? clockAt(0),
     sleeper: options.sleeper ?? { sleep: async () => undefined },
     ...(options.reliability ? { reliability: options.reliability } : {}),
     ...(options.tracing === false ? {} : { trace: recorder }),
   };
-  return { plan, store, recorder, approvals, registry, calls, runtimeOptions, tools };
+  return { plan, store, recorder, auditRecorder, approvals, registry, calls, runtimeOptions, tools };
 }
 
 /** `type@node` labels, in sequence order — readable trajectory assertions. */

@@ -83,6 +83,10 @@ Workflow Runtime        NODE_EXECUTION_FAILED, executorFailure { namespace: "too
 
 The generic Runtime never sees the reason code. Resolver exceptions are never inspected or surfaced.
 
+## Audit (Sprint 16)
+
+When `executeTool` receives an `audit` binding (the Tool Node passes its optional `AuditPort`, Run, Node, and attempt), each `authorize()` decision is recorded as `tool.access.allowed` or `tool.access.denied`. The record holds the principal id and type, the Tool ref, permission classes, the registered Agent ref, and the bounded reason code. It never holds grants, the context, or Tool input. Missing-context, support-gate, and validation failures are not access decisions and are not audited. Authorization never reads Audit, and emission never changes the decision. See [audit](audit.md).
+
 ## Not implemented
 
 Authentication, groups and tenants, generic policy languages, approvals, Agent Tool use, MCP protocol ownership (the separate connector inherits this evaluator), external-side-effect/sensitive-data/destructive Tools, credentials, durable authorization state, and authorization caching. Governance constructs an `AuthorizationContext`; it does not replace the evaluator.

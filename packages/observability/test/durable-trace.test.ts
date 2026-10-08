@@ -293,7 +293,7 @@ describe("cancellation trace", () => {
     const world = effects();
     const a = processAt(0, dirs, world);
     await a.host.execute({ runId, initialState: { runId, revision: 0, values: {} } });
-    await a.host.requestCancellation(runId);
+    await a.host.requestCancellation(runId, { requestedBy: alice });
     const result = await processAt(100, dirs, world).host.resume(runId);
     expect(!result.ok && result.failure.code).toBe("RUN_CANCELLED");
     const events = await readTrace(dirs.trace);

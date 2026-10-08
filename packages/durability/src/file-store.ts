@@ -227,10 +227,10 @@ export function createFileDurabilityStore(options: { root: string }): Durability
       });
     },
 
-    requestCancellation(runId: string, requestedAt: string): Promise<CancellationRecord> {
+    requestCancellation(runId: string, requestedAt: string, attribution?: Pick<CancellationRecord, "requestedBy" | "reasonCode">): Promise<CancellationRecord> {
       return serialized(runId, () => {
         const path = join(existingRunDir(runId), "cancellation.json");
-        if (!exists(path)) writeRecord(path, CancellationRecordSchema, { schemaVersion: 1, runId, requestedAt }, "create-if-absent");
+        if (!exists(path)) writeRecord(path, CancellationRecordSchema, { schemaVersion: 1, runId, requestedAt, ...(attribution?.requestedBy ? { requestedBy: { id: attribution.requestedBy.id, type: attribution.requestedBy.type } } : {}), ...(attribution?.reasonCode ? { reasonCode: attribution.reasonCode } : {}) }, "create-if-absent");
         const record = readRecord(path, CancellationRecordSchema);
         if (!record || record.runId !== runId) throw new DurabilityError("DURABILITY_CORRUPT_STATE");
         return record;

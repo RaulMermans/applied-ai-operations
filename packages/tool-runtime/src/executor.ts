@@ -3,6 +3,7 @@ import { authorize, type AuthorizationAllow, type AuthorizationContext } from "@
 import type { JsonValue, PermissionClass } from "@aao/contracts";
 import { isJsonSafe } from "@aao/runtime";
 import { checkToolPermissionSupport } from "./permissions.js";
+import { auditToolAccess, type ToolAccessAuditBinding } from "./tool-audit.js";
 import { resolveToolBinding, type ToolRegistry } from "./registry.js";
 import { HandlerFailureCodeSchema, ToolExecutionRequestSchema, ToolResultSchema, type ToolExecutionResult, type ToolFailure, type ToolRef } from "./types.js";
 
@@ -24,7 +25,15 @@ export interface ExecuteToolParams extends ToolRuntimeDependencies {
   signal?: AbortSignal;
   /** Optional observer (ADR-020). Told what happened; never consulted. A throwing observer changes nothing. */
   observer?: ToolExecutionObserver;
+  /**
+   * Optional emit-only Audit binding (ADR-021): records each authorization
+   * decision (`tool.access.allowed` / `tool.access.denied`) for the Run's
+   * audit stream. Never consulted, never awaited into a decision; a failing
+   * port changes nothing and causes no retry.
+   */
+  audit?: ToolAccessAuditBinding;
 }
+
 
 /**
  * Safe-metadata notifications from the single Tool execution path. No Tool
@@ -127,6 +136,7 @@ export async function executeTool(params: ExecuteToolParams): Promise<ToolExecut
     requiredPermissionClasses: [...tool.spec.permissionClasses],
     context: params.authorizationContext,
   });
+  auditToolAccess(params.audit, params.authorizationContext, toolRef, toolExecutionId, tool.spec.permissionClasses, authorization);
   if (authorization.decision !== "ALLOW") {
     return failWith({
       code: "TOOL_AUTHORIZATION_DENIED",

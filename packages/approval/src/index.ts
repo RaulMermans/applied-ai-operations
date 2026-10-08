@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { ApprovalRecordSchema, PermissionClassesSchema, PrincipalSchema, RunIdSchema, NodeIdSchema, canonicalJsonStringify, identifierSchema, isoTimestampSchema, type ApprovalRecord, type JsonValue, type Principal } from "@aao/contracts";
+import { ApprovalRecordSchema, PermissionClassesSchema, PrincipalSchema, RunIdSchema, NodeIdSchema, canonicalJsonStringify, emitAuditSafely, identifierSchema, isoTimestampSchema, type ApprovalRecord, type ApprovalResolutionDenialCode, type AuditPort, type JsonValue, type Principal } from "@aao/contracts";
 import { resolveAuthority, resolveRoleMembership, type GovernanceRegistry } from "@aao/governance";
 import { continueWaitingWorkflow, isJsonSafe, type ContinueWaitingWorkflowRequest, type NodeExecutor, type RuntimeClock, type RuntimeTracePort, type WorkflowExecutionResult } from "@aao/runtime";
 
@@ -81,10 +81,32 @@ export function fingerprintGovernance(governance: GovernanceRegistry): string {
 
 /**
  * Explicit storage and clock. The trusted host supplies its Governance
- * registry and, optionally, a repository (default: process-local memory).
+ * registry and, optionally, a repository (default: process-local memory)
+ * and an emit-only Audit port (ADR-021).
+ *
+ * Audit is recorded at this authoritative boundary, from the stored record:
+ * a request when it is created, a resolution only after the repository's
+ * atomic `pending → approved | rejected` transition succeeded (at the
+ * record's true `resolvedAt`, by its `resolvedBy`), and a refused resolution
+ * attempt with its bounded reason. Audit is one-way evidence: the engine
+ * never reads it, and an Audit failure never changes or rolls back an
+ * Approval decision.
  */
-export function createApprovalEngine(dependencies: { governance: GovernanceRegistry; clock: RuntimeClock; repository?: ApprovalRepository }) {
+export function createApprovalEngine(dependencies: { governance: GovernanceRegistry; clock: RuntimeClock; repository?: ApprovalRepository; audit?: AuditPort }) {
   const repository = dependencies.repository ?? createInMemoryApprovalRepository();
+  const audit = dependencies.audit;
+  const auditRequested = (record: ApprovalRecord) => emitAuditSafely(audit, { type: "approval.requested", runId: record.runId, actor: { id: record.requestedBy.id, type: record.requestedBy.type }, target: { kind: "approval", approvalId: record.approvalId }, occurredAt: record.requestedAt, key: { approvalId: record.approvalId }, payload: { approvalId: record.approvalId, nodeId: record.nodeId, requiredApproverRoleIds: [...record.requiredApproverRoleIds], permissionClasses: [...record.permissionClasses], allowSelfApproval: record.allowSelfApproval, requestFingerprint: record.requestFingerprint } });
+  const auditResolved = (record: ApprovalRecord) => {
+    if ((record.status !== "approved" && record.status !== "rejected") || !record.resolvedBy || !record.resolvedAt) return;
+    emitAuditSafely(audit, { type: "approval.resolved", runId: record.runId, actor: { id: record.resolvedBy.id, type: record.resolvedBy.type }, target: { kind: "approval", approvalId: record.approvalId }, occurredAt: record.resolvedAt, key: { approvalId: record.approvalId }, payload: { approvalId: record.approvalId, nodeId: record.nodeId, decision: record.status, requestFingerprint: record.requestFingerprint } });
+  };
+  /** Only an attributable attempt (a well-formed principal) is auditable; the actor is the attempted resolver, never fabricated. */
+  const auditDenied = (record: ApprovalRecord, decision: "approved" | "rejected", principal: unknown, reasonCode: ApprovalResolutionDenialCode) => {
+    const actor = PrincipalSchema.safeParse(principal);
+    if (!actor.success) return;
+    const occurredAt = dependencies.clock.now();
+    emitAuditSafely(audit, { type: "approval.resolution_denied", runId: record.runId, actor: { id: actor.data.id, type: actor.data.type }, target: { kind: "approval", approvalId: record.approvalId }, occurredAt, key: { approvalId: record.approvalId, resolverId: actor.data.id, decision, reasonCode, at: occurredAt }, payload: { approvalId: record.approvalId, nodeId: record.nodeId, attemptedDecision: decision, reasonCode } });
+  };
   const continued = new Set<string>();
   const getApproval = (id: string) => repository.get(id);
   const sameRequest = (existing: ApprovalRecord, input: ApprovalRequest) =>
@@ -104,11 +126,14 @@ export function createApprovalEngine(dependencies: { governance: GovernanceRegis
     const existing = repository.get(parsed.data.approvalId);
     if (existing) {
       if (!sameRequest(existing, parsed.data)) throw new ApprovalError("APPROVAL_REQUEST_MISMATCH");
+      // Same stored record, same audit event: the recorder deduplicates an exact-request replay.
+      auditRequested(existing);
       return existing;
     }
     const record = ApprovalRecordSchema.parse({ schemaVersion: 2, ...parsed.data, status: "pending", requestedAt: dependencies.clock.now() });
     const stored = repository.create(record);
     if (!sameRequest(stored, parsed.data)) throw new ApprovalError("APPROVAL_REQUEST_MISMATCH");
+    auditRequested(stored);
     return stored;
   };
   /** Eligibility = trusted registered human + current required-role membership + the self-approval rule. The approver need not hold the action's permissions. */
@@ -123,18 +148,31 @@ export function createApprovalEngine(dependencies: { governance: GovernanceRegis
   const resolve = (id: string, status: "approved" | "rejected" | "expired" | "cancelled", principal?: Principal): ApprovalRecord => {
     const prior = repository.get(id);
     if (!prior) throw new ApprovalError("APPROVAL_NOT_FOUND");
-    if (prior.status !== "pending") throw new ApprovalError("APPROVAL_ALREADY_RESOLVED");
-    if (status === "approved" || status === "rejected") {
+    const human = status === "approved" || status === "rejected";
+    if (prior.status !== "pending") {
+      if (human) auditDenied(prior, status, principal, "APPROVAL_ALREADY_RESOLVED");
+      throw new ApprovalError("APPROVAL_ALREADY_RESOLVED");
+    }
+    if (human) {
       const ineligible = resolverIneligibility(prior, principal);
-      if (ineligible) throw new ApprovalError(ineligible);
+      if (ineligible) {
+        auditDenied(prior, status, principal, ineligible);
+        throw new ApprovalError(ineligible);
+      }
     }
     const resolvedAt = dependencies.clock.now();
     if (!isoTimestampSchema.safeParse(resolvedAt).success) throw new ApprovalError("INVALID_APPROVAL_CONTEXT");
     const parsed = ApprovalRecordSchema.safeParse({ ...prior, status, resolvedAt, ...(principal ? { resolvedBy: principal } : {}) });
     if (!parsed.success) throw new ApprovalError("INVALID_APPROVAL_CONTEXT");
     // Atomic pending → terminal: a concurrent resolution that won first makes this one fail, never overwrite.
-    if (!repository.compareAndSetResolution(id, parsed.data)) throw new ApprovalError("APPROVAL_ALREADY_RESOLVED");
-    return repository.get(id)!;
+    if (!repository.compareAndSetResolution(id, parsed.data)) {
+      if (human) auditDenied(prior, status, principal, "APPROVAL_ALREADY_RESOLVED");
+      throw new ApprovalError("APPROVAL_ALREADY_RESOLVED");
+    }
+    const stored = repository.get(id)!;
+    // Source-time Audit: emitted only after the authoritative transition committed, from the stored record.
+    auditResolved(stored);
+    return stored;
   };
   /**
    * A stored approval is evidence, never permanent authority. Before an

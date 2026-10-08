@@ -1,0 +1,199 @@
+{
+  "schemaVersion": 1,
+  "runId": "run.fixture",
+  "traceId": "1cfc2c4e976b4997400aef77c9b55a1e",
+  "workflowId": "metrics.model",
+  "workflowVersion": "1.0.0",
+  "dimensions": {
+    "reliabilityPolicyFingerprint": "1769b81ba2e8ef6d3c28a61c6a09d460d44a65519ecab23baf38995b64f327ba"
+  },
+  "runStatus": "COMPLETED",
+  "traceQuality": {
+    "status": "complete",
+    "issues": []
+  },
+  "startedAt": "2026-10-08T12:00:00.000Z",
+  "endedAt": "2026-10-08T12:00:15.000Z",
+  "durationMs": 15000,
+  "approvalWaitDurationMs": 0,
+  "durationExcludingApprovalWaitMs": 15000,
+  "steps": 3,
+  "nodes": {
+    "executions": 3,
+    "attempts": 3,
+    "recoveryReplayAttempts": 0,
+    "completed": 3,
+    "failed": 0,
+    "waiting": 0,
+    "attemptDetails": [
+      {
+        "nodeId": "summarize",
+        "kind": "model",
+        "step": 1,
+        "attempt": 1,
+        "recoveryReplay": false,
+        "outcome": "completed",
+        "startedAt": "2026-10-08T12:00:01.000Z",
+        "durationMs": 4000,
+        "waitDurationMs": null
+      },
+      {
+        "nodeId": "classify",
+        "kind": "model",
+        "step": 2,
+        "attempt": 1,
+        "recoveryReplay": false,
+        "outcome": "completed",
+        "startedAt": "2026-10-08T12:00:07.000Z",
+        "durationMs": 4000,
+        "waitDurationMs": null
+      },
+      {
+        "nodeId": "final",
+        "kind": "final_output",
+        "step": 3,
+        "attempt": 1,
+        "recoveryReplay": false,
+        "outcome": "completed",
+        "startedAt": "2026-10-08T12:00:13.000Z",
+        "durationMs": 1000,
+        "waitDurationMs": null
+      }
+    ],
+    "byNode": [
+      {
+        "nodeId": "classify",
+        "kind": "model",
+        "executions": 1,
+        "attempts": 1,
+        "completed": 1,
+        "failed": 0,
+        "waits": 0,
+        "attemptDurationMsTotal": 4000
+      },
+      {
+        "nodeId": "final",
+        "kind": "final_output",
+        "executions": 1,
+        "attempts": 1,
+        "completed": 1,
+        "failed": 0,
+        "waits": 0,
+        "attemptDurationMsTotal": 1000
+      },
+      {
+        "nodeId": "summarize",
+        "kind": "model",
+        "executions": 1,
+        "attempts": 1,
+        "completed": 1,
+        "failed": 0,
+        "waits": 0,
+        "attemptDurationMsTotal": 4000
+      }
+    ]
+  },
+  "retries": {
+    "scheduled": 0,
+    "exhausted": 0,
+    "nodesRetried": 0
+  },
+  "models": {
+    "callsStarted": 2,
+    "callsCompleted": 2,
+    "callsFailed": 0,
+    "byModel": [
+      {
+        "identity": {
+          "provider": "local",
+          "model": "scripted-model",
+          "revision": "2026-10"
+        },
+        "callsStarted": 2,
+        "callsCompleted": 2,
+        "callsFailed": 0,
+        "callsWithoutUsage": 0,
+        "knownInputTokens": 2000,
+        "knownOutputTokens": 500,
+        "knownTotalTokens": 2500,
+        "pricedCalls": 2,
+        "unpricedCalls": 0,
+        "knownEstimatedCostNanos": 13500000
+      }
+    ]
+  },
+  "agents": {
+    "executions": 0,
+    "iterations": 0,
+    "completed": 0,
+    "failed": 0
+  },
+  "tools": {
+    "physicalInvocations": 0,
+    "logicalExecutions": 0,
+    "completed": 0,
+    "failed": 0,
+    "blocked": 0,
+    "byTool": []
+  },
+  "approvals": {
+    "requested": 0,
+    "approved": 0,
+    "rejected": 0,
+    "expired": 0,
+    "cancelled": 0,
+    "pending": 0
+  },
+  "durability": {
+    "checkpointsCreated": 0,
+    "recoveryStarts": 0,
+    "recoveryReplays": 0,
+    "reusedOutcomes": 0,
+    "recoveryBlocks": 0,
+    "recoveryCompletions": 0
+  },
+  "cancellation": {
+    "requested": false,
+    "applied": false
+  },
+  "state": {
+    "updates": 2,
+    "finalStateRevision": 2
+  },
+  "tokenUsage": {
+    "status": "complete",
+    "modelCallsCompleted": 2,
+    "modelCallsFailed": 0,
+    "callsWithUsage": 2,
+    "callsWithoutUsage": 0,
+    "inputTokens": 2000,
+    "outputTokens": 500,
+    "totalTokens": 2500,
+    "knownInputTokens": 2000,
+    "knownOutputTokens": 500,
+    "knownTotalTokens": 2500
+  },
+  "cost": {
+    "status": "complete",
+    "currency": "USD",
+    "estimatedCostNanos": 13500000,
+    "knownEstimatedCostNanos": 13500000,
+    "pricedCalls": 2,
+    "unpricedCalls": 0,
+    "unpricedReasons": [],
+    "pricingProfiles": [
+      {
+        "profileId": "pricing.local",
+        "profileVersion": "2026-10"
+      }
+    ]
+  },
+  "failures": {
+    "failedAttempts": 0,
+    "uncategorizedAttempts": 0,
+    "byCategory": [],
+    "byCode": [],
+    "detectedEvents": 0,
+    "runFailure": null
+  }
+}

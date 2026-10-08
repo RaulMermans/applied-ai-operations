@@ -2,7 +2,7 @@ import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createFileDurabilityStore, planFingerprint, type DurableCheckpoint, type DurableOperation } from "../src/index.js";
-import { clockAt, compile, createEffects, crashingStore, initial, linearYaml, tempRoot, world } from "./fixtures.js";
+import { alice, clockAt, compile, createEffects, crashingStore, initial, linearYaml, tempRoot, world } from "./fixtures.js";
 
 const runId = "run.linear";
 
@@ -281,7 +281,7 @@ describe("terminal, duplicate, busy, and cancelled Runs", () => {
     const store = crashingStore(createFileDurabilityStore({ root }), "beginOperation", (operation: DurableOperation) => operation.nodeId === "b");
     const first = world({ yaml: linearYaml, root, effects, clock: clockAt(0), store });
     await first.host.execute({ runId, initialState: initial(runId) });
-    const requested = await first.host.requestCancellation(runId);
+    const requested = await first.host.requestCancellation(runId, { requestedBy: alice });
     expect(requested.ok).toBe(true);
     const cancelled = await world({ yaml: linearYaml, root, effects, clock: clockAt(100) }).host.resume(runId);
     expect(!cancelled.ok && cancelled.failure.code).toBe("RUN_CANCELLED");
@@ -301,7 +301,7 @@ describe("terminal, duplicate, busy, and cancelled Runs", () => {
     const execute = deterministic.execute.bind(deterministic);
     deterministic.execute = async (context) => {
       const result = await execute(context);
-      if (context.node.id === "a") await w.host.requestCancellation(runId);
+      if (context.node.id === "a") await w.host.requestCancellation(runId, { requestedBy: alice });
       return result;
     };
     const result = await w.host.execute({ runId, initialState: initial(runId) });

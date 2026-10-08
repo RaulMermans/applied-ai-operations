@@ -34,7 +34,9 @@ Implemented by `@aao/durability` (Sprint 14) behind a storage-neutral `Durabilit
 
 Observability owns canonical execution truth: run and node events, model and tool calls, retries, approvals, checkpoints, latency, measurable token and cost use, evaluation results, errors, and artifacts. It is part of correctness, not decorative monitoring.
 
-Since Sprint 15, `@aao/observability` owns the Trace Runtime. Execution packages emit through an optional, emit-only port, and observability depends only on `@aao/contracts`. Trace records authoritative decisions but never makes them. Metrics, cost, and Audit are Sprint 16. See [trace runtime](trace-runtime.md).
+Since Sprint 15, `@aao/observability` owns the Trace Runtime. Execution packages emit through an optional, emit-only port, and observability depends only on `@aao/contracts`. Trace records authoritative decisions but never makes them. See [trace runtime](trace-runtime.md).
+
+Since Sprint 16, Metrics are deterministic projections of Trace. They cover latency, retries, Tool/model usage, tokens, recovery, and modelled cost from explicit pricing, with no Metrics store. Audit is separate accountability evidence, recorded at authoritative source boundaries through an emit-only port into a hash-chained local `AuditStore`. Trace = chronology, Metrics = measurement, Audit = accountability, and none of them is execution authority. See [metrics](metrics.md), [audit](audit.md), and [ADR-021](../decisions/ADR-021-metrics-and-audit-boundaries.md).
 
 Evaluation owns workflow and schema evaluation, tool-use and trace assertions, authorization tests, regression cases, safety tests, and model/capability benchmarks. A final response does not establish correct execution.
 

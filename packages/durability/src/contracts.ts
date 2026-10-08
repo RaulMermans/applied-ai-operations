@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CheckpointIdSchema, NodeIdSchema, NodeKindSchema, RunIdSchema, WorkflowIdSchema, entityVersionSchema, identifierSchema, isoTimestampSchema } from "@aao/contracts";
+import { AuditCodeSchema, CheckpointIdSchema, NodeIdSchema, NodeKindSchema, PrincipalSchema, RunIdSchema, WorkflowIdSchema, entityVersionSchema, identifierSchema, isoTimestampSchema } from "@aao/contracts";
 import { NodeAttemptOutcomeSchema, NodeExecutionRecordSchema, RuntimeExecutionSnapshotSchema, RuntimeFailureSchema } from "@aao/runtime";
 
 /**
@@ -101,8 +101,14 @@ export function operationIdFor(step: number, attempt: number): string {
   return `op.s${step}.a${attempt}`;
 }
 
-/** A durable, idempotent host cancellation request. Applied at the next safe boundary; it never reverses completed work. */
-export const CancellationRecordSchema = z.object({ schemaVersion: z.literal(1), runId: RunIdSchema, requestedAt: isoTimestampSchema }).strict();
+/**
+ * A durable, idempotent host cancellation request. Applied at the next safe
+ * boundary; it never reverses completed work. `requestedBy` is the
+ * host-attested principal accountable for the request (ADR-021) and
+ * `reasonCode` an optional bounded code — never free text. Records written
+ * before Sprint 16 carry no attribution and are never given a fabricated one.
+ */
+export const CancellationRecordSchema = z.object({ schemaVersion: z.literal(1), runId: RunIdSchema, requestedAt: isoTimestampSchema, requestedBy: PrincipalSchema.optional(), reasonCode: AuditCodeSchema.optional() }).strict();
 export type CancellationRecord = z.infer<typeof CancellationRecordSchema>;
 
 export const DURABILITY_FAILURE_CODES = [

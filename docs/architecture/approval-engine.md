@@ -31,3 +31,13 @@ The durable checkpoint at the waiting boundary acts as the cross-process continu
 ## Trace (Sprint 15)
 
 The Approval Node emits `approval.requested` with the approval id, requester id/type, required approver roles, permission classes, and request fingerprint. It never emits the subject or its payload. `continueApprovedWorkflow` emits `approval.resolved` with the status, the resolver id/type, and the authoritative `resolvedAt` when a resolution is consumed. A durable host emits the same event when it cancels a pending approval on Run cancellation. No reason text or profile data is traced, and Trace can never approve, reject, or revalidate anything. See [trace runtime](trace-runtime.md).
+
+## Audit (Sprint 16)
+
+`createApprovalEngine({ ..., audit })` accepts an optional emit-only `AuditPort`. The engine records accountability evidence at its own authoritative boundary, from the stored record:
+
+- `approval.requested` when the record is created, at `requestedAt`. An exact-request replay deduplicates.
+- `approval.resolved` only after `compareAndSetResolution` succeeded for `pending → approved | rejected`, at the record's `resolvedAt` by its `resolvedBy`. Trace `approval.resolved` stays the Runtime's consumption time; the difference is intentional.
+- `approval.resolution_denied` for a refused attempt by a well-formed principal: `APPROVAL_HUMAN_REQUIRED`, `APPROVAL_RESOLVER_NOT_ELIGIBLE`, `APPROVAL_SELF_APPROVAL_FORBIDDEN`, or `APPROVAL_ALREADY_RESOLVED`. The attempted resolver is the actor; nothing is fabricated for an unattributable attempt.
+
+No subject, reason text, or profile data is recorded. The engine never reads Audit: a forged Audit approval leaves the record pending. Audit failure never changes or rolls back a decision. See [audit](audit.md) and [ADR-021](../decisions/ADR-021-metrics-and-audit-boundaries.md).

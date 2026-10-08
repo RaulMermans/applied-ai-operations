@@ -1,4 +1,4 @@
-import { RunIdSchema, type ApprovalRecord, type RunState, type RunStatus, type TraceEventDraft } from "@aao/contracts";
+import { AuditCodeSchema, PrincipalSchema, RunIdSchema, emitAuditSafely, type ApprovalRecord, type AuditPort, type Principal, type RunState, type RunStatus, type TraceEventDraft } from "@aao/contracts";
 import { continueApprovedWorkflow, traceApprovalResolved, type ApprovalEngine } from "@aao/approval";
 import { createSystemClock, executeWorkflow, resumeWorkflow, type NodeRecoveryDirective, type NodeRegistry, type RuntimeClock, type RuntimeDurabilityHooks, type RuntimeExecutionState, type RuntimeFailure, type RuntimeOptions, type RuntimeReliabilityOptions, type RuntimeSleeper, type RuntimeTracePort, type WorkflowExecutionResult } from "@aao/runtime";
 import { CompiledWorkflowPlanSchema, type CompiledWorkflowPlan } from "@aao/workflow-dsl";
@@ -25,6 +25,19 @@ export interface DurableRuntimeHostOptions {
    * the checkpoint chain and operation ledger stay the only recovery truth.
    */
   trace?: RuntimeTracePort;
+  /**
+   * Optional emit-only Audit port (ADR-021), e.g. `@aao/observability`'s
+   * Audit recorder. The host reports accountable cancellation requests and
+   * their application. Never read: recovery and cancellation decisions come
+   * only from durable state, and Audit failure changes nothing.
+   */
+  audit?: AuditPort;
+}
+
+/** A trusted host's cancellation request: the accountable principal and an optional bounded reason code (never free text). */
+export interface CancellationRequest {
+  requestedBy: Principal;
+  reasonCode?: string;
 }
 
 export interface DurabilityFailure {
@@ -90,6 +103,7 @@ export function createDurableRuntimeHost(options: DurableRuntimeHostOptions) {
   const fingerprint = planFingerprint(plan);
   const clock = options.clock ?? createSystemClock();
   const trace = options.trace;
+  const audit = options.audit;
   const runtimeOptions: RuntimeOptions = { clock, ...(trace ? { trace } : {}), ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}), ...(options.reliability ? { reliability: options.reliability } : {}), ...(options.sleeper ? { sleeper: options.sleeper } : {}) };
   // Single writer per Run inside this host; cross-process exclusion is out of scope (documented).
   const active = new Set<string>();
@@ -151,13 +165,28 @@ export function createDurableRuntimeHost(options: DurableRuntimeHostOptions) {
       recordAttemptOutcome: (intent, outcome) => record(() => store.recordOperationOutcome(runId, operationIdFor(intent.step, intent.attempt), outcome, clock.now())),
       isCancellationRequested: () => record(async () => (await store.getCancellation(runId)) !== undefined),
     };
-    /** Names the durability cause of a Runtime `DURABILITY_PERSISTENCE_FAILED`. */
-    const finish = (result: WorkflowExecutionResult): DurableRunResult => {
+    /** Names the durability cause of a Runtime `DURABILITY_PERSISTENCE_FAILED`; reports an applied cancellation to Audit. */
+    const finish = async (result: WorkflowExecutionResult): Promise<DurableRunResult> => {
+      if (!result.ok && result.failure.code === "RUN_CANCELLED" && result.execution?.run.status === "CANCELLED") await auditCancellationApplied(runId, result.execution, result.failure.nodeId);
       if (result.ok || result.failure.code !== "DURABILITY_PERSISTENCE_FAILED" || lastError === undefined) return result;
       if (lastError === "DURABLE_RUN_ALREADY_EXISTS") return failure("DURABLE_RUN_ALREADY_EXISTS");
       return { ...result, failure: { ...result.failure, details: { durabilityCode: lastError } } };
     };
     return { hooks, finish, options: { ...runtimeOptions, durability: hooks } };
+  }
+
+  /**
+   * Accountability for the Runtime reaching the safe cancellation boundary:
+   * when the Run became CANCELLED (`RunRecord.updatedAt`), attributed to the
+   * durably recorded requester. Without recorded attribution (a pre-Sprint-16
+   * record) nothing is emitted rather than inventing an actor.
+   */
+  async function auditCancellationApplied(runId: string, execution: RuntimeExecutionState, nodeId: string | undefined): Promise<void> {
+    if (!audit) return;
+    let cancellation: CancellationRecord | undefined;
+    try { cancellation = await store.getCancellation(runId); } catch { return; }
+    if (!cancellation?.requestedBy) return;
+    emitAuditSafely(audit, { type: "run.cancellation.applied", runId, actor: { id: cancellation.requestedBy.id, type: cancellation.requestedBy.type }, target: { kind: "run", runId }, occurredAt: execution.run.updatedAt, key: { runId }, payload: { step: execution.step, ...(nodeId ? { nodeId } : {}), requestedAt: cancellation.requestedAt } });
   }
 
   async function exclusive(runId: unknown, work: (runId: string) => Promise<DurableRunResult>): Promise<DurableRunResult> {
@@ -197,7 +226,7 @@ export function createDurableRuntimeHost(options: DurableRuntimeHostOptions) {
       return exclusive(request?.runId, async (runId) => {
         if (await store.getRun(runId)) return failure("DURABLE_RUN_ALREADY_EXISTS");
         const run = session(runId, 0);
-        return run.finish(await executeWorkflow({ runId, plan, registry, initialState: request.initialState, options: run.options }));
+        return await run.finish(await executeWorkflow({ runId, plan, registry, initialState: request.initialState, options: run.options }));
       });
     },
 
@@ -224,7 +253,7 @@ export function createDurableRuntimeHost(options: DurableRuntimeHostOptions) {
           const wait = execution.wait!;
           if (cancellation) {
             const current = run();
-            const result = current.finish(await resumeWorkflow({ plan, registry, execution, options: current.options }));
+            const result = await current.finish(await resumeWorkflow({ plan, registry, execution, options: current.options }));
             if (!result.ok && result.failure.code === "RUN_CANCELLED" && approvals?.getApproval(wait.referenceId)?.status === "pending") {
               const cancelled = approvals.cancel(wait.referenceId);
               await traceApprovalResolved(trace, { runId: id, workflowId: plan.workflow.id, workflowVersion: plan.workflow.version }, cancelled);
@@ -236,7 +265,7 @@ export function createDurableRuntimeHost(options: DurableRuntimeHostOptions) {
           if (!record || record.runId !== id || record.nodeId !== wait.nodeId || record.requestFingerprint !== wait.requestFingerprint) throw new DurabilityError("DURABILITY_CORRUPT_STATE");
           if (record.status === "pending") return { ok: true, execution, latestSnapshot: checkpoint.executionSnapshot };
           const current = run();
-          return current.finish(await continueApprovedWorkflow(approvals, { plan, registry, execution, options: current.options }));
+          return await current.finish(await continueApprovedWorkflow(approvals, { plan, registry, execution, options: current.options }));
         }
 
         // The decision comes only from the checkpoint and operation ledger; the trace below merely reports it.
@@ -249,14 +278,14 @@ export function createDurableRuntimeHost(options: DurableRuntimeHostOptions) {
           // Fail closed: durable truth is left untouched. Only a requested cancellation may still end the Run, without replaying anything.
           if (!cancellation) return failure(recovery.code, { operationId: recovery.operationId }, execution);
           const current = run(undefined, checkpoint.sequence);
-          return current.finish(await resumeWorkflow({ plan, registry, execution, options: current.options }));
+          return await current.finish(await resumeWorkflow({ plan, registry, execution, options: current.options }));
         }
         const directive: NodeRecoveryDirective | undefined = recovery.kind === "directive" ? recovery.directive : undefined;
         for (const operation of operations.filter((candidate) => candidate.step === execution.step + 1 && candidate.status === "OUTCOME_RECORDED")) {
           await emit(id, { type: "recovery.outcome_reused", nodeId: operation.nodeId, span: { kind: "run" }, key: { operationId: operation.operationId }, payload: { operationId: operation.operationId, step: operation.step, attempt: operation.attempt, outcomeKind: operation.outcome!.kind } });
         }
         const current = run(recovery.kind === "directive" ? recovery.replay : undefined, checkpoint.sequence);
-        return current.finish(await resumeWorkflow({ plan, registry, execution, ...(directive ? { recovery: directive } : {}), options: current.options }));
+        return await current.finish(await resumeWorkflow({ plan, registry, execution, ...(directive ? { recovery: directive } : {}), options: current.options }));
       });
     },
 
@@ -281,12 +310,21 @@ export function createDurableRuntimeHost(options: DurableRuntimeHostOptions) {
       return approvals?.getApproval(approvalId);
     },
 
-    /** Persists a cancellation request, applied at the Run's next safe boundary. It stops future work; it never reverses completed work. */
-    async requestCancellation(runId: string): Promise<{ ok: true; cancellation: CancellationRecord } | { ok: false; failure: DurabilityFailure }> {
-      if (!RunIdSchema.safeParse(runId).success) return { ok: false, failure: { code: "DURABILITY_INVALID_INPUT", message: MESSAGES.DURABILITY_INVALID_INPUT } };
+    /**
+     * Persists a cancellation request, applied at the Run's next safe
+     * boundary. It stops future work; it never reverses completed work. The
+     * trusted host attests who is asking (`user`, `service`, or `system`);
+     * the request is idempotent, so the first accepted requester remains the
+     * accountable one. Audit records the request at this boundary.
+     */
+    async requestCancellation(runId: string, request: CancellationRequest): Promise<{ ok: true; cancellation: CancellationRecord } | { ok: false; failure: DurabilityFailure }> {
+      const requestedBy = PrincipalSchema.safeParse(request?.requestedBy);
+      const reasonCode = request?.reasonCode === undefined ? undefined : AuditCodeSchema.safeParse(request.reasonCode);
+      if (!RunIdSchema.safeParse(runId).success || !requestedBy.success || (reasonCode !== undefined && !reasonCode.success)) return { ok: false, failure: { code: "DURABILITY_INVALID_INPUT", message: MESSAGES.DURABILITY_INVALID_INPUT } };
       try {
-        const cancellation = await store.requestCancellation(runId, clock.now());
+        const cancellation = await store.requestCancellation(runId, clock.now(), { requestedBy: requestedBy.data, ...(reasonCode?.success ? { reasonCode: reasonCode.data } : {}) });
         await emit(runId, { type: "cancellation.requested", span: { kind: "run" }, key: {}, payload: { requestedAt: cancellation.requestedAt } });
+        if (cancellation.requestedBy) emitAuditSafely(audit, { type: "run.cancellation.requested", runId, actor: { id: cancellation.requestedBy.id, type: cancellation.requestedBy.type }, target: { kind: "run", runId }, occurredAt: cancellation.requestedAt, key: { runId }, payload: { ...(cancellation.reasonCode ? { reasonCode: cancellation.reasonCode } : {}) } });
         return { ok: true, cancellation };
       } catch (error) {
         const code = durabilityCodeOf(error);

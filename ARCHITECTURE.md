@@ -180,6 +180,28 @@ Runtime / Governance / Approval / Durability ──emit──► RuntimeTracePor
 
 See [ADR-020](docs/decisions/ADR-020-trace-runtime-and-observability-boundary.md) and [trace runtime](docs/architecture/trace-runtime.md).
 
+## Metrics and Audit
+
+Sprint 16 extends `@aao/observability` with two more evidence concepts, kept separate from Trace and from every execution authority:
+
+```text
+EXECUTION TRUTH ──► Trace ──► validateTrace ──► deriveRunMetrics ──► RunMetrics ──► aggregateRunMetrics ──► AggregateMetrics
+SECURITY / ACCOUNTABILITY ACTION ──emit──► AuditPort ──► Audit recorder ──► AuditStore (in-memory | local file, hash-chained)
+```
+
+- **Trace = chronology, Metrics = derived measurement, Audit = accountability evidence.** None is execution authority. Metrics never decide execution, Audit never grants authority, and Trace never recovers Runs.
+- **Metrics** are pure, deterministic projections of validated Trace plus explicit trusted pricing.
+  - There is no Metrics store.
+  - Missing evidence stays missing (`null` or partial, never zero).
+  - Run latency is `run.started` → terminal event, never checkpoint timing.
+  - Cost is computed only from exact-match `ModelPricingProfile`s in integer nano-units. It is a modelled estimate, not billing.
+- **Audit** is recorded at the authoritative source boundary: the Approval repository transition (true `resolvedAt` / `resolvedBy`), the Tool Authorization decision, and the attributed durable cancellation request and application.
+  - It flows through an emit-only `AuditPort` defined in `@aao/contracts`, so execution packages never import observability.
+  - `AuditStore` is separate from `TraceStore` and `DurabilityStore`: append-only, with a contiguous sequence per stream and a SHA-256 hash chain. The chain is tamper-evident, not tamper-proof.
+  - Audit failure degrades Audit health and never changes or retries an action.
+
+See [ADR-021](docs/decisions/ADR-021-metrics-and-audit-boundaries.md), [metrics](docs/architecture/metrics.md), and [audit](docs/architecture/audit.md).
+
 ## Canonical architecture documents
 
 - [Product contract](docs/product/product-contract.md) — product purpose, boundaries, V1 proof, and success criteria.
@@ -195,6 +217,8 @@ See [ADR-020](docs/decisions/ADR-020-trace-runtime-and-observability-boundary.md
 - [Reliability runtime](docs/architecture/reliability-runtime.md) — trusted bounded retry policy, failure taxonomy, retry safety, attempt timeouts, and late-result protection.
 - [Durable execution](docs/architecture/durable-execution.md) — durable checkpoints, write-ahead operation records, crash recovery, recovery safety, Tool idempotency, durable approvals, and safe-boundary cancellation.
 - [Trace runtime](docs/architecture/trace-runtime.md) — Trace Event V2, the emit-only trace port, recorder, Trace Stores, identity, content policy, validation, and the OpenTelemetry mapping.
+- [Metrics](docs/architecture/metrics.md) — Trace-derived RunMetrics and AggregateMetrics, completeness, latency, token usage, explicit pricing and cost coverage, denominators, and nearest-rank percentiles.
+- [Audit](docs/architecture/audit.md) — source-time accountability events, the emit-only Audit port, the hash-chained Audit Store, verification, failure isolation, and retention limits.
 - [Governance](docs/architecture/governance.md) — host-attested actors, role bindings, deny policies, and resolved authority before Authorization.
 - [MCP connector](docs/architecture/mcp-connector.md) — isolated stdio sessions, bounded discovery, explicit Tool bindings, and normalized failures.
 - [System boundaries](docs/architecture/system-boundaries.md) — architectural layers and ownership.
@@ -222,6 +246,8 @@ Dependencies implement infrastructure; AAO defines product semantics.
 | Governance | Yes | `@aao/governance`, canonical contracts and deterministic validation (Sprint 11) |
 | Evaluation | Yes | Implementation deferred |
 | Trace model | Yes | `@aao/observability`: local Trace Stores, no external dependency (Sprint 15); OTel export deferred |
+| Metrics | Yes | `@aao/observability`: pure projections of Trace, no Metrics store or metrics SDK (Sprint 16); exporters deferred |
+| Audit | Yes | `@aao/observability`: local hash-chained Audit Store, no SIEM or audit vendor (Sprint 16) |
 
 The repository's `packages/substrate-contracts`, `packages/substrate-spikes`, and `experiments` remain Sprint 0A research evidence. They are not production packages or final public contracts. The MCP spike is `KEEP_AS_HISTORICAL_EVIDENCE`; production MCP is exclusively `@aao/mcp-connector` (ADR-015). Other concepts still need explicit promotion, migration, deletion, or archival.
 

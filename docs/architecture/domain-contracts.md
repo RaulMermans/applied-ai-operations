@@ -47,6 +47,8 @@ Identifiers (`identifierSchema` and its aliases in `common.ts`, e.g. `WorkflowId
 | Approval | Governance / Core |
 | Eval Definition / Result | Core reliability |
 | Trace Event | Core observability |
+| Audit Event | Core accountability evidence |
+| Run Metrics / Aggregate Metrics / Model Pricing Profile | Core observability (derived) |
 | Artifact | Shared execution |
 | Capability Pack (reference boundary) | Pack layer |
 | Company Config | Deployment layer |
@@ -101,6 +103,14 @@ The `external_side_effect` → human-approval-before-execution rule and the `des
   - span refs and typed `TraceEventDraft`s for emitters.
 
   The recorder, stores, and validator live in `@aao/observability`. See [trace runtime](trace-runtime.md).
+- **AuditEvent** (`audit.ts`, schema version 1, Sprint 16) is a separate contract, not a `TraceEvent`:
+  - envelope: `eventId`, `streamId` (`run:<runId>`), `sequence`, `occurredAt`, `type`, `runId`, `actor` (principal id + type only), `action`, `target`, `outcome`, `payload`, `previousHash`, `eventHash`;
+  - a closed catalog of seven real accountability actions with strict payloads;
+  - a fixed genesis hash;
+  - the emit-only `AuditPort` and typed `AuditEventDraft`.
+
+  The recorder, hash chain, stores, and verification live in `@aao/observability`. See [audit](audit.md).
+- **RunMetrics**, **AggregateMetrics**, and **ModelPricingProfile** (`metrics.ts`, schema version 1, Sprint 16) are derived, non-authoritative measurement contracts. They express completeness explicitly (`null` or `partial`, never zero), name the denominator of every rate, and account cost in integer nano-units. See [metrics](metrics.md).
 - **ArtifactRef** (`artifact.ts`) — `schemaVersion`, `artifactId`, `runId?`, `nodeId?`, `kind` (an open identifier, not a frozen enum — artifact kinds are expected to grow with capability packs), `name?`, `createdAt`, `locationRef` (opaque `JsonObject`, e.g. `{"type":"local-file","path":"..."}`). No binary content is ever stored in this contract, and no storage technology is selected.
 
 ## Template contracts
@@ -112,4 +122,4 @@ Together, `CompanyConfig` and `CapabilityPackRef` protect the portability invari
 
 ## Non-goals carried over from the sprint
 
-This package intentionally does not implement: a Workflow DSL parser, YAML authoring, a graph compiler/validator (cycles, reachability, unreachable nodes, termination), a runtime executor, a Node Registry, state reducers, state/checkpoint persistence, an agent/skill/model runtime, a Tool Registry or tool execution, capability adapters/connectors, MCP production integration, OAuth/credentials, an authorization engine, eval execution, trace recording or storage (`@aao/observability`), a capability-pack runtime, company deployment folders, or any UI. See ADR-007 and the sprint's own non-goals list for the complete inventory.
+This package intentionally does not implement: a Workflow DSL parser, YAML authoring, a graph compiler/validator (cycles, reachability, unreachable nodes, termination), a runtime executor, a Node Registry, state reducers, state/checkpoint persistence, an agent/skill/model runtime, a Tool Registry or tool execution, capability adapters/connectors, MCP production integration, OAuth/credentials, an authorization engine, eval execution, trace recording or storage, Metrics projection, or Audit recording (all `@aao/observability`), a capability-pack runtime, company deployment folders, or any UI. See ADR-007 and the sprint's own non-goals list for the complete inventory.

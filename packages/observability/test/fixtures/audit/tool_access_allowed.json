@@ -1,0 +1,39 @@
+{
+  "events": [
+    {
+      "schemaVersion": 1,
+      "eventId": "aud.8b303722ce29659eb81b85e985cfef35",
+      "streamId": "run:run.fixture",
+      "sequence": 0,
+      "occurredAt": "2026-10-08T12:08:20.000Z",
+      "type": "tool.access.allowed",
+      "runId": "run.fixture",
+      "actor": {
+        "id": "user.alice",
+        "type": "user"
+      },
+      "action": "tool.execute",
+      "target": {
+        "kind": "tool",
+        "toolId": "local.lookup",
+        "toolVersion": "1.0.0"
+      },
+      "outcome": "allowed",
+      "payload": {
+        "toolExecutionId": "tool.22e20eacc4a6c9569c9864db8d8c0062aab78026370b99329110db4cfe2d83d7",
+        "attempt": 1,
+        "nodeId": "lookup",
+        "permissionClasses": [
+          "read_only"
+        ],
+        "agentCeilingApplied": false
+      },
+      "previousHash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "eventHash": "f1a8c14e9e63ce292db692888ac8a4209b393ebd9e8311d7ee88ca554aa675c5"
+    }
+  ],
+  "verification": {
+    "valid": true,
+    "issues": []
+  }
+}

@@ -158,3 +158,7 @@ Ordinary Runtime retries are unchanged: `write_draft` is never retried after a k
 - `failed`: an invoked handler did not produce an accepted result.
 
 The Tool Node maps these to `tool.call.blocked`, `tool.call.started`, `tool.call.completed`, and `tool.call.failed`. Each event carries the Tool ref, the stable `toolExecutionId`, the attempt, permission classes, and bounded codes. Tool input, output, authorization context, and handler errors are never traced. Without an observer, the execution path is unchanged. See [trace runtime](trace-runtime.md).
+
+## Audit (Sprint 16)
+
+`ToolNodeDependencies.audit` (or `executeTool({ audit })`) is an optional, emit-only Audit binding. `tool-audit.ts` records each Authorization decision as `tool.access.allowed` or `tool.access.denied`: access accountability for the attempt, correlated with Trace by `toolExecutionId` and attempt. Allowed means the invocation path may continue, not that the Tool succeeded. Tool input and output are never recorded. A failing Audit port changes nothing and causes no retry. The support gate is unchanged: `external_side_effect`, `destructive`, and `sensitive_data` remain unsupported even with Audit present. See [audit](audit.md).

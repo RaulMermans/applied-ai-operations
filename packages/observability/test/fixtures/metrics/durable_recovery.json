@@ -1,0 +1,207 @@
+{
+  "schemaVersion": 1,
+  "runId": "run.fixture",
+  "traceId": "727ec2924b1df12c399ae7ec3e55ba40",
+  "workflowId": "trace.flagship",
+  "workflowVersion": "1.0.0",
+  "dimensions": {
+    "reliabilityPolicyFingerprint": "1769b81ba2e8ef6d3c28a61c6a09d460d44a65519ecab23baf38995b64f327ba"
+  },
+  "runStatus": "COMPLETED",
+  "traceQuality": {
+    "status": "complete",
+    "issues": []
+  },
+  "startedAt": "2026-10-08T12:00:00.000Z",
+  "endedAt": "2026-10-08T12:03:30.000Z",
+  "durationMs": 210000,
+  "approvalWaitDurationMs": 90000,
+  "durationExcludingApprovalWaitMs": 120000,
+  "steps": 4,
+  "nodes": {
+    "executions": 4,
+    "attempts": 4,
+    "recoveryReplayAttempts": 0,
+    "completed": 4,
+    "failed": 0,
+    "waiting": 1,
+    "attemptDetails": [
+      {
+        "nodeId": "prepare",
+        "kind": "deterministic",
+        "step": 1,
+        "attempt": 1,
+        "recoveryReplay": false,
+        "outcome": "completed",
+        "startedAt": "2026-10-08T12:00:02.000Z",
+        "durationMs": 3000,
+        "waitDurationMs": null
+      },
+      {
+        "nodeId": "approval",
+        "kind": "approval",
+        "step": 2,
+        "attempt": 1,
+        "recoveryReplay": false,
+        "outcome": "completed",
+        "startedAt": "2026-10-08T12:00:07.000Z",
+        "durationMs": 3000,
+        "waitDurationMs": 90000
+      },
+      {
+        "nodeId": "lookup",
+        "kind": "tool",
+        "step": 3,
+        "attempt": 1,
+        "recoveryReplay": false,
+        "outcome": "completed",
+        "startedAt": "2026-10-08T12:01:44.000Z",
+        "durationMs": 101000,
+        "waitDurationMs": null
+      },
+      {
+        "nodeId": "final",
+        "kind": "final_output",
+        "step": 4,
+        "attempt": 1,
+        "recoveryReplay": false,
+        "outcome": "completed",
+        "startedAt": "2026-10-08T12:03:27.000Z",
+        "durationMs": 2000,
+        "waitDurationMs": null
+      }
+    ],
+    "byNode": [
+      {
+        "nodeId": "approval",
+        "kind": "approval",
+        "executions": 1,
+        "attempts": 1,
+        "completed": 1,
+        "failed": 0,
+        "waits": 1,
+        "attemptDurationMsTotal": 3000
+      },
+      {
+        "nodeId": "final",
+        "kind": "final_output",
+        "executions": 1,
+        "attempts": 1,
+        "completed": 1,
+        "failed": 0,
+        "waits": 0,
+        "attemptDurationMsTotal": 2000
+      },
+      {
+        "nodeId": "lookup",
+        "kind": "tool",
+        "executions": 1,
+        "attempts": 1,
+        "completed": 1,
+        "failed": 0,
+        "waits": 0,
+        "attemptDurationMsTotal": 101000
+      },
+      {
+        "nodeId": "prepare",
+        "kind": "deterministic",
+        "executions": 1,
+        "attempts": 1,
+        "completed": 1,
+        "failed": 0,
+        "waits": 0,
+        "attemptDurationMsTotal": 3000
+      }
+    ]
+  },
+  "retries": {
+    "scheduled": 0,
+    "exhausted": 0,
+    "nodesRetried": 0
+  },
+  "models": {
+    "callsStarted": 0,
+    "callsCompleted": 0,
+    "callsFailed": 0,
+    "byModel": []
+  },
+  "agents": {
+    "executions": 0,
+    "iterations": 0,
+    "completed": 0,
+    "failed": 0
+  },
+  "tools": {
+    "physicalInvocations": 1,
+    "logicalExecutions": 1,
+    "completed": 1,
+    "failed": 0,
+    "blocked": 0,
+    "byTool": [
+      {
+        "toolId": "local.lookup",
+        "toolVersion": "1.0.0",
+        "physicalInvocations": 1,
+        "logicalExecutions": 1,
+        "completed": 1,
+        "failed": 0,
+        "blocked": 0
+      }
+    ]
+  },
+  "approvals": {
+    "requested": 1,
+    "approved": 1,
+    "rejected": 0,
+    "expired": 0,
+    "cancelled": 0,
+    "pending": 0
+  },
+  "durability": {
+    "checkpointsCreated": 6,
+    "recoveryStarts": 1,
+    "recoveryReplays": 0,
+    "reusedOutcomes": 1,
+    "recoveryBlocks": 0,
+    "recoveryCompletions": 1
+  },
+  "cancellation": {
+    "requested": false,
+    "applied": false
+  },
+  "state": {
+    "updates": 2,
+    "finalStateRevision": 2
+  },
+  "tokenUsage": {
+    "status": "complete",
+    "modelCallsCompleted": 0,
+    "modelCallsFailed": 0,
+    "callsWithUsage": 0,
+    "callsWithoutUsage": 0,
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "totalTokens": 0,
+    "knownInputTokens": 0,
+    "knownOutputTokens": 0,
+    "knownTotalTokens": 0
+  },
+  "cost": {
+    "status": "complete",
+    "currency": null,
+    "estimatedCostNanos": 0,
+    "knownEstimatedCostNanos": 0,
+    "pricedCalls": 0,
+    "unpricedCalls": 0,
+    "unpricedReasons": [],
+    "pricingProfiles": []
+  },
+  "failures": {
+    "failedAttempts": 0,
+    "uncategorizedAttempts": 0,
+    "byCategory": [],
+    "byCode": [],
+    "detectedEvents": 1,
+    "runFailure": null
+  }
+}

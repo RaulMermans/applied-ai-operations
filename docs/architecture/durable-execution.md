@@ -137,7 +137,7 @@ Old records are evidence, never authority. A `governanceFingerprint` recorded at
 
 ## Cancellation
 
-`host.requestCancellation(runId)` persists an idempotent request. At the next safe boundary the Run becomes `CANCELLED` and a terminal checkpoint is persisted. That boundary is before a Node would begin, or on resume of a waiting Run, whose pending Approval is cancelled too. No Node begins afterward. A durably recorded accepted outcome is still committed first. Cancellation stops future work; it does not reverse history, and it does not interrupt a running attempt.
+`host.requestCancellation(runId, { requestedBy, reasonCode? })` persists an idempotent request attributed to the host-attested principal (`user`, `service`, or `system`). `reasonCode` is an optional bounded code; free text is refused. The first accepted requester stays on the durable `CancellationRecord`. Pre-Sprint 16 records without attribution remain valid and are never given a fabricated actor. At the next safe boundary the Run becomes `CANCELLED` and a terminal checkpoint is persisted. That boundary is before a Node would begin, or on resume of a waiting Run, whose pending Approval is cancelled too. No Node begins afterward. A durably recorded accepted outcome is still committed first. Cancellation stops future work; it does not reverse history, and it does not interrupt a running attempt.
 
 ## Reference store
 
@@ -170,7 +170,7 @@ await host.execute({ runId, initialState }); // DURABLE_RUN_ALREADY_EXISTS if ru
 await host.resume(runId);                    // after any restart
 await host.getRun(runId);                    // inspection; never executes
 host.getApproval(approvalId);
-await host.requestCancellation(runId);
+await host.requestCancellation(runId, { requestedBy: { id: "user.alice", type: "user" } });
 ```
 
 ## Not in scope
@@ -201,3 +201,7 @@ The two-process smoke (`pnpm --filter @aao/durability smoke`, after `pnpm build`
 - `cancellation.requested`.
 
 The durability ledger remains execution-correctness truth. `planRecovery` reads only the checkpoint chain and the operation ledger, and `DurabilityStore` holds no trace data. Deleting or corrupting the Trace Store leaves recovery unchanged. A trace that shows a Tool completion cannot prevent an ambiguous replay, and a trace that lacks one cannot veto reuse of a recorded outcome. A recovered Run keeps its trace id and continues its trace sequence, and re-entering the same recovery boundary deduplicates. See [trace runtime](trace-runtime.md) and [ADR-020](../decisions/ADR-020-trace-runtime-and-observability-boundary.md).
+
+## Audit (Sprint 16)
+
+`DurableRuntimeHostOptions.audit` is an optional emit-only `AuditPort`. The host records `run.cancellation.requested` at the attributed request (at `requestedAt`). It records `run.cancellation.applied` when the Run actually became `CANCELLED` (at `RunRecord.updatedAt`, attributed to the recorded requester). Recovery never reads Audit: `planRecovery` still reads only the checkpoint chain and operation ledger, `DurabilityStore` holds no Audit data, and corrupting or deleting the Audit store leaves recovery unchanged. See [audit](audit.md).

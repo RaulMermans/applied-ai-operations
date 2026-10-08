@@ -28,4 +28,4 @@ export { planFingerprint } from "./fingerprint.js";
 export type { DurabilityStore } from "./store.js";
 export { createFileDurabilityStore } from "./file-store.js";
 export { executionFromCheckpoint, planRecovery, type RecoveryPlan } from "./recovery.js";
-export { createDurableRuntimeHost, type DurableRuntimeHost, type DurableRuntimeHostOptions, type DurableRunResult, type DurableRunView, type DurabilityFailure } from "./host.js";
+export { createDurableRuntimeHost, type DurableRuntimeHost, type DurableRuntimeHostOptions, type DurableRunResult, type DurableRunView, type DurabilityFailure, type CancellationRequest } from "./host.js";

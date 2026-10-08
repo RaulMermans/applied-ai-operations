@@ -14,6 +14,8 @@ Host-attested identity → Actor/Principal → active RoleBindings → Role gran
 
 Governance establishes authority. Authorization checks whether a requested registered Tool's requirements fit that authority and any Agent ceiling. The future Approval Engine will decide whether an otherwise authorized action needs human confirmation. Tool Runtime determines whether the class is supported, validates input/output, and invokes a trusted handler. These are distinct decisions. An `external_side_effect` grant does not make that class executable today.
 
+Governance never reads Audit or Metrics (Sprint 16). Audit records Governance-dependent outcomes — Approval resolutions and Tool access decisions — as one-way evidence; a forged Audit event cannot create actors, role membership, or permissions. See [audit](audit.md).
+
 The host must obtain identity outside model output, workflow state, Tool input, MCP metadata, and memory. Those data can inform business work but never create actors, role membership, permissions, policies, decisions, or approval authority. The same governance path applies to local and MCP-backed Tools and is intended for future Framework, Toolbox, Integration Fabric, capability packs, and Control Center surfaces.
 
 ## Sprint 12 approval boundary

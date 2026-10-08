@@ -18,7 +18,7 @@ packages/
   authorization/           @aao/authorization — Authorization Context, deterministic permission evaluator (Sprint 9)
   approval/                @aao/approval — human approval engine, repository port, and node executor (Sprint 12; durable-capable Sprint 14)
   durability/              @aao/durability — durable checkpoints, operation ledger, crash recovery, file store, durable host (Sprint 14)
-  observability/           @aao/observability — Trace Runtime: recorder, in-memory/file Trace Stores, identity, content policy, validator (Sprint 15)
+  observability/           @aao/observability — Trace Runtime (Sprint 15); Trace-derived Metrics and hash-chained Audit (Sprint 16)
   mcp-connector/           @aao/mcp-connector — stdio sessions, discovery, explicit governed Tool bindings (Sprint 10)
   substrate-contracts/     research evidence, not production architecture
   substrate-spikes/        research evidence, not production architecture
@@ -45,7 +45,7 @@ Deterministic, typed configuration loading for the Control Plane and Worker proc
 
 ## `packages/contracts` — `@aao/contracts`
 
-The canonical, framework-neutral, vendor-neutral production contract package (Sprint 2). Runtime-validatable Zod schemas — with TypeScript types inferred from them — for Workflow, Node, Edge, Run, State, Checkpoint, Agent, Skill, Model Policy, Tool, Capability, Permission, Policy Decision, Approval, Eval, Trace, Artifact, Capability Pack references, and Company Configuration. Its only dependency is `zod`; it does not depend on `apps/*`, `packages/config`, or either `packages/substrate-*` package, and no app currently depends on it — adoption happens only when a real feature requires it. See [ADR-007](../decisions/ADR-007-canonical-domain-contracts.md) and [domain contracts](../architecture/domain-contracts.md).
+The canonical, framework-neutral, vendor-neutral production contract package (Sprint 2). Runtime-validatable Zod schemas — with TypeScript types inferred from them — for Workflow, Node, Edge, Run, State, Checkpoint, Agent, Skill, Model Policy, Tool, Capability, Permission, Policy Decision, Approval, Eval, Trace, Audit, Metrics, Artifact, Capability Pack references, and Company Configuration. Its only dependency is `zod`; it does not depend on `apps/*`, `packages/config`, or either `packages/substrate-*` package, and no app currently depends on it — adoption happens only when a real feature requires it. See [ADR-007](../decisions/ADR-007-canonical-domain-contracts.md) and [domain contracts](../architecture/domain-contracts.md).
 
 ## `packages/workflow-dsl` — `@aao/workflow-dsl`
 
@@ -110,14 +110,17 @@ Every runnable package (`packages/config`, `packages/contracts`, `packages/workf
 
 ### `packages/observability`
 
-The Trace Runtime (Sprint 15). It contains:
+The evidence layer: Trace (Sprint 15), Metrics and Audit (Sprint 16). It contains:
 
 - a trace recorder implementing the Runtime's emit-only trace port;
 - deterministic trace, span, and event identity;
 - the metadata-only content policy;
 - the `TraceStore` port with in-memory and local file (one immutable file per event) implementations;
 - `validateTrace`, `compareTraceWithExecution`, and `reconstructRunTrace`;
-- canonical trace fixtures in `test/fixtures/traces/`;
-- a compiled two-process smoke in `smoke/`.
+- `src/metrics/`: `deriveRunMetrics` (Trace → RunMetrics), `aggregateRunMetrics`, nearest-rank percentiles, and exact-match explicit pricing. These are pure projections with no Metrics store;
+- `src/audit/`: the Audit recorder (implements the contracts `AuditPort`), the SHA-256 hash chain, `AuditStore` with in-memory and local file implementations, and `validateAuditStream`;
+- `src/health.ts` (`summarizeObservabilityHealth`, `checkAuditCompleteness`) and `src/local-files.ts`, the atomic immutable-file write path shared by the Trace and Audit file stores;
+- canonical fixtures in `test/fixtures/traces/`, `test/fixtures/metrics/`, and `test/fixtures/audit/`;
+- compiled smokes in `smoke/` (Sprint 15 Trace) and `smoke/sprint16/` (Metrics + Audit).
 
-Its production dependencies are `@aao/contracts` and `zod` only, and no execution package depends on it. See [ADR-020](../decisions/ADR-020-trace-runtime-and-observability-boundary.md) and [trace runtime](../architecture/trace-runtime.md).
+Its production dependencies are `@aao/contracts` and `zod` only, and no execution package depends on it. Approval, Tool Runtime, and Durability emit Audit only through the contracts `AuditPort`. See [ADR-020](../decisions/ADR-020-trace-runtime-and-observability-boundary.md), [ADR-021](../decisions/ADR-021-metrics-and-audit-boundaries.md), [trace runtime](../architecture/trace-runtime.md), [metrics](../architecture/metrics.md), and [audit](../architecture/audit.md).

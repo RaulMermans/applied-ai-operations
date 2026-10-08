@@ -1,0 +1,58 @@
+{
+  "events": [
+    {
+      "schemaVersion": 1,
+      "eventId": "aud.42612bc9466a590ae40a26a450fc47a6",
+      "streamId": "run:run.fixture",
+      "sequence": 0,
+      "occurredAt": "2026-10-08T12:00:10.000Z",
+      "type": "run.cancellation.requested",
+      "runId": "run.fixture",
+      "actor": {
+        "id": "user.alice",
+        "type": "user"
+      },
+      "action": "run.cancel",
+      "target": {
+        "kind": "run",
+        "runId": "run.fixture"
+      },
+      "outcome": "requested",
+      "payload": {
+        "reasonCode": "OPERATOR_REQUEST"
+      },
+      "previousHash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "eventHash": "4db511f8dbaee260d90e3153220a019c8e24d265451a860102979078d00f57fe"
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "aud.1f56f270bbe99a4f7216505b5e1f1cdd",
+      "streamId": "run:run.fixture",
+      "sequence": 1,
+      "occurredAt": "2026-10-08T12:00:12.000Z",
+      "type": "run.cancellation.applied",
+      "runId": "run.fixture",
+      "actor": {
+        "id": "user.alice",
+        "type": "user"
+      },
+      "action": "run.cancel",
+      "target": {
+        "kind": "run",
+        "runId": "run.fixture"
+      },
+      "outcome": "applied",
+      "payload": {
+        "step": 1,
+        "nodeId": "approval",
+        "requestedAt": "2026-10-08T12:00:10.000Z"
+      },
+      "previousHash": "4db511f8dbaee260d90e3153220a019c8e24d265451a860102979078d00f57fe",
+      "eventHash": "4e8b0f55df7ef2c16e1829b289df154b67c030b520789422a1eab18a3d49df17"
+    }
+  ],
+  "verification": {
+    "valid": true,
+    "issues": []
+  }
+}

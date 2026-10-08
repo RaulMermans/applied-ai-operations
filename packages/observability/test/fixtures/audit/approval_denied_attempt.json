@@ -1,0 +1,68 @@
+{
+  "events": [
+    {
+      "schemaVersion": 1,
+      "eventId": "aud.cb7dc675a1c733a93e1030791fa6ee72",
+      "streamId": "run:run.fixture",
+      "sequence": 0,
+      "occurredAt": "2026-10-08T12:01:40.000Z",
+      "type": "approval.requested",
+      "runId": "run.fixture",
+      "actor": {
+        "id": "user.alice",
+        "type": "user"
+      },
+      "action": "approval.request",
+      "target": {
+        "kind": "approval",
+        "approvalId": "approval:cfdb72b58d72330e25738cd930e4ac248cbe137b5554e091007d2848819fa0b4"
+      },
+      "outcome": "requested",
+      "payload": {
+        "approvalId": "approval:cfdb72b58d72330e25738cd930e4ac248cbe137b5554e091007d2848819fa0b4",
+        "nodeId": "approval",
+        "requiredApproverRoleIds": [
+          "manager"
+        ],
+        "permissionClasses": [
+          "read_only"
+        ],
+        "allowSelfApproval": false,
+        "requestFingerprint": "b45be3f4d33c0cb5c3fd70a94ebad38315e04a3059b3d6a8b958d454a7e092ba"
+      },
+      "previousHash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "eventHash": "ba3a7ad68daa6ecc61fb386615a41de467c1f9abe7edde89be3ddfb22d1f389b"
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "aud.8aaec5435973dc8b16342b1f160b1deb",
+      "streamId": "run:run.fixture",
+      "sequence": 1,
+      "occurredAt": "2026-10-08T12:01:41.000Z",
+      "type": "approval.resolution_denied",
+      "runId": "run.fixture",
+      "actor": {
+        "id": "user.alice",
+        "type": "user"
+      },
+      "action": "approval.resolve",
+      "target": {
+        "kind": "approval",
+        "approvalId": "approval:cfdb72b58d72330e25738cd930e4ac248cbe137b5554e091007d2848819fa0b4"
+      },
+      "outcome": "denied",
+      "payload": {
+        "approvalId": "approval:cfdb72b58d72330e25738cd930e4ac248cbe137b5554e091007d2848819fa0b4",
+        "nodeId": "approval",
+        "attemptedDecision": "approved",
+        "reasonCode": "APPROVAL_RESOLVER_NOT_ELIGIBLE"
+      },
+      "previousHash": "ba3a7ad68daa6ecc61fb386615a41de467c1f9abe7edde89be3ddfb22d1f389b",
+      "eventHash": "efefab2830123345f491c0059dd22409321674f0fcc2cb01c2d0bc21dec68059"
+    }
+  ],
+  "verification": {
+    "valid": true,
+    "issues": []
+  }
+}

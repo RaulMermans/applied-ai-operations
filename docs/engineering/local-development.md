@@ -115,14 +115,16 @@ wait $W_PID 2>/dev/null
 
 Both processes log structured JSON lines (`started`, `shutting_down`, `stopped`) to stdout and exit `0` after a clean shutdown, with no process left behind.
 
-Built-package acceptance smokes for the Tool, Approval, Reliability, and Durability layers use only `dist/` output:
+Built-package acceptance smokes for the MCP, Tool, Approval, Reliability, Durability, Trace, and Metrics/Audit layers use only `dist/` output:
 
 ```sh
+node packages/mcp-connector/test/smoke.mjs               # SPRINT_10_MCP_CONNECTOR_SMOKE_OK
 node packages/tool-runtime/test/governance-smoke.mjs     # SPRINT_11_GOVERNANCE_SMOKE_OK
 node packages/approval/smoke.mjs                         # SPRINT_12_APPROVAL_ENGINE_SMOKE_OK
 node packages/tool-runtime/test/reliability-smoke.mjs    # SPRINT_13_RELIABILITY_RUNTIME_SMOKE_OK
 pnpm --filter @aao/durability smoke                      # SPRINT_14_DURABLE_EXECUTION_SMOKE_OK
 pnpm --filter @aao/observability smoke                   # SPRINT_15_TRACE_RUNTIME_SMOKE_OK
+pnpm --filter @aao/observability smoke:metrics-audit     # SPRINT_16_METRICS_AUDIT_SMOKE_OK
 ```
 
 The durability smoke runs three separate Node processes over one temporary directory, which it deletes afterward:
@@ -138,3 +140,10 @@ Durable tests and the smoke use temporary directories only. No durability root i
 There is no Docker, Kubernetes, database, message queue, cloud infrastructure, or deployment configuration in this repository. Durable execution uses plain local files under an explicitly chosen directory. `apps/control-plane` and `apps/worker` are separate local processes you run directly with Node; nothing here assumes a hosting target. See [ADR-005](../decisions/ADR-005-local-first-typescript-architecture.md) and [ADR-006](../decisions/ADR-006-local-process-topology-and-engineering-foundation.md).
 
 The Trace smoke runs a compiled single-process flagship workflow and prints its 24-event timeline: approval wait, approval, Tool transient failure, retry, success, and completion. It then runs two separate Node processes over one temporary root: Process A reaches the durable wait, and Process B reopens the durability and Trace stores, approves, and completes the same trace. It checks that the trace id is unchanged, the sequence is contiguous, and there is one `run.started` and one terminal event. Tracing is opt-in: no Trace root is configured by default, so a host constructs `createFileTraceStore({ root })` and `createTraceRecorder({ store })` explicitly.
+
+The Metrics and Audit smoke runs two parts:
+
+1. **One process.** It runs the compiled flagship. Bob approves at T1, and the Runtime continues at T2. The Tool fails transiently, retries, and succeeds. The smoke derives `RunMetrics` and `AggregateMetrics` and checks duration, approval wait, retries, physical vs logical Tool calls, approvals, and tokens. It verifies the Audit chain and that the Audit resolution is at T1 while the Trace resolution is at T2. It then runs a real Model Runtime Run and checks explicit-pricing cost, and that missing pricing stays unavailable.
+2. **Two processes.** Process A reaches the durable wait. Process B approves, resumes, and verifies that Metrics are not double-counted across the restart and that the continued Audit stream is valid.
+
+Audit is opt-in, like Trace: a host constructs `createFileAuditStore({ root })` and `createAuditRecorder({ store })` and passes the recorder as `audit` to the Approval Engine, Tool Node, and durable host.

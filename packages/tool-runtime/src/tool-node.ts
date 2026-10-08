@@ -3,8 +3,10 @@ import { identifierSchema, type FailureCategory, type JsonObject, type RecoveryS
 import type { NodeExecutor, NodePreflightResult } from "@aao/runtime";
 import { deriveToolExecutionId } from "./execution-id.js";
 import type { AuthorizationContext } from "@aao/authorization";
+import type { AuditPort } from "@aao/contracts";
 import { executeTool, type ToolRuntimeDependencies } from "./executor.js";
 import { toolTraceObserver } from "./tool-trace.js";
+import { toolAccessAuditBinding } from "./tool-audit.js";
 import { checkToolPermissionSupport } from "./permissions.js";
 import { resolveToolBinding, toolRecoverySafety } from "./registry.js";
 import { ToolRefSchema, type ToolFailure, type ToolRef } from "./types.js";
@@ -80,6 +82,8 @@ export type ResolveToolAuthorizationContext = (target: ToolAuthorizationTarget) 
 
 export interface ToolNodeDependencies extends ToolRuntimeDependencies {
   resolveAuthorizationContext: ResolveToolAuthorizationContext;
+  /** Optional emit-only Audit port (ADR-021) for Tool access decisions; never read. */
+  audit?: AuditPort;
 }
 
 /**
@@ -173,7 +177,8 @@ export function createToolNodeExecutor(dependencies: ToolNodeDependencies): Node
       // validates it (a missing value is INVALID_TOOL_REQUEST, a
       // non-conforming one TOOL_INPUT_SCHEMA_MISMATCH) like any untrusted request.
       const request = { schemaVersion: 1, toolExecutionId, toolRef, input: context.state.values[inputStateKey] };
-      const outcome = await executeTool({ request, tools, authorizationContext: authorizationContext as AuthorizationContext, signal: context.signal, ...(observer ? { observer } : {}) });
+      const audit = toolAccessAuditBinding(dependencies.audit, context);
+      const outcome = await executeTool({ request, tools, authorizationContext: authorizationContext as AuthorizationContext, signal: context.signal, ...(observer ? { observer } : {}), ...(audit ? { audit } : {}) });
       // Only the Tool failure code and its classification go upward; the authorization reason stays with direct callers.
       if (!outcome.ok) return fail(outcome.failure.code, outcome.failure.handlerFailureRetryable);
       return { ok: true, statePatch: { [resultStateKey]: outcome.result } };

@@ -63,6 +63,7 @@ describe("@aao/tool-runtime dependency boundary", () => {
       "permissions.ts",
       "registry.ts",
       "schema-validator.ts",
+      "tool-audit.ts",
       "tool-node.ts",
       "tool-trace.ts",
       "types.ts",
@@ -103,9 +104,10 @@ describe("@aao/tool-runtime dependency boundary", () => {
       // Retry execution belongs only to the Runtime Reliability Controller (ADR-018). Tool Runtime may
       // declare trusted metadata (`retrySafety`, a handler's `retryable` flag) but owns no attempts,
       // loops, sleeps, timers, or races.
-      // tool-trace.ts reports the Runtime-assigned attempt number as observational trace metadata (ADR-020);
-      // it is held to every other constraint here. All other files may not even name an attempt.
-      const retryExecution = file.endsWith("tool-trace.ts")
+      // tool-trace.ts and tool-audit.ts report the Runtime-assigned attempt number as observational trace
+      // (ADR-020) and audit (ADR-021) metadata; they are held to every other constraint here. All other
+      // files may not even name an attempt.
+      const retryExecution = file.endsWith("tool-trace.ts") || file.endsWith("tool-audit.ts")
         ? /\bretry\b|retries|retrying|maxAttempts|backoff|fallback|sleep|setTimeout|setInterval|Promise\.race|AbortController|sqlite|postgres|redis|globalThis|\bfor\s*\(|\bwhile\s*\(/i
         : /\bretry\b|retries|retrying|attempt|maxAttempts|backoff|fallback|sleep|setTimeout|setInterval|Promise\.race|AbortController|sqlite|postgres|redis|globalThis/i;
       expect(codeOnly).not.toMatch(retryExecution);

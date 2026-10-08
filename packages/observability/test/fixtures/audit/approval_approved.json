@@ -1,0 +1,99 @@
+{
+  "events": [
+    {
+      "schemaVersion": 1,
+      "eventId": "aud.cb7dc675a1c733a93e1030791fa6ee72",
+      "streamId": "run:run.fixture",
+      "sequence": 0,
+      "occurredAt": "2026-10-08T12:01:40.000Z",
+      "type": "approval.requested",
+      "runId": "run.fixture",
+      "actor": {
+        "id": "user.alice",
+        "type": "user"
+      },
+      "action": "approval.request",
+      "target": {
+        "kind": "approval",
+        "approvalId": "approval:cfdb72b58d72330e25738cd930e4ac248cbe137b5554e091007d2848819fa0b4"
+      },
+      "outcome": "requested",
+      "payload": {
+        "approvalId": "approval:cfdb72b58d72330e25738cd930e4ac248cbe137b5554e091007d2848819fa0b4",
+        "nodeId": "approval",
+        "requiredApproverRoleIds": [
+          "manager"
+        ],
+        "permissionClasses": [
+          "read_only"
+        ],
+        "allowSelfApproval": false,
+        "requestFingerprint": "b45be3f4d33c0cb5c3fd70a94ebad38315e04a3059b3d6a8b958d454a7e092ba"
+      },
+      "previousHash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "eventHash": "ba3a7ad68daa6ecc61fb386615a41de467c1f9abe7edde89be3ddfb22d1f389b"
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "aud.cc3cfef6fc812cba11cae6559f9e2ed8",
+      "streamId": "run:run.fixture",
+      "sequence": 1,
+      "occurredAt": "2026-10-08T12:01:41.000Z",
+      "type": "approval.resolved",
+      "runId": "run.fixture",
+      "actor": {
+        "id": "user.bob",
+        "type": "user"
+      },
+      "action": "approval.resolve",
+      "target": {
+        "kind": "approval",
+        "approvalId": "approval:cfdb72b58d72330e25738cd930e4ac248cbe137b5554e091007d2848819fa0b4"
+      },
+      "outcome": "approved",
+      "payload": {
+        "approvalId": "approval:cfdb72b58d72330e25738cd930e4ac248cbe137b5554e091007d2848819fa0b4",
+        "nodeId": "approval",
+        "decision": "approved",
+        "requestFingerprint": "b45be3f4d33c0cb5c3fd70a94ebad38315e04a3059b3d6a8b958d454a7e092ba"
+      },
+      "previousHash": "ba3a7ad68daa6ecc61fb386615a41de467c1f9abe7edde89be3ddfb22d1f389b",
+      "eventHash": "ca11f3c53d373ef30d139bd3dbbbbe30e03f768a463142ce85b90ad20ff0025c"
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "aud.8b303722ce29659eb81b85e985cfef35",
+      "streamId": "run:run.fixture",
+      "sequence": 2,
+      "occurredAt": "2026-10-08T12:08:20.000Z",
+      "type": "tool.access.allowed",
+      "runId": "run.fixture",
+      "actor": {
+        "id": "user.alice",
+        "type": "user"
+      },
+      "action": "tool.execute",
+      "target": {
+        "kind": "tool",
+        "toolId": "local.lookup",
+        "toolVersion": "1.0.0"
+      },
+      "outcome": "allowed",
+      "payload": {
+        "toolExecutionId": "tool.22e20eacc4a6c9569c9864db8d8c0062aab78026370b99329110db4cfe2d83d7",
+        "attempt": 1,
+        "nodeId": "lookup",
+        "permissionClasses": [
+          "read_only"
+        ],
+        "agentCeilingApplied": false
+      },
+      "previousHash": "ca11f3c53d373ef30d139bd3dbbbbe30e03f768a463142ce85b90ad20ff0025c",
+      "eventHash": "42add832d443cbd9781c7842f8514e360c138e442b57572d05d8514de42d4740"
+    }
+  ],
+  "verification": {
+    "valid": true,
+    "issues": []
+  }
+}

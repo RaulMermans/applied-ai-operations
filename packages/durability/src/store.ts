@@ -33,8 +33,8 @@ export interface DurabilityStore {
   recordOperationOutcome(runId: string, operationId: string, outcome: NodeAttemptOutcome, completedAt: string): Promise<void>;
   /** Every operation of the Run, validated, ordered by step then attempt. */
   getOperationsForRun(runId: string): Promise<DurableOperation[]>;
-  /** Idempotent: returns the existing request if one was already persisted. */
-  requestCancellation(runId: string, requestedAt: string): Promise<CancellationRecord>;
+  /** Idempotent: returns the existing request (with its original requester) if one was already persisted. */
+  requestCancellation(runId: string, requestedAt: string, attribution?: Pick<CancellationRecord, "requestedBy" | "reasonCode">): Promise<CancellationRecord>;
   getCancellation(runId: string): Promise<CancellationRecord | undefined>;
   /** Durable-capable Approval storage implementing the `@aao/approval` repository port. */
   readonly approvals: ApprovalRepository;

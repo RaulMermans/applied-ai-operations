@@ -1,8 +1,9 @@
-import { createHash, randomUUID } from "node:crypto";
-import { closeSync, fsyncSync, linkSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, unlinkSync, writeSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import type { TraceEvent } from "@aao/contracts";
 import { serializeTraceEvent } from "./content-policy.js";
+import { ImmutableFileExistsError, UnsafeStorePathError, assertDirectory, ensureDirectory, eventFileName, isDirectory, readEventFiles, writeImmutableFile } from "./local-files.js";
 import { TraceRunLog, TraceStoreError, assertEventId, assertRunId, cloneEvent, validatedForAppend, type TraceStore } from "./store.js";
 
 /**
@@ -55,15 +56,9 @@ export function createFileTraceStore(options: { root: string }): TraceStore {
     if (cached) return cached;
     const dir = eventsDir(runId);
     if (!isDirectory(join(dir, ".."))) return new TraceRunLog();
-    assertDirectory(dir);
-    const names = readdirSync(dir).filter((name) => !name.startsWith(".tmp-")).sort();
-    const raw = names.map((name, index) => {
-      if (name !== fileName(index)) throw new TraceStoreError("TRACE_STORE_CORRUPT");
-      const path = join(dir, name);
-      const stat = lstatSync(path);
-      if (!stat.isFile() || stat.size > 1024 * 1024) throw new TraceStoreError("TRACE_STORE_CORRUPT");
-      try { return JSON.parse(readFileSync(path, "utf8")) as unknown; } catch { throw new TraceStoreError("TRACE_STORE_CORRUPT"); }
-    });
+    const files = readEventFiles(dir, 1024 * 1024);
+    if (!files.ok) throw new TraceStoreError("TRACE_STORE_CORRUPT");
+    const raw = files.raw;
     const log = TraceRunLog.load(runId, raw);
     cache.set(runId, log);
     return log;
@@ -79,7 +74,7 @@ export function createFileTraceStore(options: { root: string }): TraceStore {
         mkdirSync(dir, { recursive: true });
         assertDirectory(join(dir, ".."));
         assertDirectory(dir);
-        writeImmutable(join(dir, fileName(parsed.sequence)), `${serializeTraceEvent(parsed)}\n`);
+        writeImmutable(join(dir, eventFileName(parsed.sequence)), `${serializeTraceEvent(parsed)}\n`);
         log.commit(cloneEvent(parsed));
         return "appended" as const;
       });
@@ -99,50 +94,16 @@ export function createFileTraceStore(options: { root: string }): TraceStore {
   } satisfies TraceStore);
 }
 
-function fileName(sequence: number): string {
-  return `${String(sequence).padStart(9, "0")}.json`;
-}
-
 function writeImmutable(path: string, content: string): void {
-  const dir = join(path, "..");
-  const temp = join(dir, `.tmp-${randomUUID()}`);
-  const fd = openSync(temp, "wx", 0o600);
   try {
-    writeSync(fd, content);
-    fsyncSync(fd);
-  } finally {
-    closeSync(fd);
-  }
-  try {
-    linkSync(temp, path);
+    writeImmutableFile(path, content);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException)?.code === "EEXIST") throw new TraceStoreError("TRACE_SEQUENCE_CONFLICT");
+    if (error instanceof ImmutableFileExistsError) throw new TraceStoreError("TRACE_SEQUENCE_CONFLICT");
     throw error;
-  } finally {
-    try { unlinkSync(temp); } catch { /* best effort */ }
   }
-  let dirFd: number | undefined;
-  try { dirFd = openSync(dir, "r"); fsyncSync(dirFd); } catch { /* directory fsync is unsupported on some platforms */ } finally { if (dirFd !== undefined) closeSync(dirFd); }
-}
-
-function ensureDirectory(path: string): void {
-  try { mkdirSync(path); } catch (error) { if ((error as NodeJS.ErrnoException)?.code !== "EEXIST") throw error; }
-  assertDirectory(path);
-}
-
-/** A symlink or non-directory where a store directory belongs could escape the root: fail closed. */
-function assertDirectory(path: string): void {
-  const stat = lstatSync(path);
-  if (stat.isSymbolicLink() || !stat.isDirectory()) throw new TraceStoreError("TRACE_STORE_CORRUPT");
-}
-
-function isDirectory(path: string): boolean {
-  let stat;
-  try { stat = lstatSync(path); } catch (error) { if ((error as NodeJS.ErrnoException)?.code === "ENOENT") return false; throw error; }
-  if (stat.isSymbolicLink() || !stat.isDirectory()) throw new TraceStoreError("TRACE_STORE_CORRUPT");
-  return true;
 }
 
 function redact(error: unknown): TraceStoreError {
+  if (error instanceof UnsafeStorePathError) return new TraceStoreError("TRACE_STORE_CORRUPT");
   return error instanceof TraceStoreError ? error : new TraceStoreError("TRACE_STORE_FAILURE");
 }

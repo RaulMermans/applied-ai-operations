@@ -11,7 +11,7 @@ Runtime / Governance / Approval / Durability      ← execution truth
                   Trace                          ← observational projection
                     │
                     ▼
-   debugging · trace assertions · future Metrics/Audit · Evals · Run Inspector
+   debugging · trace assertions · Metrics (Sprint 16) · future Evals · Run Inspector
 ```
 
 Never the inverse. No Runtime, Governance, Authorization, Approval, Tool, or Durability decision reads Trace data.
@@ -74,7 +74,7 @@ Run span (traceId)
 | Agent | `agent.started`, `agent.iteration.completed` (iteration, `CONTINUE`/`COMPLETE`, invocation, binding, usage), `agent.completed`, `agent.failed`; never working output or reasoning |
 | Tool | `tool.call.started` (only once the handler is about to run; carries `access.decision = allow`), `tool.call.completed`, `tool.call.failed`, `tool.call.blocked` (handler never invoked: support gate, authorization denial with reason code, or validation); never input or output |
 | Reliability | `retry.scheduled` (failed/next attempt, category, cause code, delay), `retry.exhausted` |
-| Approval | `approval.requested` (requester id/type, approver roles, permission classes, request fingerprint; never the subject), `approval.resolved` (status, resolver id/type, `resolvedAt`) |
+| Approval | `approval.requested` (requester id/type, approver roles, permission classes, request fingerprint; never the subject), `approval.resolved` (status, resolver id/type, `resolvedAt`; emitted when the Runtime consumes the resolution) |
 | Durability | `checkpoint.created`, `recovery.started`, `recovery.replayed`, `recovery.outcome_reused`, `recovery.completed`, `recovery.blocked` |
 | Cancellation & failure | `cancellation.requested`, `cancellation.applied`, `failure.detected` (source runtime or durability; existing codes only) |
 
@@ -82,7 +82,8 @@ Retrieval, eval, artifact, memory, and side-effect events do not exist until tho
 
 ### Emission rules
 
-- **Committed lifecycle facts are emitted after their boundary commits.** In durable mode, this means after the boundary is persisted. These facts are state updates, Node completion, routing, waits, and terminal events. A failed persistence emits `failure.detected` and never a false commit. So `checkpoint.created` precedes the lifecycle events of the boundary it persisted.
+- **Committed execution-boundary events are emitted after their authoritative boundary is established.** In durable mode, this means after the boundary is persisted. These facts are state updates, Node completion, routing, waits, and terminal events. A failed persistence emits `failure.detected` and never a false commit. So `checkpoint.created` precedes the lifecycle events of the boundary it persisted. `run.started` records managed Runtime creation and may precede the initial durable checkpoint.
+- **Trace records Runtime consumption of an Approval resolution; Audit records the authoritative resolution time.** Trace `approval.resolved` is emitted when continuation consumes the decision and carries the record's `resolvedAt` in its payload. The source-time accountability record (`occurredAt = resolvedAt`, actor = `resolvedBy`) is the Audit event emitted when the Approval repository transition succeeds ([audit](audit.md)). The two intentionally model different facts.
 - **In-flight facts are emitted when they happen.** These are starts, attempt failures, and retries.
 - **An abandoned attempt's trace context closes when the Runtime stops waiting.** A late timed-out result never becomes a completion event.
 - **A recorded outcome reused on recovery emits `recovery.outcome_reused`.** It also emits `node.completed { outcomeSource: "recovered" }` and never a new Tool or model call.
@@ -95,7 +96,7 @@ Retrieval, eval, artifact, memory, and side-effect events do not exist until tho
 - **Event id:** `evt.` followed by 32 hex characters derived from trace, type, Node, span, and a small key (step, attempt, replay, ...). The same logical event re-emitted after restart deduplicates. The same id with different content is `TRACE_EVENT_CONFLICT`, and the stored evidence is kept.
 - **Sequence:** contiguous from 0 per Run (`0,1,3` is a gap). A new process continues from the store.
 - **Time:** `occurredAt` comes from an explicit trace clock. It is floored at the Run's last event, so a backwards wall clock never breaks order.
-- **No duration fields:** latency for Sprint 16 comes from paired start/completion timestamps.
+- **No duration fields:** Metrics derive latency from paired lifecycle timestamps (`run.started` → terminal event; `node.started` → the attempt's end marker), never from checkpoint timing ([metrics](metrics.md)).
 
 ## Storage
 
@@ -153,11 +154,11 @@ The AAO Trace schema is designed for OTel-compatible mapping. **No OpenTelemetry
 ## Boundaries and deferrals
 
 - Not a logging framework. No Winston, Pino, ELK, Loki, or log shipping is added, and ordinary application logs stay separate.
-- Not Audit: compliance evidence, policy-change history, and retention distinctions come in Sprint 16.
+- Not Audit: accountability evidence is a separate contract (`AuditEvent`) and store (`AuditStore`) recorded at authoritative source boundaries ([audit](audit.md), ADR-021). Trace is never treated as an Audit record.
 - Not Memory: Trace is never injected into model context.
 - Not Artifact storage: a future `artifactRef` will point at large outputs.
+- Metrics and cost are deterministic projections of Trace ([metrics](metrics.md), Sprint 16).
 - Deferred work:
-  - metrics and cost: Sprint 16;
   - Eval Runtime: Sprint 17;
   - Run Inspector UI: Sprints 26/27;
   - OTel export: a future adapter.

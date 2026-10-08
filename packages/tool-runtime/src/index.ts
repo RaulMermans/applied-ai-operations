@@ -37,6 +37,7 @@ export { compileToolSchema, type CompiledToolSchema } from "./schema-validator.j
 export { SUPPORTED_TOOL_PERMISSION_CLASSES, checkToolPermissionSupport } from "./permissions.js";
 export { createToolRegistry, type ToolRegistry } from "./registry.js";
 export { executeTool, type ToolRuntimeDependencies, type ExecuteToolParams, type ToolExecutionObserver } from "./executor.js";
+export type { ToolAccessAuditBinding } from "./tool-audit.js";
 export { deriveToolExecutionId } from "./execution-id.js";
 export {
   createToolNodeExecutor,

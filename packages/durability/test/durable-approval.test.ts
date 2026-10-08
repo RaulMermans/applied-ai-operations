@@ -90,7 +90,7 @@ describe("durable approval restart (primary E2E)", () => {
     const effects = createEffects();
     const a = await processA(root, effects);
     const b = processB(root, effects);
-    expect((await b.host.requestCancellation(runId)).ok).toBe(true);
+    expect((await b.host.requestCancellation(runId, { requestedBy: alice })).ok).toBe(true);
     const cancelled = await b.host.resume(runId);
     expect(!cancelled.ok && cancelled.failure.code).toBe("RUN_CANCELLED");
     expect(cancelled.execution?.nodeStatusesById.approval).toBe("CANCELLED");
