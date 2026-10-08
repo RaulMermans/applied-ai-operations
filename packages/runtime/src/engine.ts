@@ -4,6 +4,7 @@ import { captureExecutionSnapshot, validateSnapshotAgainstPlan, type RuntimeExec
 import { initializeNodeStatuses, transitionNodeStatus, type NodeStatusMap } from "./node-lifecycle.js";
 import { runPreflight } from "./preflight.js";
 import { executeNodeAttempts, resolveReliability, type ResolvedReliability } from "./reliability.js";
+import { createRunTracer, nodeSpan, runSpan, type RunTracer } from "./tracing.js";
 import { createRunRecord, setCurrentNodeId, transitionRunRecord } from "./run-lifecycle.js";
 import { validateRuntimeInput } from "./runtime-input-validation.js";
 import { compareIsoInstants } from "./timestamps.js";
@@ -52,6 +53,9 @@ export async function executeWorkflow(request: ExecuteWorkflowRequest): Promise<
 
   let run: RunRecord = createRunRecord({ runId, workflowId: plan.workflow.id, workflowVersion: plan.workflow.version }, clock);
   run = transitionRunRecord(run, "VALIDATING", clock.now());
+  // Observational only (ADR-020): a Run now exists, so its trace begins. Nothing below reads the trace.
+  const tracer = createRunTracer(request.options?.trace, { runId, workflowId: plan.workflow.id, workflowVersion: plan.workflow.version });
+  await tracer.emit({ type: "run.started", span: runSpan(), key: {}, payload: { entryNodeId: plan.entryNodeId, initialStateRevision: request.initialState.revision, nodeCount: Object.keys(plan.nodesById).length, reliabilityPolicies: resolved.reliability.configured() } });
 
   const allNodeIds = Object.keys(plan.nodesById);
   let nodeStatusesById: NodeStatusMap = initializeNodeStatuses(allNodeIds);
@@ -66,7 +70,8 @@ export async function executeWorkflow(request: ExecuteWorkflowRequest): Promise<
     run = setCurrentNodeId(transitionRunRecord(run, "FAILED", clock.now()), undefined);
     const execution: RuntimeExecutionState = { run, state: cloneRunState(request.initialState), nodeStatusesById, step: 0, history: [] };
     const boundary = await persistBoundary(hooks, clock, execution, undefined, preflightFailure);
-    if (!boundary.ok) return boundary.result;
+    if (!boundary.ok) return traceAbort(tracer, boundary.result);
+    await traceTerminalFailure(tracer, execution, preflightFailure);
     return { ok: false, failure: preflightFailure, execution, latestSnapshot: boundary.snapshot };
   }
 
@@ -88,9 +93,9 @@ export async function executeWorkflow(request: ExecuteWorkflowRequest): Promise<
   const execution: RuntimeExecutionState = { run, state, nodeStatusesById, step, history };
   // The first durable boundary (RUNNING, entry READY) exists before any executor can become eligible.
   const boundary = await persistBoundary(hooks, clock, execution, undefined);
-  if (!boundary.ok) return boundary.result;
+  if (!boundary.ok) return traceAbort(tracer, boundary.result);
 
-  return runLoop({ runId, plan, registry, clock, maxSteps, reliability: resolved.reliability, hooks, execution, latestSnapshot: boundary.snapshot, currentNodeId });
+  return runLoop({ runId, plan, registry, clock, maxSteps, reliability: resolved.reliability, hooks, tracer, execution, latestSnapshot: boundary.snapshot, currentNodeId });
 }
 
 /** Validated in-process continuation. The exact request is checked before consuming the waiting execution object. */
@@ -104,9 +109,10 @@ export async function continueWaitingWorkflow(request: ContinueWaitingWorkflowRe
   if (approval.status === "pending") return invalid("APPROVAL_STILL_PENDING");
   const resolved = resolveReliability(request.options, plan);
   if (!resolved.ok) return { ok: false, failure: resolved.failure, execution };
-  const hooksFailure = validateDurabilityHooks(request.options?.durability);
+  const hooksFailure = validateDurabilityHooks(request.options?.durability) ?? validateTracePort(request.options?.trace);
   if (hooksFailure) return { ok: false, failure: hooksFailure, execution };
   const hooks = request.options?.durability;
+  const tracer = createRunTracer(request.options?.trace, { runId: execution.run.runId, workflowId: plan.workflow.id, workflowVersion: plan.workflow.version });
   const clock = flooredClock(request.options?.clock ?? createSystemClock(), execution.run.updatedAt);
   let snapshot: RuntimeExecutionSnapshot;
   try { snapshot = captureExecutionSnapshot(execution, clock.now()); }
@@ -130,14 +136,18 @@ export async function continueWaitingWorkflow(request: ContinueWaitingWorkflowRe
     const code = approval.status === "rejected" ? "APPROVAL_REJECTED" : approval.status === "expired" ? "APPROVAL_EXPIRED" : "APPROVAL_CANCELLED";
     const failure: RuntimeFailure = { code, message: code, nodeId: node.id, category: "APPROVAL", retryable: false };
     const boundary = await persistBoundary(hooks, clock, execution, waitingBoundary, failure);
-    if (!boundary.ok) return boundary.result;
+    if (!boundary.ok) return traceAbort(tracer, boundary.result);
+    if (approval.status !== "cancelled") await tracer.emit({ type: "node.failed", nodeId: node.id, span: nodeSpan(node.id, execution.step, 1), parentSpan: runSpan(), key: { step: execution.step }, payload: { kind: node.kind, step: execution.step, attemptCount: 1, code, category: "APPROVAL", retryable: false } });
+    await traceTerminalFailure(tracer, execution, failure);
     return { ok: false, failure, execution, latestSnapshot: boundary.snapshot };
   }
   execution.nodeStatusesById = transitionNodeStatus(execution.nodeStatusesById, next!, "READY");
   execution.run = setCurrentNodeId(execution.run, next);
   const boundary = await persistBoundary(hooks, clock, execution, waitingBoundary);
-  if (!boundary.ok) return boundary.result;
-  return runLoop({ runId: execution.run.runId, plan, registry, clock, maxSteps: request.options?.maxSteps ?? Object.keys(plan.nodesById).length + DEFAULT_MAX_STEPS_ALLOWANCE, reliability: resolved.reliability, hooks, execution, latestSnapshot: boundary.snapshot, currentNodeId: next! });
+  if (!boundary.ok) return traceAbort(tracer, boundary.result);
+  await tracer.emit({ type: "node.completed", nodeId: node.id, span: nodeSpan(node.id, execution.step, 1), parentSpan: runSpan(), key: { step: execution.step }, payload: { kind: node.kind, step: execution.step, attemptCount: 1, stateRevisionBefore: execution.state.revision, stateRevisionAfter: execution.state.revision, outcomeSource: "approval_resolution" } });
+  await tracer.emit({ type: "route.selected", span: runSpan(), key: { step: execution.step }, payload: { sourceNodeId: node.id, targetNodeId: next!, routeType: "unconditional" } });
+  return runLoop({ runId: execution.run.runId, plan, registry, clock, maxSteps: request.options?.maxSteps ?? Object.keys(plan.nodesById).length + DEFAULT_MAX_STEPS_ALLOWANCE, reliability: resolved.reliability, hooks, tracer, execution, latestSnapshot: boundary.snapshot, currentNodeId: next! });
 }
 
 /**
@@ -173,6 +183,7 @@ export async function resumeWorkflow(request: ResumeWorkflowRequest): Promise<Wo
   const latestSnapshot = captureExecutionSnapshot(execution, execution.run.updatedAt);
   const maxSteps = request.options?.maxSteps ?? Object.keys(plan.nodesById).length + DEFAULT_MAX_STEPS_ALLOWANCE;
   const durable = { execution: cloneExecution(execution), snapshot: latestSnapshot };
+  const tracer = createRunTracer(request.options?.trace, { runId: execution.run.runId, workflowId: plan.workflow.id, workflowVersion: plan.workflow.version });
 
   switch (execution.run.status) {
     case "COMPLETED": {
@@ -186,7 +197,7 @@ export async function resumeWorkflow(request: ResumeWorkflowRequest): Promise<Wo
     case "WAITING_FOR_APPROVAL": {
       if (recovery) return { ok: false, failure: { code: "INVALID_RECOVERY_DIRECTIVE", message: "A waiting Run has no Node attempt to recover." }, execution, latestSnapshot };
       const cancel = await cancellationRequested(hooks, execution.run.runId);
-      if (cancel === "error") return { ok: false, failure: { code: "DURABILITY_PERSISTENCE_FAILED", message: "Durable cancellation state could not be read." }, execution, latestSnapshot };
+      if (cancel === "error") return traceAbort(tracer, { ok: false, failure: { code: "DURABILITY_PERSISTENCE_FAILED", message: "Durable cancellation state could not be read." }, execution, latestSnapshot });
       if (!cancel) return { ok: true, execution, latestSnapshot };
       const wait = execution.wait!;
       const node = plan.nodesById[wait.nodeId]!;
@@ -196,7 +207,8 @@ export async function resumeWorkflow(request: ResumeWorkflowRequest): Promise<Wo
       execution.history = [...execution.history, { nodeId: node.id, kind: node.kind, step: execution.step, status: "FAILED", stateRevisionBefore: execution.state.revision, stateRevisionAfter: execution.state.revision, attemptCount: 1 }];
       const failure: RuntimeFailure = { code: "RUN_CANCELLED", message: "Run cancelled at a safe boundary while waiting for approval.", nodeId: node.id };
       const boundary = await persistBoundary(hooks, clock, execution, durable, failure);
-      if (!boundary.ok) return boundary.result;
+      if (!boundary.ok) return traceAbort(tracer, boundary.result);
+      await traceTerminalFailure(tracer, execution, failure);
       return { ok: false, failure, execution, latestSnapshot: boundary.snapshot };
     }
     case "RUNNING": {
@@ -206,7 +218,7 @@ export async function resumeWorkflow(request: ResumeWorkflowRequest): Promise<Wo
       }
       const preflightFailure = runPreflight(plan, registry);
       if (preflightFailure) return { ok: false, failure: preflightFailure, execution, latestSnapshot };
-      return runLoop({ runId: execution.run.runId, plan, registry, clock, maxSteps, reliability: resolved.reliability, hooks, execution, latestSnapshot, currentNodeId, ...(recovery ? { recovery } : {}) });
+      return runLoop({ runId: execution.run.runId, plan, registry, clock, maxSteps, reliability: resolved.reliability, hooks, tracer, execution, latestSnapshot, currentNodeId, ...(recovery ? { recovery } : {}) });
     }
     default:
       return { ok: false, failure: { code: "INVALID_EXECUTION_SNAPSHOT", message: `A ${execution.run.status} Run is never a resumable safe boundary.` }, execution, latestSnapshot };
@@ -250,6 +262,39 @@ function validateDurabilityHooks(hooks: unknown): RuntimeFailure | undefined {
   return ok ? undefined : { code: "INVALID_RUNTIME_INPUT", message: "request.options.durability must implement persistCheckpoint, beginAttempt, recordAttemptOutcome, and isCancellationRequested." };
 }
 
+function validateTracePort(trace: unknown): RuntimeFailure | undefined {
+  if (trace === undefined) return undefined;
+  return typeof trace === "object" && trace !== null && typeof (trace as Record<string, unknown>).emit === "function" ? undefined : { code: "INVALID_RUNTIME_INPUT", message: "request.options.trace must implement emit(draft)." };
+}
+
+/** Reports a Run-level failure the Runtime detected without a terminal Run transition (e.g. a durability write failed). */
+async function traceAbort(tracer: RunTracer, result: WorkflowExecutionResult): Promise<WorkflowExecutionResult> {
+  if (!result.ok) await tracer.emit({ type: "failure.detected", span: runSpan(), key: { code: result.failure.code, step: result.execution?.step ?? 0 }, payload: { source: "runtime", code: result.failure.code } });
+  return result;
+}
+
+/**
+ * Reports a committed terminal Run failure, mirroring `RunRecord.status`
+ * exactly: FAILED → `failure.detected` + `run.failed`; CANCELLED →
+ * (`cancellation.applied` for a requested cancellation) + `run.cancelled`.
+ */
+async function traceTerminalFailure(tracer: RunTracer, execution: RuntimeExecutionState, failure: RuntimeFailure): Promise<void> {
+  const totals = { stateRevision: execution.state.revision, steps: execution.step };
+  if (execution.run.status === "CANCELLED") {
+    if (failure.code === "RUN_CANCELLED") await tracer.emit({ type: "cancellation.applied", ...(failure.nodeId ? { nodeId: failure.nodeId } : {}), span: runSpan(), key: {}, payload: { code: failure.code, step: execution.step } });
+    await tracer.emit({ type: "run.cancelled", span: runSpan(), key: {}, payload: { code: failure.code, ...(failure.nodeId ? { nodeId: failure.nodeId } : {}), ...totals } });
+    return;
+  }
+  await tracer.emit({
+    type: "failure.detected",
+    ...(failure.nodeId ? { nodeId: failure.nodeId } : {}),
+    span: runSpan(),
+    key: { code: failure.code, step: failure.step ?? execution.step },
+    payload: { source: "runtime", code: failure.code, ...(failure.category ? { category: failure.category } : {}), ...(failure.step !== undefined ? { step: failure.step } : {}), ...(failure.attempt !== undefined ? { attempt: failure.attempt } : {}), ...(failure.causeCode ? { causeCode: failure.causeCode } : {}), ...(failure.executorFailure ? { executorFailure: { namespace: failure.executorFailure.namespace, code: failure.executorFailure.code } } : {}) },
+  });
+  await tracer.emit({ type: "run.failed", span: runSpan(), key: {}, payload: { code: failure.code, ...(failure.category ? { category: failure.category } : {}), ...(failure.nodeId ? { nodeId: failure.nodeId } : {}), ...totals } });
+}
+
 /**
  * A continuation may run in a later process whose clock is behind the
  * persisted lifecycle time. Run lifecycle time must never move backwards,
@@ -269,8 +314,8 @@ function cloneExecution(execution: RuntimeExecutionState): RuntimeExecutionState
   return JSON.parse(JSON.stringify(execution)) as RuntimeExecutionState;
 }
 
-async function runLoop(params: { runId: ExecuteWorkflowRequest["runId"]; plan: ExecuteWorkflowRequest["plan"]; registry: ExecuteWorkflowRequest["registry"]; clock: RuntimeClock; maxSteps: number; reliability: ResolvedReliability; hooks: RuntimeDurabilityHooks | undefined; execution: RuntimeExecutionState; latestSnapshot: RuntimeExecutionSnapshot; currentNodeId: NodeId; recovery?: NodeRecoveryDirective }): Promise<WorkflowExecutionResult> {
-  const { runId, plan, registry, clock, maxSteps, reliability, hooks } = params;
+async function runLoop(params: { runId: ExecuteWorkflowRequest["runId"]; plan: ExecuteWorkflowRequest["plan"]; registry: ExecuteWorkflowRequest["registry"]; clock: RuntimeClock; maxSteps: number; reliability: ResolvedReliability; hooks: RuntimeDurabilityHooks | undefined; tracer: RunTracer; execution: RuntimeExecutionState; latestSnapshot: RuntimeExecutionSnapshot; currentNodeId: NodeId; recovery?: NodeRecoveryDirective }): Promise<WorkflowExecutionResult> {
+  const { runId, plan, registry, clock, maxSteps, reliability, hooks, tracer } = params;
   let { execution, latestSnapshot, currentNodeId } = params;
   let recovery = params.recovery;
   let { run, state, nodeStatusesById, step, history } = execution;
@@ -281,7 +326,7 @@ async function runLoop(params: { runId: ExecuteWorkflowRequest["runId"]; plan: E
   /** Commits and persists a safe boundary; on a persistence failure returns the previous durable boundary. */
   async function boundary(next: RuntimeExecutionState, failure?: RuntimeFailure): Promise<WorkflowExecutionResult | undefined> {
     const persisted = await persistBoundary(hooks, clock, next, durable, failure);
-    if (!persisted.ok) return persisted.result;
+    if (!persisted.ok) return traceAbort(tracer, persisted.result);
     execution = next;
     latestSnapshot = persisted.snapshot;
     durable = { execution: cloneExecution(next), snapshot: latestSnapshot };
@@ -289,12 +334,18 @@ async function runLoop(params: { runId: ExecuteWorkflowRequest["runId"]; plan: E
   }
 
   /** Commits a terminal Run failure from the *last safe boundary* (`execution` as currently committed) and captures its snapshot. Used by every failure path that has not itself already advanced `execution`. */
-  async function fail(failure: RuntimeFailure): Promise<WorkflowExecutionResult> {
+  async function fail(failure: RuntimeFailure, failedNode?: { kind: NodeExecutionRecord["kind"]; attemptCount: number }, committed?: () => Promise<void>): Promise<WorkflowExecutionResult> {
     run = setCurrentNodeId(transitionRunRecord(run, "FAILED", clock.now()), undefined);
     const aborted = await boundary({ ...execution, run }, failure);
     if (aborted) return aborted;
+    await committed?.();
+    if (failedNode && failure.nodeId !== undefined && failure.step !== undefined) {
+      await tracer.emit({ type: "node.failed", nodeId: failure.nodeId, span: nodeSpan(failure.nodeId, failure.step, failedNode.attemptCount), parentSpan: runSpan(), key: { step: failure.step }, payload: { kind: failedNode.kind, step: failure.step, attemptCount: failedNode.attemptCount, code: failure.code, ...(failure.category ? { category: failure.category } : {}), ...(failure.retryable !== undefined ? { retryable: failure.retryable } : {}), ...(failure.causeCode ? { causeCode: failure.causeCode } : {}), ...(failure.executorFailure ? { executorFailure: { namespace: failure.executorFailure.namespace, code: failure.executorFailure.code } } : {}) } });
+    }
+    await traceTerminalFailure(tracer, execution, failure);
     return { ok: false, failure, execution, latestSnapshot };
   }
+  const abort = (result: WorkflowExecutionResult) => traceAbort(tracer, result);
 
   for (;;) {
     // Safe-boundary cancellation: checked only before a Node would invoke an
@@ -303,13 +354,14 @@ async function runLoop(params: { runId: ExecuteWorkflowRequest["runId"]; plan: E
     const recordedFinal = recovery !== undefined && recovery.replayAttempt === undefined && recovery.priorOutcomes.length > 0 && recovery.priorOutcomes[recovery.priorOutcomes.length - 1]!.kind !== "failure";
     if (!recordedFinal) {
       const cancel = await cancellationRequested(hooks, runId);
-      if (cancel === "error") return durabilityFailure(durable);
+      if (cancel === "error") return abort(durabilityFailure(durable));
       if (cancel) {
         const cancelled: RuntimeFailure = { code: "RUN_CANCELLED", message: "Run cancelled at a safe boundary before the next Node began.", nodeId: currentNodeId };
         nodeStatusesById = transitionNodeStatus(nodeStatusesById, currentNodeId, "CANCELLED");
         run = setCurrentNodeId(transitionRunRecord(run, "CANCELLED", clock.now()), undefined);
         const aborted = await boundary({ run, state, nodeStatusesById, step, history }, cancelled);
         if (aborted) return aborted;
+        await traceTerminalFailure(tracer, execution, cancelled);
         return { ok: false, failure: cancelled, execution, latestSnapshot };
       }
     }
@@ -347,10 +399,10 @@ async function runLoop(params: { runId: ExecuteWorkflowRequest["runId"]; plan: E
     // bounce, no RETRYING Run status, no snapshot mid-attempt. The controller
     // returns at most one accepted outcome — live, or durably recorded and
     // recovered — and only this loop commits it.
-    const outcome = await executeNodeAttempts({ runId, node, executor, state, step, policy: reliability.policyFor(node.id), sleeper: reliability.sleeper, hooks, ...(recovery ? { recovery } : {}) });
+    const outcome = await executeNodeAttempts({ runId, node, executor, state, step, policy: reliability.policyFor(node.id), sleeper: reliability.sleeper, hooks, ...(tracer.enabled ? { tracer } : {}), ...(recovery ? { recovery } : {}) });
     recovery = undefined;
-    if (outcome.kind === "durability_failure") return durabilityFailure(durable);
-    if (outcome.kind === "invalid_recovery") return { ok: false, failure: { code: "INVALID_RECOVERY_DIRECTIVE", message: outcome.message, nodeId: node.id, step }, execution: cloneExecution(durable.execution), latestSnapshot: durable.snapshot };
+    if (outcome.kind === "durability_failure") return abort(durabilityFailure(durable));
+    if (outcome.kind === "invalid_recovery") return abort({ ok: false, failure: { code: "INVALID_RECOVERY_DIRECTIVE", message: outcome.message, nodeId: node.id, step }, execution: cloneExecution(durable.execution), latestSnapshot: durable.snapshot });
     const attemptEvidence = { attemptCount: outcome.attemptCount, ...(outcome.attemptFailures.length > 0 ? { attemptFailures: outcome.attemptFailures } : {}) };
 
     if (outcome.kind === "failure") {
@@ -359,7 +411,7 @@ async function runLoop(params: { runId: ExecuteWorkflowRequest["runId"]; plan: E
       nodeStatusesById = transitionNodeStatus(nodeStatusesById, node.id, "FAILED");
       history = [...history, { nodeId: node.id, kind: node.kind, step, status: "FAILED", stateRevisionBefore: state.revision, stateRevisionAfter: state.revision, ...attemptEvidence }];
       execution = { run, state, nodeStatusesById, step, history };
-      return fail(outcome.failure);
+      return fail(outcome.failure, { kind: node.kind, attemptCount: outcome.attemptCount });
     }
 
     if (outcome.kind === "wait") {
@@ -368,6 +420,7 @@ async function runLoop(params: { runId: ExecuteWorkflowRequest["runId"]; plan: E
       // A durable wait is reported only after its wait boundary is persisted.
       const aborted = await boundary({ run, state, nodeStatusesById, step, history, wait: { ...outcome.wait, nodeId: node.id } });
       if (aborted) return aborted;
+      await tracer.emit({ type: "node.waiting", nodeId: node.id, span: nodeSpan(node.id, step, outcome.attemptCount), parentSpan: runSpan(), key: { step }, payload: { kind: node.kind, step, waitKind: "approval", referenceId: outcome.wait.referenceId } });
       return { ok: true, execution, latestSnapshot };
     }
 
@@ -391,11 +444,19 @@ async function runLoop(params: { runId: ExecuteWorkflowRequest["runId"]; plan: E
       },
     ];
 
+    /** Reported only after the boundary that commits this Node is persisted: Trace mirrors committed truth. */
+    const traceCommit = async () => {
+      if (outcome.statePatch !== undefined) await tracer.emit({ type: "state.updated", nodeId: node.id, span: nodeSpan(node.id, step, outcome.attemptCount), key: { step }, payload: { step, revisionBefore: stateRevisionBefore, revisionAfter: stateRevisionAfter, changedKeys: Object.keys(outcome.statePatch).sort() } });
+      await tracer.emit({ type: "node.completed", nodeId: node.id, span: nodeSpan(node.id, step, outcome.attemptCount), parentSpan: runSpan(), key: { step }, payload: { kind: node.kind, step, attemptCount: outcome.attemptCount, stateRevisionBefore, stateRevisionAfter, outcomeSource: outcome.recovered ? "recovered" : "executor" } });
+    };
+
     if (terminalNodeIds.has(node.id)) {
       run = setCurrentNodeId(transitionRunRecord(run, "COMPLETED", clock.now()), undefined);
       // COMPLETED is reported only after the terminal boundary is persisted.
       const aborted = await boundary({ run, state, nodeStatusesById, step, history });
       if (aborted) return aborted;
+      await traceCommit();
+      await tracer.emit({ type: "run.completed", span: runSpan(), key: {}, payload: { finalNodeId: node.id, stateRevision: state.revision, steps: step } });
       const output = outcome.output;
       return { ok: true, execution, latestSnapshot, ...(output !== undefined ? { output } : {}) };
     }
@@ -404,7 +465,7 @@ async function runLoop(params: { runId: ExecuteWorkflowRequest["runId"]; plan: E
     const nextEdge = plan.outgoingEdgesByNode[node.id]?.[0];
     if (nextEdge === undefined) {
       execution = { run, state, nodeStatusesById, step, history };
-      return fail({ code: "RUNTIME_PREFLIGHT_FAILED", message: `Non-terminal node "${node.id}" has no outgoing edge mid-execution.`, nodeId: node.id, step });
+      return fail({ code: "RUNTIME_PREFLIGHT_FAILED", message: `Non-terminal node "${node.id}" has no outgoing edge mid-execution.`, nodeId: node.id, step }, undefined, traceCommit);
     }
     currentNodeId = nextEdge.targetNodeId;
     // Workflow Compiler V1 rejects cycles, so a compiler-produced plan can
@@ -420,12 +481,14 @@ async function runLoop(params: { runId: ExecuteWorkflowRequest["runId"]; plan: E
         message: `Routing revisits node "${currentNodeId}" (status "${nodeStatusesById[currentNodeId]}") mid-execution; Runtime V1 does not support re-entering a node.`,
         nodeId: currentNodeId,
         step,
-      });
+      }, undefined, traceCommit);
     }
     nodeStatusesById = transitionNodeStatus(nodeStatusesById, currentNodeId, "READY");
     run = setCurrentNodeId(run, currentNodeId);
 
     const aborted = await boundary({ run, state, nodeStatusesById, step, history });
     if (aborted) return aborted;
+    await traceCommit();
+    await tracer.emit({ type: "route.selected", span: runSpan(), key: { step }, payload: { sourceNodeId: node.id, targetNodeId: currentNodeId, routeType: "unconditional" } });
   }
 }

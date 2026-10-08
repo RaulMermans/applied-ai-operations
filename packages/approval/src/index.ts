@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { ApprovalRecordSchema, PermissionClassesSchema, PrincipalSchema, RunIdSchema, NodeIdSchema, canonicalJsonStringify, identifierSchema, isoTimestampSchema, type ApprovalRecord, type JsonValue, type Principal } from "@aao/contracts";
 import { resolveAuthority, resolveRoleMembership, type GovernanceRegistry } from "@aao/governance";
-import { continueWaitingWorkflow, isJsonSafe, type ContinueWaitingWorkflowRequest, type NodeExecutor, type RuntimeClock, type WorkflowExecutionResult } from "@aao/runtime";
+import { continueWaitingWorkflow, isJsonSafe, type ContinueWaitingWorkflowRequest, type NodeExecutor, type RuntimeClock, type RuntimeTracePort, type WorkflowExecutionResult } from "@aao/runtime";
 
 const ApprovalNodeConfigSchema = z.object({
   subjectStateKey: identifierSchema,
@@ -160,14 +160,16 @@ export function createApprovalNodeExecutor(engine: ApprovalEngine, requesterForR
     // Crash recovery (ADR-019): the approval id is derived from the exact request and creation is exact-request idempotent, so replay never duplicates.
     recoverySafety: () => "safe",
     validateConfig({ node }) { return ApprovalNodeConfigSchema.safeParse(node.config).success ? { ok: true } : { ok: false, issues: ["Invalid approval node configuration."] }; },
-    async execute({ runId, node, state }) {
+    async execute({ runId, node, state, step, trace }) {
       const config = ApprovalNodeConfigSchema.parse(node.config);
       const subject = state.values[config.subjectStateKey];
       if (subject === undefined || !isJsonSafe(subject)) return { ok: false, failure: { namespace: "approval", code: "INVALID_APPROVAL_CONTEXT", category: "VALIDATION" } };
       const requestedBy = PrincipalSchema.parse(requesterForRun(runId));
       const requestFingerprint = fingerprintApprovalSubject(runId, node.id, state.revision, subject);
       const approvalId = approvalIdForFingerprint(runId, node.id, requestFingerprint);
-      engine.requestApproval({ approvalId, runId, nodeId: node.id, requestFingerprint, requestedBy, requiredApproverRoleIds: config.requiredApproverRoleIds, permissionClasses: config.permissionClasses, allowSelfApproval: config.allowSelfApproval ?? false });
+      const record = engine.requestApproval({ approvalId, runId, nodeId: node.id, requestFingerprint, requestedBy, requiredApproverRoleIds: config.requiredApproverRoleIds, permissionClasses: config.permissionClasses, allowSelfApproval: config.allowSelfApproval ?? false });
+      // Request metadata only (ADR-020): the subject and its payload are never traced; the fingerprint binds them.
+      await trace?.emit({ type: "approval.requested", span: trace.span, parentSpan: { kind: "run" }, key: { approvalId }, payload: { approvalId, step, requestedBy: { id: record.requestedBy.id, type: record.requestedBy.type }, requiredApproverRoleIds: [...record.requiredApproverRoleIds], permissionClasses: [...record.permissionClasses], allowSelfApproval: record.allowSelfApproval, requestFingerprint: record.requestFingerprint } });
       return { ok: true, wait: { kind: "approval", referenceId: approvalId, requestFingerprint } };
     },
   };
@@ -204,9 +206,27 @@ export async function continueApprovedWorkflow(engine: ApprovalEngine, request: 
   if (record.status !== "pending" && currentRequestFingerprint === record.requestFingerprint) {
     if (!engine.claimContinuation(record.approvalId)) return { ok: false, failure: { code: "INVALID_APPROVAL_CONTEXT", message: "INVALID_APPROVAL_CONTEXT" }, execution: request.execution };
   }
+  if (record.status !== "pending" && currentRequestFingerprint === record.requestFingerprint) {
+    await traceApprovalResolved(request.options?.trace, { runId: record.runId, workflowId: request.plan.workflow.id, workflowVersion: request.plan.workflow.version }, record);
+  }
   try {
     const result = await continueWaitingWorkflow({ ...request, approval: record, currentRequestFingerprint });
     if (!result.ok && ["INVALID_APPROVAL_CONTEXT", "APPROVAL_REQUEST_MISMATCH", "APPROVAL_STILL_PENDING", "INVALID_RUNTIME_INPUT"].includes(result.failure.code)) engine.releaseContinuation(record.approvalId);
     return result;
   } catch (error) { engine.releaseContinuation(record.approvalId); throw error; }
+}
+
+/**
+ * Reports a consumed Approval resolution (ADR-020): status, the resolver's
+ * stable principal id/type for a human decision, and the authoritative
+ * `resolvedAt`. No reason text, profile data, or subject. Observational
+ * only: a trace failure is swallowed and never affects continuation.
+ */
+export async function traceApprovalResolved(trace: RuntimeTracePort | undefined, run: { runId: string; workflowId: string; workflowVersion: string }, record: ApprovalRecord): Promise<void> {
+  if (!trace || record.status === "pending" || record.resolvedAt === undefined) return;
+  try {
+    await trace.emit({ type: "approval.resolved", ...run, nodeId: record.nodeId, span: { kind: "run" }, key: { approvalId: record.approvalId }, payload: { approvalId: record.approvalId, status: record.status, ...(record.resolvedBy ? { resolvedBy: { id: record.resolvedBy.id, type: record.resolvedBy.type } } : {}), resolvedAt: record.resolvedAt } });
+  } catch {
+    // Observability failure is never execution truth.
+  }
 }

@@ -181,3 +181,13 @@ It also gains one resume primitive, `resumeWorkflow({ plan, registry, execution,
 - An inconsistent directive is `INVALID_RECOVERY_DIRECTIVE`.
 
 Safe-boundary cancellation adds `READY → CANCELLED` and `RUN_CANCELLED`, and resuming a terminal Run is `RUN_ALREADY_TERMINAL` with nothing executed. The Runtime never loads or stores anything; `@aao/durability` does. Without the port, behavior is unchanged. See [durable execution](durable-execution.md) and [ADR-019](../decisions/ADR-019-durable-execution-checkpoints-and-replay.md).
+
+## Trace port (Sprint 15)
+
+`RuntimeOptions.trace` is an optional, emit-only `RuntimeTracePort`. The Runtime reports:
+
+- `run.started` when a Run is created;
+- `node.started`, `retry.scheduled`, and `retry.exhausted` as attempts happen;
+- `state.updated` (key names only), `node.completed`, `node.failed`, `node.waiting`, `route.selected`, and the terminal Run event after each boundary commits (in durable mode, after it is persisted).
+
+Executors receive a per-attempt `NodeTraceContext` that closes when the Runtime stops waiting for the attempt, so late results never become evidence. A missing, throwing, or rejecting port never changes execution, and the untraced path is unchanged. History stays the Runtime's own evidence. See [trace runtime](trace-runtime.md) and [ADR-020](../decisions/ADR-020-trace-runtime-and-observability-boundary.md).

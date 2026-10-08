@@ -182,10 +182,22 @@ Out of scope:
 - Distributed, multi-host, or HA storage.
 - Queues, schedulers, and worker pools.
 - Operator tooling for refused ambiguous operations, and compensation.
-- Trace Runtime (Sprint 15) and long-term memory.
+- Long-term memory.
 
 The two-process smoke (`pnpm --filter @aao/durability smoke`, after `pnpm build`) runs three separate Node processes over one temporary root:
 
 1. The first process runs to a durable wait.
 2. The second approves, resumes, and exits inside the Tool after the draft exists.
 3. The third replays idempotently and completes. It prints `SPRINT_14_DURABLE_EXECUTION_SMOKE_OK`.
+
+## Trace (Sprint 15)
+
+`DurableRuntimeHostOptions.trace` passes an optional trace port to the Runtime. The host reports what durability already decided:
+
+- `checkpoint.created` after each checkpoint write succeeds (metadata only, never the snapshot);
+- `recovery.started` after `planRecovery` has decided;
+- `recovery.outcome_reused`, `recovery.replayed`, or `recovery.blocked`, followed by `failure.detected`;
+- `recovery.completed` at the first durable checkpoint past the recovery boundary;
+- `cancellation.requested`.
+
+The durability ledger remains execution-correctness truth. `planRecovery` reads only the checkpoint chain and the operation ledger, and `DurabilityStore` holds no trace data. Deleting or corrupting the Trace Store leaves recovery unchanged. A trace that shows a Tool completion cannot prevent an ambiguous replay, and a trace that lacks one cannot veto reuse of a recorded outcome. A recovered Run keeps its trace id and continues its trace sequence, and re-entering the same recovery boundary deduplicates. See [trace runtime](trace-runtime.md) and [ADR-020](../decisions/ADR-020-trace-runtime-and-observability-boundary.md).

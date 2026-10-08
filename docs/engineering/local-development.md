@@ -122,6 +122,7 @@ node packages/tool-runtime/test/governance-smoke.mjs     # SPRINT_11_GOVERNANCE_
 node packages/approval/smoke.mjs                         # SPRINT_12_APPROVAL_ENGINE_SMOKE_OK
 node packages/tool-runtime/test/reliability-smoke.mjs    # SPRINT_13_RELIABILITY_RUNTIME_SMOKE_OK
 pnpm --filter @aao/durability smoke                      # SPRINT_14_DURABLE_EXECUTION_SMOKE_OK
+pnpm --filter @aao/observability smoke                   # SPRINT_15_TRACE_RUNTIME_SMOKE_OK
 ```
 
 The durability smoke runs three separate Node processes over one temporary directory, which it deletes afterward:
@@ -135,3 +136,5 @@ Durable tests and the smoke use temporary directories only. No durability root i
 ## Local-first, no-deployment stance
 
 There is no Docker, Kubernetes, database, message queue, cloud infrastructure, or deployment configuration in this repository. Durable execution uses plain local files under an explicitly chosen directory. `apps/control-plane` and `apps/worker` are separate local processes you run directly with Node; nothing here assumes a hosting target. See [ADR-005](../decisions/ADR-005-local-first-typescript-architecture.md) and [ADR-006](../decisions/ADR-006-local-process-topology-and-engineering-foundation.md).
+
+The Trace smoke runs a compiled single-process flagship workflow and prints its 24-event timeline: approval wait, approval, Tool transient failure, retry, success, and completion. It then runs two separate Node processes over one temporary root: Process A reaches the durable wait, and Process B reopens the durability and Trace stores, approves, and completes the same trace. It checks that the trace id is unchanged, the sequence is contiguous, and there is one `run.started` and one terminal event. Tracing is opt-in: no Trace root is configured by default, so a host constructs `createFileTraceStore({ root })` and `createTraceRecorder({ store })` explicitly.

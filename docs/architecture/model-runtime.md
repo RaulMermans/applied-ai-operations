@@ -89,3 +89,13 @@ The `model` node (one invocation per node) and, since Sprint 7, the bounded Agen
 ## Explicit non-goals (V1)
 
 Agent loops inside Model Runtime, tools/tool calling, retries, fallback, adaptive/cost/quality routing, streaming, multimodal input, embeddings, model memory or conversation persistence, caching, prompt DSL/templating, live provider configuration and credentials, and live provider calls in tests or CI.
+
+## Trace and binding identity (Sprint 15)
+
+`ModelBinding` accepts optional trusted `identity: { provider, model, revision? }` registration metadata. It is never parsed from a binding id or derived from output. `executeModelRequest` accepts an optional `ModelInvocationObserver`, called only around an actual adapter invocation. The model node maps it to these events:
+
+- `model.call.started`: invocation, policy, binding, output kind, required capabilities, and identity if registered.
+- `model.call.completed`: finish reason and token usage.
+- `model.call.failed`: the safe Model failure code.
+
+Messages, output, provider errors, URLs, and headers are never traced. No prompt version or cost is fabricated. See [trace runtime](trace-runtime.md).

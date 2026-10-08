@@ -44,6 +44,6 @@ export type {
 export { createAgentRegistry, type AgentRegistry } from "./registry.js";
 export { resolveExecutableAgent, type AgentResolution, type AgentResolutionDependencies } from "./resolution.js";
 export { AGENT_DECISION_JSON_SCHEMA, buildIterationModelRequest } from "./decision.js";
-export { executeAgent, type AgentRuntimeDependencies, type ExecuteAgentParams } from "./controller.js";
+export { executeAgent, type AgentRuntimeDependencies, type ExecuteAgentParams, type AgentExecutionObserver } from "./controller.js";
 export { deriveAgentExecutionId } from "./execution-id.js";
 export { createAgentNodeExecutor, AgentNodeConfigSchema, AGENT_NODE_FAILURE_NAMESPACE, type AgentNodeConfig } from "./agent-node.js";

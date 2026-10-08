@@ -27,3 +27,7 @@ The engine stores records through an `ApprovalRepository` port (`get`, `create`,
 - **Evidence, not authority.** `fingerprintGovernance` gives deterministic evidence of the configuration in force at a wait. It never grants or restores authority.
 
 The durable checkpoint at the waiting boundary acts as the cross-process continuation claim: once continuation is persisted, the Run is no longer waiting. See [durable execution](durable-execution.md) and [ADR-019](../decisions/ADR-019-durable-execution-checkpoints-and-replay.md).
+
+## Trace (Sprint 15)
+
+The Approval Node emits `approval.requested` with the approval id, requester id/type, required approver roles, permission classes, and request fingerprint. It never emits the subject or its payload. `continueApprovedWorkflow` emits `approval.resolved` with the status, the resolver id/type, and the authoritative `resolvedAt` when a resolution is consumed. A durable host emits the same event when it cancels a pending approval on Run cancellation. No reason text or profile data is traced, and Trace can never approve, reject, or revalidate anything. See [trace runtime](trace-runtime.md).

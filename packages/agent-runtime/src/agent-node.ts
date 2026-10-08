@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { identifierSchema, type JsonObject } from "@aao/contracts";
 import type { NodeExecutor, NodePreflightResult } from "@aao/runtime";
-import { executeAgent, type AgentRuntimeDependencies } from "./controller.js";
+import { modelTraceObserver } from "@aao/model-runtime";
+import { executeAgent, type AgentExecutionObserver, type AgentRuntimeDependencies } from "./controller.js";
 import { deriveAgentExecutionId } from "./execution-id.js";
 import { resolveExecutableAgent } from "./resolution.js";
 import { AgentRefSchema } from "./types.js";
@@ -81,8 +82,32 @@ export function createAgentNodeExecutor(dependencies: AgentRuntimeDependencies):
       // Run in Runtime V1. The task is whatever the workflow state holds;
       // `executeAgent` validates it (a missing, non-string, or blank task is
       // INVALID_AGENT_REQUEST) like any other untrusted request.
-      const request = { schemaVersion: 1, agentExecutionId: deriveAgentExecutionId(context.runId, context.node.id), agentRef, task: context.state.values[taskStateKey] };
-      const outcome = await executeAgent({ request, ...dependencies });
+      const agentExecutionId = deriveAgentExecutionId(context.runId, context.node.id);
+      const request = { schemaVersion: 1, agentExecutionId, agentRef, task: context.state.values[taskStateKey] };
+
+      // Trajectory evidence (ADR-020): decisions and metadata only, nested under one Agent span per attempt.
+      const trace = context.trace;
+      const attempt = context.attempt;
+      const span = { kind: "agent" as const, agentExecutionId, attempt };
+      const ref = { id: agentRef.id, version: agentRef.version };
+      let observer: AgentExecutionObserver | undefined;
+      let started = false;
+      if (trace) {
+        const resolved = resolveExecutableAgent(agentRef, dependencies);
+        started = resolved.ok;
+        if (resolved.ok) await trace.emit({ type: "agent.started", span, key: {}, payload: { agentRef: ref, agentExecutionId, attempt, modelPolicyRef: resolved.modelPolicyRef, maxIterations: resolved.agent.limits.maxIterations } });
+        observer = {
+          model: modelTraceObserver(trace, attempt, span),
+          async iterationCompleted(record) {
+            await trace.emit({ type: "agent.iteration.completed", span, key: { iteration: record.iteration }, payload: { agentRef: ref, agentExecutionId, attempt, iteration: record.iteration, action: record.action, invocationId: record.invocationId, modelBindingId: record.modelBindingId, ...(record.usage ? { usage: record.usage } : {}) } });
+          },
+        };
+      }
+      const outcome = await executeAgent({ request, ...dependencies, ...(observer ? { observer } : {}) });
+      if (trace && started) {
+        if (outcome.ok) await trace.emit({ type: "agent.completed", span, key: {}, payload: { agentRef: ref, agentExecutionId, attempt, iterationsUsed: outcome.result.iterationsUsed, ...(outcome.result.usage ? { usage: outcome.result.usage } : {}) } });
+        else await trace.emit({ type: "agent.failed", span, key: {}, payload: { agentRef: ref, agentExecutionId, attempt, code: outcome.failure.code, ...(outcome.failure.iteration ? { iteration: outcome.failure.iteration } : {}), ...(outcome.failure.modelFailureCode ? { modelFailureCode: outcome.failure.modelFailureCode } : {}) } });
+      }
       if (!outcome.ok) return { ok: false, failure: { namespace: AGENT_NODE_FAILURE_NAMESPACE, code: outcome.failure.code } };
       return { ok: true, statePatch: { [resultStateKey]: outcome.result } };
     },

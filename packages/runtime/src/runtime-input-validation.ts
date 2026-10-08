@@ -62,6 +62,11 @@ export function validateRuntimeInput(request: ExecuteWorkflowRequest): RuntimeFa
     }
   }
 
+  const trace = request.options?.trace as unknown;
+  if (trace !== undefined && (typeof trace !== "object" || trace === null || typeof (trace as Record<string, unknown>).emit !== "function")) {
+    return { code: "INVALID_RUNTIME_INPUT", message: "request.options.trace must implement emit(draft)." };
+  }
+
   return undefined;
 }
 

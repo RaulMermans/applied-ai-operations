@@ -1,5 +1,5 @@
 import { isJsonSafe } from "@aao/runtime";
-import { executeModelRequest, type ModelPolicyRegistry, type ModelRegistry, type ModelUsage } from "@aao/model-runtime";
+import { executeModelRequest, type ModelInvocationObserver, type ModelPolicyRegistry, type ModelRegistry, type ModelUsage } from "@aao/model-runtime";
 import { buildIterationModelRequest } from "./decision.js";
 import type { AgentRegistry } from "./registry.js";
 import { resolveExecutableAgent } from "./resolution.js";
@@ -23,6 +23,18 @@ export interface AgentRuntimeDependencies {
 export interface ExecuteAgentParams extends AgentRuntimeDependencies {
   /** Untrusted: validated before anything else happens. */
   request: unknown;
+  /** Optional observer (ADR-020). Never consulted; a throwing observer changes nothing. */
+  observer?: AgentExecutionObserver;
+}
+
+/**
+ * Safe trajectory notifications: each completed iteration's decision
+ * metadata (never its working output, rationale, or reasoning) and the
+ * model invocations it made.
+ */
+export interface AgentExecutionObserver {
+  model?: ModelInvocationObserver;
+  iterationCompleted?(record: Omit<AgentIterationRecord, "output">): void | Promise<void>;
 }
 
 /**
@@ -82,7 +94,7 @@ export async function executeAgent(params: ExecuteAgentParams): Promise<AgentExe
   // Bounded by construction: at most `maxIterations` passes, and every pass
   // either returns or advances `iteration` by exactly one.
   for (state.iteration = 1; state.iteration <= maxIterations; state.iteration += 1) {
-    const outcome = await executeModelRequest({ request: buildIterationModelRequest(agent, state), modelPolicyRef, policies: params.policies, models: params.models });
+    const outcome = await executeModelRequest({ request: buildIterationModelRequest(agent, state), modelPolicyRef, policies: params.policies, models: params.models, ...(params.observer?.model ? { observer: params.observer.model } : {}) });
 
     if (!outcome.ok) {
       const modelFailureCode = outcome.failure.code;
@@ -108,6 +120,12 @@ export async function executeAgent(params: ExecuteAgentParams): Promise<AgentExe
       modelBindingId: modelResult.modelBindingId,
       ...(modelResult.usage !== undefined ? { usage: { ...modelResult.usage } } : {}),
     });
+
+    const iterationCompleted = params.observer?.iterationCompleted;
+    if (typeof iterationCompleted === "function") {
+      const { output: _output, ...metadata } = state.history[state.history.length - 1]!;
+      try { await iterationCompleted.call(params.observer, JSON.parse(JSON.stringify(metadata)) as typeof metadata); } catch { /* observation never changes execution */ }
+    }
 
     if (decision.data.action === "COMPLETE") return succeed(state);
 

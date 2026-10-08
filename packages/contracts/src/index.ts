@@ -132,7 +132,29 @@ export {
   type EvalResult,
 } from "./evaluation.js";
 
-export { TraceEventSchema, type TraceEvent } from "./trace.js";
+export {
+  TraceEventSchema,
+  TraceEventDraftSchema,
+  TraceEventTypeSchema,
+  TraceStatusSchema,
+  TraceSpanRefSchema,
+  TraceEventKeySchema,
+  TraceIdSchema,
+  SpanIdSchema,
+  TraceCodeSchema,
+  TRACE_EVENT_TYPES,
+  TRACE_EVENT_PAYLOAD_SCHEMAS,
+  TRACE_EVENT_STATUS,
+  TRACE_TERMINAL_EVENT_TYPES,
+  MAX_TRACE_EVENT_BYTES,
+  type TraceEvent,
+  type TraceEventDraft,
+  type TraceEventType,
+  type TraceEventKey,
+  type TracePayload,
+  type TraceSpanRef,
+  type TraceStatus,
+} from "./trace.js";
 export { ArtifactRefSchema, type ArtifactRef } from "./artifact.js";
 export { CapabilityPackRefSchema, type CapabilityPackRef } from "./capability-pack.js";
 export { CompanyConfigSchema, type CompanyConfig } from "./deployment.js";

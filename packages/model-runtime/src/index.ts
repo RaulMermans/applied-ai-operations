@@ -41,8 +41,8 @@ export type {
 } from "./types.js";
 
 export { validateModelRequest } from "./request.js";
-export { createModelRegistry, type ModelBinding, type ModelRegistry } from "./registry.js";
+export { createModelRegistry, ModelBindingIdentitySchema, type ModelBinding, type ModelBindingIdentity, type ModelRegistry } from "./registry.js";
 export { createModelPolicyRegistry, hasUnsupportedConstraints, type ModelPolicyRegistry } from "./policy-registry.js";
 export { deriveRequiredCapabilities, selectModelBinding } from "./router.js";
-export { executeModelRequest, type ExecuteModelRequestParams } from "./executor.js";
-export { createModelNodeExecutor, ModelNodeConfigSchema, MODEL_NODE_FAILURE_NAMESPACE, type ModelNodeConfig, type ModelNodeExecutorDependencies } from "./model-node.js";
+export { executeModelRequest, type ExecuteModelRequestParams, type ModelInvocationObserver } from "./executor.js";
+export { createModelNodeExecutor, modelTraceObserver, ModelNodeConfigSchema, MODEL_NODE_FAILURE_NAMESPACE, type ModelNodeConfig, type ModelNodeExecutorDependencies } from "./model-node.js";

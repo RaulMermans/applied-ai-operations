@@ -4,6 +4,7 @@ import type { NodeExecutor, NodePreflightResult } from "@aao/runtime";
 import { deriveToolExecutionId } from "./execution-id.js";
 import type { AuthorizationContext } from "@aao/authorization";
 import { executeTool, type ToolRuntimeDependencies } from "./executor.js";
+import { toolTraceObserver } from "./tool-trace.js";
 import { checkToolPermissionSupport } from "./permissions.js";
 import { resolveToolBinding, toolRecoverySafety } from "./registry.js";
 import { ToolRefSchema, type ToolFailure, type ToolRef } from "./types.js";
@@ -154,21 +155,25 @@ export function createToolNodeExecutor(dependencies: ToolNodeDependencies): Node
       const { toolRef, inputStateKey, resultStateKey } = verdict.config;
       const fail = (code: ToolFailure["code"], handlerFailureRetryable?: true) => ({ ok: false as const, failure: { namespace: TOOL_NODE_FAILURE_NAMESPACE, code, category: classifyToolFailure({ code, handlerFailureRetryable }) } });
 
+      // `toolExecutionId` names the logical Tool operation: identical across
+      // Runtime retries, process restarts, and durable recovery replays.
+      const toolExecutionId = deriveToolExecutionId(context.runId, context.node.id);
+      const observer = toolTraceObserver(context);
+
       let authorizationContext: AuthorizationContext | undefined;
       try {
         authorizationContext = await resolveAuthorizationContext(Object.freeze({ runId: context.runId, nodeId: context.node.id, toolRef: Object.freeze({ ...toolRef }) }));
       } catch {
-        // Never expose or parse the thrown value: the context could not be resolved.
+        // Never expose or parse the thrown value: the context could not be resolved. The handler was never invoked.
+        await observer?.blocked?.({ toolRef, toolExecutionId, failure: { code: "TOOL_AUTHORIZATION_REQUIRED", message: "", toolExecutionId, toolRef }, permissionClasses: [...(tools.getSpec(toolRef)?.permissionClasses ?? [])] });
         return fail("TOOL_AUTHORIZATION_REQUIRED");
       }
 
-      // `toolExecutionId` names the logical Tool operation: identical across
-      // Runtime retries, process restarts, and durable recovery replays.
       // The input is whatever the workflow state holds; `executeTool`
       // validates it (a missing value is INVALID_TOOL_REQUEST, a
       // non-conforming one TOOL_INPUT_SCHEMA_MISMATCH) like any untrusted request.
-      const request = { schemaVersion: 1, toolExecutionId: deriveToolExecutionId(context.runId, context.node.id), toolRef, input: context.state.values[inputStateKey] };
-      const outcome = await executeTool({ request, tools, authorizationContext: authorizationContext as AuthorizationContext, signal: context.signal });
+      const request = { schemaVersion: 1, toolExecutionId, toolRef, input: context.state.values[inputStateKey] };
+      const outcome = await executeTool({ request, tools, authorizationContext: authorizationContext as AuthorizationContext, signal: context.signal, ...(observer ? { observer } : {}) });
       // Only the Tool failure code and its classification go upward; the authorization reason stays with direct callers.
       if (!outcome.ok) return fail(outcome.failure.code, outcome.failure.handlerFailureRetryable);
       return { ok: true, statePatch: { [resultStateKey]: outcome.result } };

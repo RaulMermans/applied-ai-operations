@@ -200,6 +200,40 @@ importers:
         specifier: workspace:*
         version: link:../workflow-dsl
 
+  packages/observability:
+    dependencies:
+      '@aao/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      zod:
+        specifier: ^3.24.3
+        version: 3.25.76
+    devDependencies:
+      '@aao/agent-runtime':
+        specifier: workspace:*
+        version: link:../agent-runtime
+      '@aao/approval':
+        specifier: workspace:*
+        version: link:../approval
+      '@aao/durability':
+        specifier: workspace:*
+        version: link:../durability
+      '@aao/governance':
+        specifier: workspace:*
+        version: link:../governance
+      '@aao/model-runtime':
+        specifier: workspace:*
+        version: link:../model-runtime
+      '@aao/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      '@aao/tool-runtime':
+        specifier: workspace:*
+        version: link:../tool-runtime
+      '@aao/workflow-dsl':
+        specifier: workspace:*
+        version: link:../workflow-dsl
+
   packages/runtime:
     dependencies:
       '@aao/contracts':

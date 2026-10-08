@@ -20,13 +20,17 @@ import {
 } from "./fixtures.js";
 
 const traceEventFixture = {
-  schemaVersion: 1 as const,
-  eventId: "trace-event-0001",
+  schemaVersion: 2 as const,
+  eventId: "evt.0123456789abcdef0123456789abcdef",
+  traceId: "0123456789abcdef0123456789abcdef",
   runId: "run-0001",
   sequence: 0,
-  occurredAt: "2026-09-23T12:00:00Z",
-  type: "run.status_changed",
-  payload: { from: "CREATED", to: "VALIDATING" },
+  occurredAt: "2026-10-08T12:00:00Z",
+  type: "route.selected",
+  workflowId: "sales.lead-qualification",
+  workflowVersion: "1.0.0",
+  spanId: "0123456789abcdef",
+  payload: { sourceNodeId: "a", targetNodeId: "b", routeType: "unconditional" },
 };
 
 const cases: Array<[string, ZodType, unknown]> = [

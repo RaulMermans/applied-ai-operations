@@ -1,6 +1,6 @@
-import { RunIdSchema, type ApprovalRecord, type RunState, type RunStatus } from "@aao/contracts";
-import { continueApprovedWorkflow, type ApprovalEngine } from "@aao/approval";
-import { createSystemClock, executeWorkflow, resumeWorkflow, type NodeRecoveryDirective, type NodeRegistry, type RuntimeClock, type RuntimeDurabilityHooks, type RuntimeExecutionState, type RuntimeFailure, type RuntimeOptions, type RuntimeReliabilityOptions, type RuntimeSleeper, type WorkflowExecutionResult } from "@aao/runtime";
+import { RunIdSchema, type ApprovalRecord, type RunState, type RunStatus, type TraceEventDraft } from "@aao/contracts";
+import { continueApprovedWorkflow, traceApprovalResolved, type ApprovalEngine } from "@aao/approval";
+import { createSystemClock, executeWorkflow, resumeWorkflow, type NodeRecoveryDirective, type NodeRegistry, type RuntimeClock, type RuntimeDurabilityHooks, type RuntimeExecutionState, type RuntimeFailure, type RuntimeOptions, type RuntimeReliabilityOptions, type RuntimeSleeper, type RuntimeTracePort, type WorkflowExecutionResult } from "@aao/runtime";
 import { CompiledWorkflowPlanSchema, type CompiledWorkflowPlan } from "@aao/workflow-dsl";
 import { DurabilityError, checkpointIdFor, durabilityCodeOf, operationIdFor, type CancellationRecord, type DurabilityFailureCode, type DurableCheckpoint, type DurableOperation, type RunManifest } from "./contracts.js";
 import { planFingerprint } from "./fingerprint.js";
@@ -18,6 +18,13 @@ export interface DurableRuntimeHostOptions {
   reliability?: RuntimeReliabilityOptions;
   sleeper?: RuntimeSleeper;
   maxSteps?: number;
+  /**
+   * Optional trace port (ADR-020), e.g. `@aao/observability`'s recorder.
+   * Passed to the Runtime and used to report checkpoints, recovery, and
+   * cancellation *after* durability decided them. Recovery never reads it:
+   * the checkpoint chain and operation ledger stay the only recovery truth.
+   */
+  trace?: RuntimeTracePort;
 }
 
 export interface DurabilityFailure {
@@ -82,12 +89,21 @@ export function createDurableRuntimeHost(options: DurableRuntimeHostOptions) {
   const plan = options.plan;
   const fingerprint = planFingerprint(plan);
   const clock = options.clock ?? createSystemClock();
-  const runtimeOptions: RuntimeOptions = { clock, ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}), ...(options.reliability ? { reliability: options.reliability } : {}), ...(options.sleeper ? { sleeper: options.sleeper } : {}) };
+  const trace = options.trace;
+  const runtimeOptions: RuntimeOptions = { clock, ...(trace ? { trace } : {}), ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}), ...(options.reliability ? { reliability: options.reliability } : {}), ...(options.sleeper ? { sleeper: options.sleeper } : {}) };
   // Single writer per Run inside this host; cross-process exclusion is out of scope (documented).
   const active = new Set<string>();
 
-  function session(runId: string, nextSequence: number, replay?: { operationId: string; recoveryReplayCount: number }) {
+  type HostDraft = TraceEventDraft extends infer D ? (D extends unknown ? Omit<D, "runId" | "workflowId" | "workflowVersion"> : never) : never;
+  /** Observational only: reports what durability already decided. Never awaited for a decision, never read back. */
+  async function emit(runId: string, draft: HostDraft): Promise<void> {
+    if (!trace) return;
+    try { await trace.emit({ ...draft, runId, workflowId: plan.workflow.id, workflowVersion: plan.workflow.version } as TraceEventDraft); } catch { /* trace failure is never durability truth */ }
+  }
+
+  function session(runId: string, nextSequence: number, replay?: { operationId: string; recoveryReplayCount: number }, recoveredFrom?: number) {
     let sequence = nextSequence;
+    let recoveryOpen = recoveredFrom !== undefined;
     let lastError: DurabilityFailureCode | undefined;
     const record = async <T>(work: () => Promise<T>): Promise<T> => {
       try { return await work(); } catch (error) { lastError = durabilityCodeOf(error); throw error; }
@@ -114,12 +130,20 @@ export function createDurableRuntimeHost(options: DurableRuntimeHostOptions) {
           await store.writeCheckpoint(checkpoint);
         }
         sequence += 1;
+        const { run: runRecord, stateSnapshot, step } = snapshot;
+        await emit(runId, { type: "checkpoint.created", span: { kind: "run" }, key: { checkpointSequence: checkpoint.sequence }, payload: { checkpointId: checkpoint.checkpointId, checkpointSequence: checkpoint.sequence, runStatus: runRecord.status, stateRevision: stateSnapshot.revision, step, ...(runRecord.currentNodeId ? { currentNodeId: runRecord.currentNodeId } : {}), planFingerprint: fingerprint } });
+        if (recoveryOpen) {
+          // Recovery is complete once it has made durable progress past its checkpoint.
+          recoveryOpen = false;
+          await emit(runId, { type: "recovery.completed", span: { kind: "run" }, key: { fromCheckpointSequence: recoveredFrom! }, payload: { fromCheckpointSequence: recoveredFrom!, toCheckpointSequence: checkpoint.sequence } });
+        }
       }),
       beginAttempt: (intent) => record(async () => {
         const operationId = operationIdFor(intent.step, intent.attempt);
         if (intent.recoveryReplay) {
           if (!replay || replay.operationId !== operationId) throw new DurabilityError("DURABILITY_CONFLICT");
           await store.markOperationReplay(runId, operationId, replay.recoveryReplayCount);
+          await emit(runId, { type: "recovery.replayed", nodeId: intent.nodeId, span: { kind: "run" }, key: { operationId, replay: replay.recoveryReplayCount + 1 }, payload: { operationId, step: intent.step, attempt: intent.attempt, recoveryReplayCount: replay.recoveryReplayCount + 1 } });
           return;
         }
         await store.beginOperation({ schemaVersion: 1, operationId, runId, nodeId: intent.nodeId, kind: intent.kind, step: intent.step, stateRevision: intent.stateRevision, attempt: intent.attempt, maxAttempts: intent.maxAttempts, recoveryReplayCount: 0, status: "STARTED", startedAt: clock.now() });
@@ -188,7 +212,7 @@ export function createDurableRuntimeHost(options: DurableRuntimeHostOptions) {
     resume(runId: string): Promise<DurableRunResult> {
       return exclusive(runId, async (id) => {
         const { checkpoint, execution, operations, cancellation } = await load(id);
-        const run = (replay?: { operationId: string; recoveryReplayCount: number }) => session(id, checkpoint.sequence + 1, replay);
+        const run = (replay?: { operationId: string; recoveryReplayCount: number }, recoveredFrom?: number) => session(id, checkpoint.sequence + 1, replay, recoveredFrom);
         const status = execution.run.status;
 
         if (status === "COMPLETED" || status === "FAILED" || status === "CANCELLED") {
@@ -201,7 +225,10 @@ export function createDurableRuntimeHost(options: DurableRuntimeHostOptions) {
           if (cancellation) {
             const current = run();
             const result = current.finish(await resumeWorkflow({ plan, registry, execution, options: current.options }));
-            if (!result.ok && result.failure.code === "RUN_CANCELLED" && approvals?.getApproval(wait.referenceId)?.status === "pending") approvals.cancel(wait.referenceId);
+            if (!result.ok && result.failure.code === "RUN_CANCELLED" && approvals?.getApproval(wait.referenceId)?.status === "pending") {
+              const cancelled = approvals.cancel(wait.referenceId);
+              await traceApprovalResolved(trace, { runId: id, workflowId: plan.workflow.id, workflowVersion: plan.workflow.version }, cancelled);
+            }
             return result;
           }
           if (!approvals) return failure("DURABILITY_INVALID_INPUT", {}, execution);
@@ -212,15 +239,23 @@ export function createDurableRuntimeHost(options: DurableRuntimeHostOptions) {
           return current.finish(await continueApprovedWorkflow(approvals, { plan, registry, execution, options: current.options }));
         }
 
+        // The decision comes only from the checkpoint and operation ledger; the trace below merely reports it.
         const recovery = planRecovery(execution, operations, plan, registry);
+        await emit(id, { type: "recovery.started", span: { kind: "run" }, key: { checkpointSequence: checkpoint.sequence }, payload: { checkpointId: checkpoint.checkpointId, checkpointSequence: checkpoint.sequence, runStatus: status, stateRevision: execution.state.revision, ...(execution.run.currentNodeId ? { currentNodeId: execution.run.currentNodeId } : {}) } });
         if (recovery.kind === "refuse") {
+          const blocked = operations.find((operation) => operation.operationId === recovery.operationId);
+          await emit(id, { type: "recovery.blocked", ...(blocked ? { nodeId: blocked.nodeId } : {}), span: { kind: "run" }, key: { operationId: recovery.operationId, code: recovery.code }, payload: { operationId: recovery.operationId, step: blocked?.step ?? execution.step + 1, attempt: blocked?.attempt ?? 1, code: recovery.code } });
+          await emit(id, { type: "failure.detected", span: { kind: "run" }, key: { code: recovery.code, operationId: recovery.operationId }, payload: { source: "durability", code: recovery.code, step: blocked?.step ?? execution.step + 1, ...(blocked ? { attempt: blocked.attempt } : {}) } });
           // Fail closed: durable truth is left untouched. Only a requested cancellation may still end the Run, without replaying anything.
           if (!cancellation) return failure(recovery.code, { operationId: recovery.operationId }, execution);
-          const current = run();
+          const current = run(undefined, checkpoint.sequence);
           return current.finish(await resumeWorkflow({ plan, registry, execution, options: current.options }));
         }
         const directive: NodeRecoveryDirective | undefined = recovery.kind === "directive" ? recovery.directive : undefined;
-        const current = run(recovery.kind === "directive" ? recovery.replay : undefined);
+        for (const operation of operations.filter((candidate) => candidate.step === execution.step + 1 && candidate.status === "OUTCOME_RECORDED")) {
+          await emit(id, { type: "recovery.outcome_reused", nodeId: operation.nodeId, span: { kind: "run" }, key: { operationId: operation.operationId }, payload: { operationId: operation.operationId, step: operation.step, attempt: operation.attempt, outcomeKind: operation.outcome!.kind } });
+        }
+        const current = run(recovery.kind === "directive" ? recovery.replay : undefined, checkpoint.sequence);
         return current.finish(await resumeWorkflow({ plan, registry, execution, ...(directive ? { recovery: directive } : {}), options: current.options }));
       });
     },
@@ -250,7 +285,9 @@ export function createDurableRuntimeHost(options: DurableRuntimeHostOptions) {
     async requestCancellation(runId: string): Promise<{ ok: true; cancellation: CancellationRecord } | { ok: false; failure: DurabilityFailure }> {
       if (!RunIdSchema.safeParse(runId).success) return { ok: false, failure: { code: "DURABILITY_INVALID_INPUT", message: MESSAGES.DURABILITY_INVALID_INPUT } };
       try {
-        return { ok: true, cancellation: await store.requestCancellation(runId, clock.now()) };
+        const cancellation = await store.requestCancellation(runId, clock.now());
+        await emit(runId, { type: "cancellation.requested", span: { kind: "run" }, key: {}, payload: { requestedAt: cancellation.requestedAt } });
+        return { ok: true, cancellation };
       } catch (error) {
         const code = durabilityCodeOf(error);
         return { ok: false, failure: { code, message: MESSAGES[code] } };

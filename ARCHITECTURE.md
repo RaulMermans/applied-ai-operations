@@ -75,7 +75,7 @@ Runtime V1 executes only unconditional routing with explicitly registered execut
 
 ## Managed runtime state and lifecycle
 
-`@aao/runtime` also maintains one authoritative representation of execution state at every safe boundary: an authoritative Run lifecycle (`RunRecord`), an authoritative Node lifecycle (`NodeStatusMap`), revisioned `RunState`, and a safe, in-memory `RuntimeExecutionSnapshot`. A snapshot is not itself a durable checkpoint; `@aao/durability` wraps it in a `DurableCheckpoint` when a host opts in. See [ADR-010](docs/decisions/ADR-010-managed-runtime-state-and-lifecycle.md) and [runtime state management](docs/architecture/runtime-state-management.md) for the full model and what remains deliberately deferred (durable resume, persistence, durable retry, tracing).
+`@aao/runtime` also maintains one authoritative representation of execution state at every safe boundary: an authoritative Run lifecycle (`RunRecord`), an authoritative Node lifecycle (`NodeStatusMap`), revisioned `RunState`, and a safe, in-memory `RuntimeExecutionSnapshot`. A snapshot is not itself a durable checkpoint; `@aao/durability` wraps it in a `DurableCheckpoint` when a host opts in. See [ADR-010](docs/decisions/ADR-010-managed-runtime-state-and-lifecycle.md) and [runtime state management](docs/architecture/runtime-state-management.md) for the full model. Durable resume and persistence live in `@aao/durability` (Sprint 14); tracing lives in `@aao/observability` (Sprint 15).
 
 ## Model Runtime and capability routing
 
@@ -163,6 +163,23 @@ The Runtime exposes a generic durability port and `resumeWorkflow`; it never tou
 
 The reference store is local, single-host, and single-writer. No exactly-once claim is made, and side-effect permission classes stay unsupported. See [ADR-019](docs/decisions/ADR-019-durable-execution-checkpoints-and-replay.md) and [durable execution](docs/architecture/durable-execution.md).
 
+## Trace Runtime
+
+Sprint 15 adds `@aao/observability`, the canonical Trace Runtime. Trace is an observational projection of authoritative execution, never a second source of truth:
+
+```text
+Runtime / Governance / Approval / Durability ──emit──► RuntimeTracePort ──► recorder ──► TraceStore (in-memory | local file)
+                                                                                    └─► validateTrace · compareTraceWithExecution
+```
+
+- The Runtime, Node executors (through `NodeExecutionContext.trace`), the approval bridge, and the durable host report what they already decided through an optional, emit-only port. Nothing reads Trace to decide anything, and recovery reads only the durability ledger.
+- Events use the migrated `TraceEvent` schema version 2, with a closed dot-namespaced catalog and strict, metadata-only typed payloads.
+- Identity is deterministic: trace, span, and event ids survive restart. Each Run has a contiguous per-Run `sequence`, and appends are idempotent and append-only.
+- Trace failure degrades trace health and never changes Run outcome or triggers a retry.
+- The schema is designed for OpenTelemetry-compatible mapping. No OTel SDK or exporter exists.
+
+See [ADR-020](docs/decisions/ADR-020-trace-runtime-and-observability-boundary.md) and [trace runtime](docs/architecture/trace-runtime.md).
+
 ## Canonical architecture documents
 
 - [Product contract](docs/product/product-contract.md) — product purpose, boundaries, V1 proof, and success criteria.
@@ -177,6 +194,7 @@ The reference store is local, single-host, and single-writer. No exactly-once cl
 - [Approval engine](docs/architecture/approval-engine.md) — human resolution and Runtime waitpoints.
 - [Reliability runtime](docs/architecture/reliability-runtime.md) — trusted bounded retry policy, failure taxonomy, retry safety, attempt timeouts, and late-result protection.
 - [Durable execution](docs/architecture/durable-execution.md) — durable checkpoints, write-ahead operation records, crash recovery, recovery safety, Tool idempotency, durable approvals, and safe-boundary cancellation.
+- [Trace runtime](docs/architecture/trace-runtime.md) — Trace Event V2, the emit-only trace port, recorder, Trace Stores, identity, content policy, validation, and the OpenTelemetry mapping.
 - [Governance](docs/architecture/governance.md) — host-attested actors, role bindings, deny policies, and resolved authority before Authorization.
 - [MCP connector](docs/architecture/mcp-connector.md) — isolated stdio sessions, bounded discovery, explicit Tool bindings, and normalized failures.
 - [System boundaries](docs/architecture/system-boundaries.md) — architectural layers and ownership.
@@ -203,7 +221,7 @@ Dependencies implement infrastructure; AAO defines product semantics.
 | Authorization | Yes | `@aao/authorization`, no external dependency (Sprint 9) |
 | Governance | Yes | `@aao/governance`, canonical contracts and deterministic validation (Sprint 11) |
 | Evaluation | Yes | Implementation deferred |
-| Trace model | Yes | Implementation deferred |
+| Trace model | Yes | `@aao/observability`: local Trace Stores, no external dependency (Sprint 15); OTel export deferred |
 
 The repository's `packages/substrate-contracts`, `packages/substrate-spikes`, and `experiments` remain Sprint 0A research evidence. They are not production packages or final public contracts. The MCP spike is `KEEP_AS_HISTORICAL_EVIDENCE`; production MCP is exclusively `@aao/mcp-connector` (ADR-015). Other concepts still need explicit promotion, migration, deletion, or archival.
 

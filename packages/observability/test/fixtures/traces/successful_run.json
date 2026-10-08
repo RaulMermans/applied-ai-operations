@@ -1,0 +1,230 @@
+[
+  {
+    "schemaVersion": 2,
+    "eventId": "evt.1db1b5cde94863e693278f5969e95ccf",
+    "traceId": "8bd0455640037b7f1ecd52d726900dd1",
+    "runId": "run.fixture",
+    "sequence": 0,
+    "occurredAt": "2026-10-08T12:00:00.000Z",
+    "type": "run.started",
+    "workflowId": "trace.tool",
+    "workflowVersion": "1.0.0",
+    "spanId": "d104014fb619165b",
+    "status": "started",
+    "payload": {
+      "entryNodeId": "lookup",
+      "initialStateRevision": 0,
+      "nodeCount": 2,
+      "reliabilityPolicies": [],
+      "reliabilityPolicyFingerprint": "1769b81ba2e8ef6d3c28a61c6a09d460d44a65519ecab23baf38995b64f327ba"
+    }
+  },
+  {
+    "schemaVersion": 2,
+    "eventId": "evt.84fa4ec946622c49c29b49bedb7cad16",
+    "traceId": "8bd0455640037b7f1ecd52d726900dd1",
+    "runId": "run.fixture",
+    "sequence": 1,
+    "occurredAt": "2026-10-08T12:00:01.000Z",
+    "type": "node.started",
+    "workflowId": "trace.tool",
+    "workflowVersion": "1.0.0",
+    "nodeId": "lookup",
+    "spanId": "286fddc1bc82f463",
+    "parentSpanId": "d104014fb619165b",
+    "status": "started",
+    "payload": {
+      "kind": "tool",
+      "step": 1,
+      "attempt": 1,
+      "maxAttempts": 1,
+      "stateRevision": 0,
+      "recoveryReplay": false
+    }
+  },
+  {
+    "schemaVersion": 2,
+    "eventId": "evt.85518295ee9f35d835bd8e8e96af8525",
+    "traceId": "8bd0455640037b7f1ecd52d726900dd1",
+    "runId": "run.fixture",
+    "sequence": 2,
+    "occurredAt": "2026-10-08T12:00:02.000Z",
+    "type": "tool.call.started",
+    "workflowId": "trace.tool",
+    "workflowVersion": "1.0.0",
+    "nodeId": "lookup",
+    "spanId": "de547fa85389879a",
+    "parentSpanId": "286fddc1bc82f463",
+    "status": "started",
+    "payload": {
+      "toolRef": {
+        "id": "local.lookup",
+        "version": "1.0.0"
+      },
+      "toolExecutionId": "tool.22e20eacc4a6c9569c9864db8d8c0062aab78026370b99329110db4cfe2d83d7",
+      "attempt": 1,
+      "permissionClasses": [
+        "read_only"
+      ],
+      "access": {
+        "decision": "allow",
+        "principalId": "user.alice",
+        "agentCeilingApplied": false
+      },
+      "recoveryReplay": false
+    }
+  },
+  {
+    "schemaVersion": 2,
+    "eventId": "evt.56a27b9f1a8c17d87ec6558a6a9dfe69",
+    "traceId": "8bd0455640037b7f1ecd52d726900dd1",
+    "runId": "run.fixture",
+    "sequence": 3,
+    "occurredAt": "2026-10-08T12:00:03.000Z",
+    "type": "tool.call.completed",
+    "workflowId": "trace.tool",
+    "workflowVersion": "1.0.0",
+    "nodeId": "lookup",
+    "spanId": "de547fa85389879a",
+    "parentSpanId": "286fddc1bc82f463",
+    "status": "succeeded",
+    "payload": {
+      "toolRef": {
+        "id": "local.lookup",
+        "version": "1.0.0"
+      },
+      "toolExecutionId": "tool.22e20eacc4a6c9569c9864db8d8c0062aab78026370b99329110db4cfe2d83d7",
+      "attempt": 1,
+      "permissionClasses": [
+        "read_only"
+      ],
+      "result": "success"
+    }
+  },
+  {
+    "schemaVersion": 2,
+    "eventId": "evt.e40a56abba9783f8d3ef0d2047786855",
+    "traceId": "8bd0455640037b7f1ecd52d726900dd1",
+    "runId": "run.fixture",
+    "sequence": 4,
+    "occurredAt": "2026-10-08T12:00:04.000Z",
+    "type": "state.updated",
+    "workflowId": "trace.tool",
+    "workflowVersion": "1.0.0",
+    "nodeId": "lookup",
+    "spanId": "286fddc1bc82f463",
+    "parentSpanId": "d104014fb619165b",
+    "payload": {
+      "step": 1,
+      "revisionBefore": 0,
+      "revisionAfter": 1,
+      "changedKeys": [
+        "lookupResult"
+      ]
+    }
+  },
+  {
+    "schemaVersion": 2,
+    "eventId": "evt.8637747ffb51790a07ee0daa3efe2a44",
+    "traceId": "8bd0455640037b7f1ecd52d726900dd1",
+    "runId": "run.fixture",
+    "sequence": 5,
+    "occurredAt": "2026-10-08T12:00:05.000Z",
+    "type": "node.completed",
+    "workflowId": "trace.tool",
+    "workflowVersion": "1.0.0",
+    "nodeId": "lookup",
+    "spanId": "286fddc1bc82f463",
+    "parentSpanId": "d104014fb619165b",
+    "status": "succeeded",
+    "payload": {
+      "kind": "tool",
+      "step": 1,
+      "attemptCount": 1,
+      "stateRevisionBefore": 0,
+      "stateRevisionAfter": 1,
+      "outcomeSource": "executor"
+    }
+  },
+  {
+    "schemaVersion": 2,
+    "eventId": "evt.88f72a0948a860dca2d62405020705a6",
+    "traceId": "8bd0455640037b7f1ecd52d726900dd1",
+    "runId": "run.fixture",
+    "sequence": 6,
+    "occurredAt": "2026-10-08T12:00:06.000Z",
+    "type": "route.selected",
+    "workflowId": "trace.tool",
+    "workflowVersion": "1.0.0",
+    "spanId": "d104014fb619165b",
+    "payload": {
+      "sourceNodeId": "lookup",
+      "targetNodeId": "final",
+      "routeType": "unconditional"
+    }
+  },
+  {
+    "schemaVersion": 2,
+    "eventId": "evt.16744d798e9410fe4a6e7f474565fbd6",
+    "traceId": "8bd0455640037b7f1ecd52d726900dd1",
+    "runId": "run.fixture",
+    "sequence": 7,
+    "occurredAt": "2026-10-08T12:00:07.000Z",
+    "type": "node.started",
+    "workflowId": "trace.tool",
+    "workflowVersion": "1.0.0",
+    "nodeId": "final",
+    "spanId": "5f20959442b8dab8",
+    "parentSpanId": "d104014fb619165b",
+    "status": "started",
+    "payload": {
+      "kind": "final_output",
+      "step": 2,
+      "attempt": 1,
+      "maxAttempts": 1,
+      "stateRevision": 1,
+      "recoveryReplay": false
+    }
+  },
+  {
+    "schemaVersion": 2,
+    "eventId": "evt.3a6b697c31c95b024c76ccb5ad11eff9",
+    "traceId": "8bd0455640037b7f1ecd52d726900dd1",
+    "runId": "run.fixture",
+    "sequence": 8,
+    "occurredAt": "2026-10-08T12:00:08.000Z",
+    "type": "node.completed",
+    "workflowId": "trace.tool",
+    "workflowVersion": "1.0.0",
+    "nodeId": "final",
+    "spanId": "5f20959442b8dab8",
+    "parentSpanId": "d104014fb619165b",
+    "status": "succeeded",
+    "payload": {
+      "kind": "final_output",
+      "step": 2,
+      "attemptCount": 1,
+      "stateRevisionBefore": 1,
+      "stateRevisionAfter": 1,
+      "outcomeSource": "executor"
+    }
+  },
+  {
+    "schemaVersion": 2,
+    "eventId": "evt.723d805f11e5b4403524e895bde3e32e",
+    "traceId": "8bd0455640037b7f1ecd52d726900dd1",
+    "runId": "run.fixture",
+    "sequence": 9,
+    "occurredAt": "2026-10-08T12:00:09.000Z",
+    "type": "run.completed",
+    "workflowId": "trace.tool",
+    "workflowVersion": "1.0.0",
+    "spanId": "d104014fb619165b",
+    "status": "succeeded",
+    "payload": {
+      "finalNodeId": "final",
+      "stateRevision": 1,
+      "steps": 2
+    }
+  }
+]

@@ -24,7 +24,7 @@ Identifiers (`identifierSchema` and its aliases in `common.ts`, e.g. `WorkflowId
 
 ## JSON safety
 
-`JsonPrimitive` / `JsonValue` / `JsonArray` / `JsonObject` (`common.ts`) are the only escape hatch for content that cannot yet be meaningfully typed (node `config`, tool/capability `inputSchema`/`outputSchema`, trace `payload`, artifact `locationRef`, model-policy `constraints`, edge `condition`). Canonical contracts never use `any`, and never contain functions, class instances, `Date` instances, or framework/SDK objects. Persisted timestamps are always ISO-8601 strings (`isoTimestampSchema`), never `Date`.
+`JsonPrimitive` / `JsonValue` / `JsonArray` / `JsonObject` (`common.ts`) are the only escape hatch for content that cannot yet be meaningfully typed (node `config`, tool/capability `inputSchema`/`outputSchema`, artifact `locationRef`, model-policy `constraints`, edge `condition`). Canonical contracts never use `any`, and never contain functions, class instances, `Date` instances, or framework/SDK objects. Persisted timestamps are always ISO-8601 strings (`isoTimestampSchema`), never `Date`.
 
 ## Contract ownership matrix
 
@@ -93,7 +93,14 @@ The `external_side_effect` → human-approval-before-execution rule and the `des
 
 - **EvalDefinition** (`evaluation.ts`) — `schemaVersion`, `id`, `version`, `name`, `description?`, `mode` (`OFFLINE` / `RUNTIME`), `targetType?` (`run`, `node`, `tool_use`, `artifact`, `trajectory`, `authorization`). GPA/trajectory evaluation is not hardcoded; it is expected to become one evaluator family under `trajectory`.
 - **EvalResult** (`evaluation.ts`) — `evalId`, `runId?`, `status` (`passed` / `failed` / `error`), `score?`, `reason?`, `evidenceRefs?`. A passing or failing result may exist with no `score` at all — not every evaluator produces one. When present, `score` is normalized to `[0, 1]`, where `1` fully meets an evaluator's criteria and `0` does not meet them at all; individual evaluators define the criteria themselves. No evaluator implementation, evaluation runtime, or CI regression gate exists yet.
-- **TraceEvent** (`trace.ts`) — `schemaVersion`, `eventId`, `runId`, `sequence`, `occurredAt`, `type` (dot-namespaced, e.g. `run.status_changed`), `nodeId?`, `payload` (opaque `JsonObject`). No Trace Store, OpenTelemetry export, or metrics pipeline exists yet.
+- **TraceEvent** (`trace.ts`, schema version 2 since Sprint 15; the Sprint 2 version-1 placeholder was migrated, not duplicated) has these parts:
+  - envelope: `eventId`, `traceId`, `runId`, `sequence`, `occurredAt`, `type`, `workflowId`, `workflowVersion`, `nodeId?`, `spanId`, `parentSpanId?`, `status?`, `payload`;
+  - a closed dot-namespaced catalog (`TRACE_EVENT_TYPES`);
+  - one strict, metadata-only payload schema per type (`TRACE_EVENT_PAYLOAD_SCHEMAS`);
+  - canonical statuses;
+  - span refs and typed `TraceEventDraft`s for emitters.
+
+  The recorder, stores, and validator live in `@aao/observability`. See [trace runtime](trace-runtime.md).
 - **ArtifactRef** (`artifact.ts`) — `schemaVersion`, `artifactId`, `runId?`, `nodeId?`, `kind` (an open identifier, not a frozen enum — artifact kinds are expected to grow with capability packs), `name?`, `createdAt`, `locationRef` (opaque `JsonObject`, e.g. `{"type":"local-file","path":"..."}`). No binary content is ever stored in this contract, and no storage technology is selected.
 
 ## Template contracts
@@ -105,4 +112,4 @@ Together, `CompanyConfig` and `CapabilityPackRef` protect the portability invari
 
 ## Non-goals carried over from the sprint
 
-This package intentionally does not implement: a Workflow DSL parser, YAML authoring, a graph compiler/validator (cycles, reachability, unreachable nodes, termination), a runtime executor, a Node Registry, state reducers, state/checkpoint persistence, an agent/skill/model runtime, a Tool Registry or tool execution, capability adapters/connectors, MCP production integration, OAuth/credentials, an authorization engine, eval execution, trace storage, a capability-pack runtime, company deployment folders, or any UI. See ADR-007 and the sprint's own non-goals list for the complete inventory.
+This package intentionally does not implement: a Workflow DSL parser, YAML authoring, a graph compiler/validator (cycles, reachability, unreachable nodes, termination), a runtime executor, a Node Registry, state reducers, state/checkpoint persistence, an agent/skill/model runtime, a Tool Registry or tool execution, capability adapters/connectors, MCP production integration, OAuth/credentials, an authorization engine, eval execution, trace recording or storage (`@aao/observability`), a capability-pack runtime, company deployment folders, or any UI. See ADR-007 and the sprint's own non-goals list for the complete inventory.

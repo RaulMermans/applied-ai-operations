@@ -3,7 +3,8 @@ import type { CompiledWorkflowPlan } from "@aao/workflow-dsl";
 import { isJsonSafe } from "./json-safety.js";
 import { validateNodeExecutionResult } from "./node-result-validation.js";
 import { cloneRunState } from "./state.js";
-import type { NodeAttemptFailure, NodeAttemptIntent, NodeAttemptOutcome, NodeExecutor, NodeExecutorFailure, NodeRecoveryDirective, RuntimeDurabilityHooks, RuntimeFailure, RuntimeOptions, RuntimeSleeper, RuntimeWaitState } from "./types.js";
+import { createNodeTraceContext, nodeSpan, runSpan, type RunTracer } from "./tracing.js";
+import type { NodeAttemptFailure, NodeAttemptIntent, NodeAttemptOutcome, NodeExecutor, NodeExecutorFailure, NodeRecoveryDirective, NodeTraceContext, RuntimeDurabilityHooks, RuntimeFailure, RuntimeOptions, RuntimeSleeper, RuntimeWaitState } from "./types.js";
 
 /**
  * Runtime Reliability Controller (ADR-018, docs/architecture/reliability-runtime.md).
@@ -43,6 +44,8 @@ export function createSystemSleeper(): RuntimeSleeper {
 export interface ResolvedReliability {
   policyFor(nodeId: NodeId): Readonly<ReliabilityPolicy>;
   sleeper: RuntimeSleeper;
+  /** The explicitly configured policies, sorted by Node id: observability metadata for `run.started`. */
+  configured(): Array<ReliabilityPolicy & { nodeId: NodeId }>;
 }
 
 /**
@@ -73,11 +76,12 @@ export function resolveReliability(options: RuntimeOptions | undefined, plan: Co
       }
     }
   }
-  return { ok: true, reliability: { sleeper, policyFor: (nodeId) => policies.get(nodeId) ?? DEFAULT_RELIABILITY_POLICY } };
+  const configured = () => [...policies.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([nodeId, policy]) => ({ nodeId, ...policy }));
+  return { ok: true, reliability: { sleeper, policyFor: (nodeId) => policies.get(nodeId) ?? DEFAULT_RELIABILITY_POLICY, configured } };
 }
 
 export type NodeAttemptsOutcome =
-  | { kind: "success"; statePatch?: JsonObject; output?: JsonValue; attemptCount: number; attemptFailures: NodeAttemptFailure[] }
+  | { kind: "success"; statePatch?: JsonObject; output?: JsonValue; attemptCount: number; attemptFailures: NodeAttemptFailure[]; recovered: boolean }
   | { kind: "wait"; wait: Omit<RuntimeWaitState, "nodeId">; attemptCount: number; attemptFailures: NodeAttemptFailure[] }
   | { kind: "failure"; failure: RuntimeFailure; attemptCount: number; attemptFailures: NodeAttemptFailure[] }
   /** A durability hook rejected: nothing past the last durable boundary may be committed. */
@@ -116,8 +120,10 @@ export async function executeNodeAttempts(params: {
   sleeper: RuntimeSleeper;
   hooks?: RuntimeDurabilityHooks;
   recovery?: Pick<NodeRecoveryDirective, "priorOutcomes" | "replayAttempt">;
+  /** Optional emit-only tracer (ADR-020). Never read; a failure inside it is swallowed. */
+  tracer?: RunTracer;
 }): Promise<NodeAttemptsOutcome> {
-  const { runId, node, executor, state, step, policy, sleeper, hooks, recovery } = params;
+  const { runId, node, executor, state, step, policy, sleeper, hooks, recovery, tracer } = params;
   const maxAttempts = policy.maxAttempts;
   const retrySafe = maxAttempts > 1 && resolveRetrySafety(executor, node);
   const attemptFailures: NodeAttemptFailure[] = [];
@@ -142,10 +148,20 @@ export async function executeNodeAttempts(params: {
     };
     return { kind: "failure", failure, attemptCount: attempt, attemptFailures };
   };
-  const accepted = (outcome: Exclude<NodeAttemptOutcome, { kind: "failure" }>, attempt: number): NodeAttemptsOutcome =>
+  const accepted = (outcome: Exclude<NodeAttemptOutcome, { kind: "failure" }>, attempt: number, recovered: boolean): NodeAttemptsOutcome =>
     outcome.kind === "wait"
       ? { kind: "wait", wait: { ...outcome.wait }, attemptCount: attempt, attemptFailures }
-      : { kind: "success", ...(outcome.statePatch !== undefined ? { statePatch: outcome.statePatch } : {}), ...(outcome.output !== undefined ? { output: outcome.output } : {}), attemptCount: attempt, attemptFailures };
+      : { kind: "success", ...(outcome.statePatch !== undefined ? { statePatch: outcome.statePatch } : {}), ...(outcome.output !== undefined ? { output: outcome.output } : {}), attemptCount: attempt, attemptFailures, recovered };
+  /** Observational only: reports the retry decision `decide` already made. */
+  const traceDecision = async (attempt: number, final: NodeAttemptsOutcome | undefined): Promise<void> => {
+    if (!tracer) return;
+    const failed = attemptFailures[attemptFailures.length - 1]!;
+    if (final === undefined) {
+      await tracer.emit({ type: "retry.scheduled", nodeId: node.id, span: nodeSpan(node.id, step, attempt), key: { step, attempt }, payload: { step, failedAttempt: attempt, nextAttempt: attempt + 1, maxAttempts, category: failed.category, causeCode: failed.causeCode, delayMs: policy.retryDelayMs ?? 0 } });
+    } else if (final.kind === "failure" && final.failure.code === "NODE_RETRY_EXHAUSTED") {
+      await tracer.emit({ type: "retry.exhausted", nodeId: node.id, span: nodeSpan(node.id, step, attempt), key: { step }, payload: { step, attempt, maxAttempts, category: failed.category, causeCode: failed.causeCode } });
+    }
+  };
 
   // Durably recorded attempts are replayed through the same decision, never re-executed.
   let attempt = 1;
@@ -156,9 +172,10 @@ export async function executeNodeAttempts(params: {
     if (outcome.kind !== "failure") {
       if (!last || recovery?.replayAttempt !== undefined) return { kind: "invalid_recovery", message: "An accepted outcome must be the last recorded attempt." };
       if (outcome.kind === "wait" && node.kind !== "approval") return { kind: "invalid_recovery", message: "Only an approval node may have a recorded wait." };
-      return accepted(outcome, recorded);
+      return accepted(outcome, recorded, true);
     }
     const final = decide(recorded, outcome);
+    await traceDecision(recorded, final);
     if (final !== undefined) {
       if (!last || recovery?.replayAttempt !== undefined) return { kind: "invalid_recovery", message: "Recorded attempts continue past a final failure under the current reliability policy." };
       return final;
@@ -175,7 +192,14 @@ export async function executeNodeAttempts(params: {
     if (hooks) {
       try { await hooks.beginAttempt({ ...intent }); } catch { return { kind: "durability_failure" }; }
     }
-    const settlement = await runAttempt(executor, sleeper, policy.attemptTimeoutMs, { runId, node: cloneNodeDefinition(node), state: cloneRunState(state), step, attempt });
+    let traceContext: { context: NodeTraceContext; close(): void } | undefined;
+    if (tracer) {
+      await tracer.emit({ type: "node.started", nodeId: node.id, span: nodeSpan(node.id, step, attempt), parentSpan: runSpan(), key: { step, attempt, replay: intent.recoveryReplay }, payload: { kind: node.kind, step, attempt, maxAttempts, stateRevision: state.revision, recoveryReplay: intent.recoveryReplay } });
+      traceContext = createNodeTraceContext(tracer, node, step, attempt, intent.recoveryReplay);
+    }
+    const settlement = await runAttempt(executor, sleeper, policy.attemptTimeoutMs, { runId, node: cloneNodeDefinition(node), state: cloneRunState(state), step, attempt, ...(traceContext ? { trace: traceContext.context } : {}) });
+    // The Runtime has stopped waiting: anything an abandoned attempt emits later is dropped.
+    traceContext?.close();
 
     let outcome: NodeAttemptOutcome;
     if (settlement.kind === "timeout") {
@@ -202,8 +226,9 @@ export async function executeNodeAttempts(params: {
     if (hooks) {
       try { await hooks.recordAttemptOutcome({ ...intent }, JSON.parse(JSON.stringify(outcome)) as NodeAttemptOutcome); } catch { return { kind: "durability_failure" }; }
     }
-    if (outcome.kind !== "failure") return accepted(outcome, attempt);
+    if (outcome.kind !== "failure") return accepted(outcome, attempt, false);
     const final = decide(attempt, outcome);
+    await traceDecision(attempt, final);
     if (final !== undefined) return final;
     if (policy.retryDelayMs !== undefined && policy.retryDelayMs > 0) await sleeper.sleep(policy.retryDelayMs);
   }
@@ -215,7 +240,7 @@ export async function executeNodeAttempts(params: {
  * so a timed-out invocation that settles later resolves into a value nothing
  * reads — it can never reach validation, state, lifecycle, or output.
  */
-async function runAttempt(executor: NodeExecutor, sleeper: RuntimeSleeper, timeoutMs: number | undefined, context: { runId: RunId; node: NodeDefinition; state: RunState; step: number; attempt: number }): Promise<AttemptSettlement> {
+async function runAttempt(executor: NodeExecutor, sleeper: RuntimeSleeper, timeoutMs: number | undefined, context: { runId: RunId; node: NodeDefinition; state: RunState; step: number; attempt: number; trace?: NodeTraceContext }): Promise<AttemptSettlement> {
   const cancellation = new AbortController();
   const invocation: Promise<AttemptSettlement> = (async () => {
     try {

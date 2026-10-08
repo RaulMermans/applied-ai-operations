@@ -18,6 +18,7 @@ packages/
   authorization/           @aao/authorization — Authorization Context, deterministic permission evaluator (Sprint 9)
   approval/                @aao/approval — human approval engine, repository port, and node executor (Sprint 12; durable-capable Sprint 14)
   durability/              @aao/durability — durable checkpoints, operation ledger, crash recovery, file store, durable host (Sprint 14)
+  observability/           @aao/observability — Trace Runtime: recorder, in-memory/file Trace Stores, identity, content policy, validator (Sprint 15)
   mcp-connector/           @aao/mcp-connector — stdio sessions, discovery, explicit governed Tool bindings (Sprint 10)
   substrate-contracts/     research evidence, not production architecture
   substrate-spikes/        research evidence, not production architecture
@@ -106,3 +107,17 @@ Narrative research notes (durability, graph runtime, integrations, MCP, model la
 ## Build and typecheck shape
 
 Every runnable package (`packages/config`, `packages/contracts`, `packages/workflow-dsl`, `packages/runtime`, `packages/model-runtime`, `packages/agent-runtime`, `packages/tool-runtime`, `packages/authorization`, `packages/approval`, `packages/mcp-connector`, `apps/control-plane`, `apps/worker`) and the retained research packages each have their own `tsconfig.json` (typecheck, includes `src` and `test`) and `tsconfig.build.json` (build, excludes `test`, emits to that package's own `dist/`), both extending the shared [`tsconfig.base.json`](../../tsconfig.base.json) at the repository root. Each package builds independently; `pnpm build` runs every package's build script in dependency order (`pnpm -r`), so `@aao/config` compiles before the apps that depend on it. No `dist/` output is committed. See [local-development.md](local-development.md) for the day-to-day commands.
+
+### `packages/observability`
+
+The Trace Runtime (Sprint 15). It contains:
+
+- a trace recorder implementing the Runtime's emit-only trace port;
+- deterministic trace, span, and event identity;
+- the metadata-only content policy;
+- the `TraceStore` port with in-memory and local file (one immutable file per event) implementations;
+- `validateTrace`, `compareTraceWithExecution`, and `reconstructRunTrace`;
+- canonical trace fixtures in `test/fixtures/traces/`;
+- a compiled two-process smoke in `smoke/`.
+
+Its production dependencies are `@aao/contracts` and `zod` only, and no execution package depends on it. See [ADR-020](../decisions/ADR-020-trace-runtime-and-observability-boundary.md) and [trace runtime](../architecture/trace-runtime.md).

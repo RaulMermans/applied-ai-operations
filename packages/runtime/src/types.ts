@@ -1,4 +1,4 @@
-import type { FailureCategory, JsonObject, JsonValue, NodeDefinition, NodeId, NodeKind, RecoverySafety, ReliabilityPolicy, RetrySafety, RunId, RunRecord, RunState } from "@aao/contracts";
+import type { FailureCategory, JsonObject, JsonValue, NodeDefinition, NodeId, NodeKind, RecoverySafety, ReliabilityPolicy, RetrySafety, RunId, RunRecord, RunState, TraceEventDraft, TraceSpanRef } from "@aao/contracts";
 import type { CompiledWorkflowPlan } from "@aao/workflow-dsl";
 import type { RuntimeClock } from "./clock.js";
 import type { NodeStatusMap } from "./node-lifecycle.js";
@@ -66,6 +66,38 @@ export interface NodeExecutionContext {
   attempt: number;
   /** Aborted when the Runtime abandons this attempt (timeout). Cooperative and best-effort: a late result is ignored either way. */
   signal: AbortSignal;
+  /**
+   * Present only when the host configured `options.trace` (ADR-020). Lets a
+   * trusted executor report nested observations (model/agent/tool/approval
+   * events) without importing any storage. Emit-only: there is nothing to
+   * read, and emitting never fails or changes the attempt's outcome.
+   */
+  trace?: NodeTraceContext;
+}
+
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
+
+/** A nested event from a Node executor. The Runtime fills in Run/Node identity, the default parent span, and the step/attempt/replay key fields. */
+export type NodeTraceEventDraft = DistributiveOmit<TraceEventDraft, "runId" | "workflowId" | "workflowVersion" | "nodeId">;
+
+/** The trusted, per-attempt, emit-only trace context. It closes when the Runtime stops waiting for the attempt. */
+export interface NodeTraceContext {
+  /** This Node attempt's span: the default parent of nested events. */
+  readonly span: TraceSpanRef;
+  /** True when this attempt re-invokes an attempt whose outcome was lost in a crash (ADR-019). */
+  readonly recoveryReplay: boolean;
+  emit(draft: NodeTraceEventDraft): Promise<void>;
+}
+
+/**
+ * The Runtime's generic, optional, emit-only trace port (ADR-020).
+ * Implemented by `@aao/observability`'s recorder; the Runtime never imports
+ * it. The Runtime awaits `emit` only to keep event order deterministic, and
+ * discards every result and rejection. There is deliberately no read
+ * method: Runtime decisions can never consult Trace.
+ */
+export interface RuntimeTracePort {
+  emit(draft: TraceEventDraft): Promise<void>;
 }
 
 /** Serializable coordination metadata; the RunRecord remains lifecycle truth. */
@@ -165,6 +197,13 @@ export interface RuntimeOptions {
    * last durably persisted boundary with `DURABILITY_PERSISTENCE_FAILED`.
    */
   durability?: RuntimeDurabilityHooks;
+  /**
+   * Optional trusted trace port (ADR-020). Absent means no tracing and
+   * identical behavior. Present, the Runtime reports what it decided —
+   * after each boundary is committed (and durably persisted, in durable
+   * mode) — and never reads anything back.
+   */
+  trace?: RuntimeTracePort;
 }
 
 /**

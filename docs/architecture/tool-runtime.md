@@ -147,3 +147,14 @@ The Tool Node exposes `recoverySafety` from registration metadata only (`toolRec
 Everything else is unsafe, and every unsupported class is always unsafe. A durability host may therefore replay an ambiguous idempotent `write_draft` attempt once after a crash. A non-idempotent `write_draft` attempt fails closed with `DURABILITY_UNSAFE_REPLAY`.
 
 Ordinary Runtime retries are unchanged: `write_draft` is never retried after a known failure, even when idempotent. The permission support gate is unchanged: `external_side_effect`, `destructive`, and `sensitive_data` stay unsupported. Tool Runtime contains no durability code. See [durable execution](durable-execution.md) and [ADR-019](../decisions/ADR-019-durable-execution-checkpoints-and-replay.md).
+
+## Trace (Sprint 15)
+
+`executeTool` accepts an optional `ToolExecutionObserver` that receives safe metadata only. It is told about each outcome and is never consulted:
+
+- `blocked`: the handler was never invoked. This covers the support gate, authorization denial, and request or input validation.
+- `started`: fired only once every pre-execution check has passed, with the ALLOW decision.
+- `completed`: the result was accepted.
+- `failed`: an invoked handler did not produce an accepted result.
+
+The Tool Node maps these to `tool.call.blocked`, `tool.call.started`, `tool.call.completed`, and `tool.call.failed`. Each event carries the Tool ref, the stable `toolExecutionId`, the attempt, permission classes, and bounded codes. Tool input, output, authorization context, and handler errors are never traced. Without an observer, the execution path is unchanged. See [trace runtime](trace-runtime.md).

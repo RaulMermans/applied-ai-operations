@@ -1,0 +1,148 @@
+[
+  {
+    "schemaVersion": 2,
+    "eventId": "evt.1db1b5cde94863e693278f5969e95ccf",
+    "traceId": "8bd0455640037b7f1ecd52d726900dd1",
+    "runId": "run.fixture",
+    "sequence": 0,
+    "occurredAt": "2026-10-08T12:00:00.000Z",
+    "type": "run.started",
+    "workflowId": "trace.tool",
+    "workflowVersion": "1.0.0",
+    "spanId": "d104014fb619165b",
+    "status": "started",
+    "payload": {
+      "entryNodeId": "lookup",
+      "initialStateRevision": 0,
+      "nodeCount": 2,
+      "reliabilityPolicies": [],
+      "reliabilityPolicyFingerprint": "1769b81ba2e8ef6d3c28a61c6a09d460d44a65519ecab23baf38995b64f327ba"
+    }
+  },
+  {
+    "schemaVersion": 2,
+    "eventId": "evt.84fa4ec946622c49c29b49bedb7cad16",
+    "traceId": "8bd0455640037b7f1ecd52d726900dd1",
+    "runId": "run.fixture",
+    "sequence": 1,
+    "occurredAt": "2026-10-08T12:00:01.000Z",
+    "type": "node.started",
+    "workflowId": "trace.tool",
+    "workflowVersion": "1.0.0",
+    "nodeId": "lookup",
+    "spanId": "286fddc1bc82f463",
+    "parentSpanId": "d104014fb619165b",
+    "status": "started",
+    "payload": {
+      "kind": "tool",
+      "step": 1,
+      "attempt": 1,
+      "maxAttempts": 1,
+      "stateRevision": 0,
+      "recoveryReplay": false
+    }
+  },
+  {
+    "schemaVersion": 2,
+    "eventId": "evt.cc281ce78d7483fcce6b7d4503fd0f6a",
+    "traceId": "8bd0455640037b7f1ecd52d726900dd1",
+    "runId": "run.fixture",
+    "sequence": 2,
+    "occurredAt": "2026-10-08T12:00:02.000Z",
+    "type": "tool.call.blocked",
+    "workflowId": "trace.tool",
+    "workflowVersion": "1.0.0",
+    "nodeId": "lookup",
+    "spanId": "de547fa85389879a",
+    "parentSpanId": "286fddc1bc82f463",
+    "status": "blocked",
+    "payload": {
+      "toolRef": {
+        "id": "local.lookup",
+        "version": "1.0.0"
+      },
+      "toolExecutionId": "tool.22e20eacc4a6c9569c9864db8d8c0062aab78026370b99329110db4cfe2d83d7",
+      "attempt": 1,
+      "code": "TOOL_AUTHORIZATION_DENIED",
+      "category": "AUTHORIZATION",
+      "permissionClasses": [
+        "read_only"
+      ],
+      "access": {
+        "decision": "deny",
+        "reasonCode": "PERMISSION_NOT_GRANTED"
+      }
+    }
+  },
+  {
+    "schemaVersion": 2,
+    "eventId": "evt.316d06a00b5a92e7b7ec3f4dcc110318",
+    "traceId": "8bd0455640037b7f1ecd52d726900dd1",
+    "runId": "run.fixture",
+    "sequence": 3,
+    "occurredAt": "2026-10-08T12:00:03.000Z",
+    "type": "node.failed",
+    "workflowId": "trace.tool",
+    "workflowVersion": "1.0.0",
+    "nodeId": "lookup",
+    "spanId": "286fddc1bc82f463",
+    "parentSpanId": "d104014fb619165b",
+    "status": "failed",
+    "payload": {
+      "kind": "tool",
+      "step": 1,
+      "attemptCount": 1,
+      "code": "NODE_EXECUTION_FAILED",
+      "category": "AUTHORIZATION",
+      "retryable": false,
+      "executorFailure": {
+        "namespace": "tool",
+        "code": "TOOL_AUTHORIZATION_DENIED"
+      }
+    }
+  },
+  {
+    "schemaVersion": 2,
+    "eventId": "evt.b110af525bd56b59e8f460978cc20671",
+    "traceId": "8bd0455640037b7f1ecd52d726900dd1",
+    "runId": "run.fixture",
+    "sequence": 4,
+    "occurredAt": "2026-10-08T12:00:04.000Z",
+    "type": "failure.detected",
+    "workflowId": "trace.tool",
+    "workflowVersion": "1.0.0",
+    "nodeId": "lookup",
+    "spanId": "d104014fb619165b",
+    "payload": {
+      "source": "runtime",
+      "code": "NODE_EXECUTION_FAILED",
+      "category": "AUTHORIZATION",
+      "step": 1,
+      "attempt": 1,
+      "executorFailure": {
+        "namespace": "tool",
+        "code": "TOOL_AUTHORIZATION_DENIED"
+      }
+    }
+  },
+  {
+    "schemaVersion": 2,
+    "eventId": "evt.17750061573c303a007866f6fda4e482",
+    "traceId": "8bd0455640037b7f1ecd52d726900dd1",
+    "runId": "run.fixture",
+    "sequence": 5,
+    "occurredAt": "2026-10-08T12:00:05.000Z",
+    "type": "run.failed",
+    "workflowId": "trace.tool",
+    "workflowVersion": "1.0.0",
+    "spanId": "d104014fb619165b",
+    "status": "failed",
+    "payload": {
+      "code": "NODE_EXECUTION_FAILED",
+      "category": "AUTHORIZATION",
+      "nodeId": "lookup",
+      "stateRevision": 0,
+      "steps": 1
+    }
+  }
+]

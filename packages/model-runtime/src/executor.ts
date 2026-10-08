@@ -1,7 +1,7 @@
 import { isJsonSafe } from "@aao/runtime";
 import { compileOutputSchema } from "./json-schema.js";
 import { hasUnsupportedConstraints, type ModelPolicyRegistry } from "./policy-registry.js";
-import type { ModelBinding, ModelRegistry } from "./registry.js";
+import type { ModelBinding, ModelBindingIdentity, ModelRegistry } from "./registry.js";
 import { validateModelRequest } from "./request.js";
 import { deriveRequiredCapabilities, selectModelBinding } from "./router.js";
 import {
@@ -21,6 +21,26 @@ export interface ExecuteModelRequestParams {
   modelPolicyRef: string;
   policies: ModelPolicyRegistry;
   models: ModelRegistry;
+  /** Optional observer (ADR-020), told about each actual adapter invocation. Never consulted; a throwing observer changes nothing. */
+  observer?: ModelInvocationObserver;
+}
+
+/**
+ * Safe-metadata notifications around the single adapter invocation. Called
+ * only when an adapter is actually invoked (a route or policy failure before
+ * invocation is not a model call). No messages, output, provider error,
+ * URL, or header ever reaches an observer.
+ */
+export interface ModelInvocationObserver {
+  started?(info: { invocationId: string; modelPolicyRef: string; modelBindingId: string; outputKind: "text" | "structured"; requiredCapabilityIds: string[]; modelIdentity?: ModelBindingIdentity }): void | Promise<void>;
+  completed?(info: { invocationId: string; modelBindingId: string; outputKind: "text" | "structured"; finishReason?: ModelResult["finishReason"]; usage?: ModelResult["usage"]; modelIdentity?: ModelBindingIdentity }): void | Promise<void>;
+  failed?(info: { invocationId: string; modelBindingId: string; code: ModelFailure["code"]; adapterReason?: "provider_error" | "unsupported_response" | "unparseable_output" }): void | Promise<void>;
+}
+
+async function notify<K extends keyof ModelInvocationObserver>(observer: ModelInvocationObserver | undefined, kind: K, info: Parameters<NonNullable<ModelInvocationObserver[K]>>[0]): Promise<void> {
+  const callback = observer?.[kind] as ((value: typeof info) => void | Promise<void>) | undefined;
+  if (typeof callback !== "function") return;
+  try { await callback.call(observer, JSON.parse(JSON.stringify(info)) as typeof info); } catch { /* observation never changes execution */ }
 }
 
 /**
@@ -61,6 +81,8 @@ export async function executeModelRequest(params: ExecuteModelRequestParams): Pr
     });
   }
 
+  const identity = binding.identity ? { modelIdentity: { ...binding.identity } } : {};
+  if (params.observer) await notify(params.observer, "started", { invocationId, modelPolicyRef: policy.id, modelBindingId: binding.id, outputKind: request.output.kind, requiredCapabilityIds: [...required], ...identity });
   let adapterResult: unknown;
   try {
     adapterResult = await binding.adapter.invoke({
@@ -70,10 +92,18 @@ export async function executeModelRequest(params: ExecuteModelRequestParams): Pr
     });
   } catch {
     // Never expose the thrown value (message, stack, URL, headers, ...).
-    return invocationFailed(invocationId, binding, "provider_error");
+    adapterResult = { status: "failed", reason: "provider_error" };
   }
 
-  return normalizeAdapterResult(request, binding, adapterResult);
+  const outcome = normalizeAdapterResult(request, binding, adapterResult);
+  if (outcome.ok) {
+    const { invocationId: id, modelBindingId, outputKind, finishReason, usage } = outcome.result;
+    if (params.observer) await notify(params.observer, "completed", { invocationId: id, modelBindingId, outputKind, ...(finishReason ? { finishReason } : {}), ...(usage ? { usage } : {}), ...identity });
+  } else {
+    const reason = outcome.failure.details?.reason;
+    if (params.observer) await notify(params.observer, "failed", { invocationId, modelBindingId: binding.id, code: outcome.failure.code, ...(reason === "provider_error" || reason === "unsupported_response" || reason === "unparseable_output" ? { adapterReason: reason } : {}) });
+  }
+  return outcome;
 }
 
 function normalizeAdapterResult(request: ModelRequest, binding: ModelBinding, raw: unknown): ModelExecutionResult {

@@ -15,7 +15,7 @@
 | `StateSnapshot` | An immutable, timestamped capture of `RunState` alone | `@aao/contracts` (schema); `@aao/runtime` (`captureStateSnapshot`) | No — a capture, not a store |
 | `RuntimeExecutionSnapshot` | A safe capture of Run lifecycle + `StateSnapshot` + Node lifecycle + cursor + step | `@aao/runtime` | No |
 | `DurableCheckpoint` | Proof that one safe boundary (snapshot + history) was durably stored | `@aao/durability` (Sprint 14) | Yes, when a host opts in |
-| Trace | Future operational execution evidence (latency, cost, spans) | Not yet implemented | N/A |
+| Trace | Observational execution evidence: ordered events, spans, timestamps, token usage | `@aao/contracts` (`TraceEvent` v2); `@aao/observability` (recorder, stores) | Optional `TraceStore`; never Runtime truth |
 | Memory | Approved reusable knowledge across runs | Not in scope this sprint | N/A |
 
 The critical distinction: **`StateSnapshot` ≠ `RuntimeExecutionSnapshot` ≠ a durably persisted `DurableCheckpoint`.** A `RuntimeExecutionSnapshot` is the Runtime's serializable state at a safe boundary; it is not a recovery guarantee by itself. Since Sprint 14, `@aao/durability` wraps it with its execution history in a `DurableCheckpoint`, which is the one canonical durable checkpoint. The Sprint 2 `CheckpointRecord` placeholder was deleted (ADR-019). The Runtime itself still writes to no filesystem, database, or queue.
@@ -177,7 +177,7 @@ Consistent with [ADR-010](../decisions/ADR-010-managed-runtime-state-and-lifecyc
 - **No persistence.** No database, filesystem run store, queue, or object storage. Everything is process-local and in-memory.
 - **No general cancellation or durable retry.** Approval cancellation is implemented at a waiting boundary. Bounded in-process retries (Sprint 13) stay inside one `RUNNING` Node lifecycle; `RETRYING` remains unused and is reserved for future durable, scheduled retry.
 - **No reducer registry.** State patch semantics are unchanged from Sprint 4: a shallow top-level merge, nothing more, until a real Node/workflow demonstrates a need for domain-specific merge behavior.
-- **No tracing.** `NodeExecutionRecord` is still not the canonical AAO Trace — no latency, cost, tokens, or spans.
+- **Tracing is separate.** `NodeExecutionRecord` is still not the canonical AAO Trace. Since Sprint 15, an optional emit-only `RuntimeOptions.trace` port reports lifecycle facts after each boundary commits; the Runtime never reads it, and `RunRecord.status` never depends on it (see [trace runtime](trace-runtime.md)).
 
 Runtime snapshots are recovery-*ready* data structures. They are not a durable-recovery guarantee.
 

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { ModelPolicyIdSchema, identifierSchema, type JsonObject } from "@aao/contracts";
-import type { NodeExecutor, NodePreflightResult } from "@aao/runtime";
-import { executeModelRequest } from "./executor.js";
+import type { NodeExecutor, NodePreflightResult, NodeTraceContext } from "@aao/runtime";
+import { executeModelRequest, type ModelInvocationObserver } from "./executor.js";
 import { hasUnsupportedConstraints, type ModelPolicyRegistry } from "./policy-registry.js";
 import type { ModelRegistry } from "./registry.js";
 
@@ -77,9 +77,32 @@ export function createModelNodeExecutor(dependencies: ModelNodeExecutorDependenc
       if (!verdict.ok) throw new Error("Model node config is invalid.");
       const { modelPolicyRef, requestStateKey, resultStateKey } = verdict.config;
 
-      const outcome = await executeModelRequest({ request: context.state.values[requestStateKey], modelPolicyRef, policies, models });
+      const observer = context.trace ? modelTraceObserver(context.trace, context.attempt) : undefined;
+      const outcome = await executeModelRequest({ request: context.state.values[requestStateKey], modelPolicyRef, policies, models, ...(observer ? { observer } : {}) });
       if (!outcome.ok) return { ok: false, failure: { namespace: MODEL_NODE_FAILURE_NAMESPACE, code: outcome.failure.code } };
       return { ok: true, statePatch: { [resultStateKey]: outcome.result } };
+    },
+  };
+}
+
+/**
+ * Maps model invocation observations to typed Trace drafts (ADR-020):
+ * invocation identity, binding, registered provider identity, output kind,
+ * finish reason, and token usage. Messages and output are never traced; no
+ * cost is estimated. `parent` lets an Agent nest calls under its own span.
+ */
+export function modelTraceObserver(trace: NodeTraceContext, attempt: number, parent?: NodeTraceContext["span"], key: Record<string, number> = {}): ModelInvocationObserver {
+  const span = (invocationId: string) => ({ kind: "model" as const, invocationId, attempt });
+  const nesting = parent ? { parentSpan: parent } : {};
+  return {
+    async started(info) {
+      await trace.emit({ type: "model.call.started", span: span(info.invocationId), ...nesting, key, payload: { ...info, attempt, recoveryReplay: trace.recoveryReplay } });
+    },
+    async completed(info) {
+      await trace.emit({ type: "model.call.completed", span: span(info.invocationId), ...nesting, key, payload: { ...info, attempt } });
+    },
+    async failed(info) {
+      await trace.emit({ type: "model.call.failed", span: span(info.invocationId), ...nesting, key, payload: { ...info, attempt } });
     },
   };
 }

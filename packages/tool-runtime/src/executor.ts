@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { authorize, type AuthorizationContext } from "@aao/authorization";
-import type { JsonValue } from "@aao/contracts";
+import { authorize, type AuthorizationAllow, type AuthorizationContext } from "@aao/authorization";
+import type { JsonValue, PermissionClass } from "@aao/contracts";
 import { isJsonSafe } from "@aao/runtime";
 import { checkToolPermissionSupport } from "./permissions.js";
 import { resolveToolBinding, type ToolRegistry } from "./registry.js";
@@ -22,6 +22,30 @@ export interface ExecuteToolParams extends ToolRuntimeDependencies {
   authorizationContext: AuthorizationContext;
   /** Optional cooperative cancellation forwarded to the handler; never changes how a result is validated. */
   signal?: AbortSignal;
+  /** Optional observer (ADR-020). Told what happened; never consulted. A throwing observer changes nothing. */
+  observer?: ToolExecutionObserver;
+}
+
+/**
+ * Safe-metadata notifications from the single Tool execution path. No Tool
+ * input, output, authorization context, or handler error ever reaches an
+ * observer. `blocked` means the handler was never invoked (handler calls =
+ * 0); `started` fires only once every pre-execution check has passed and the
+ * handler is about to be invoked; `completed` only when the Tool Runtime
+ * accepted the handler result; `failed` when an invoked handler's call did not
+ * produce an accepted result.
+ */
+export interface ToolExecutionObserver {
+  blocked?(info: { toolRef: ToolRef; toolExecutionId: string; failure: ToolFailure; permissionClasses?: PermissionClass[] }): void | Promise<void>;
+  started?(info: { toolRef: ToolRef; toolExecutionId: string; permissionClasses: PermissionClass[]; authorization: AuthorizationAllow }): void | Promise<void>;
+  completed?(info: { toolRef: ToolRef; toolExecutionId: string; permissionClasses: PermissionClass[] }): void | Promise<void>;
+  failed?(info: { toolRef: ToolRef; toolExecutionId: string; failure: ToolFailure }): void | Promise<void>;
+}
+
+async function notify<K extends keyof ToolExecutionObserver>(observer: ToolExecutionObserver | undefined, kind: K, info: Parameters<NonNullable<ToolExecutionObserver[K]>>[0]): Promise<void> {
+  const callback = observer?.[kind] as ((value: typeof info) => void | Promise<void>) | undefined;
+  if (typeof callback !== "function") return;
+  try { await callback.call(observer, JSON.parse(JSON.stringify(info)) as typeof info); } catch { /* observation never changes execution */ }
 }
 
 /** The only handler result shapes accepted. Strict: any extra field (message, stack, details, headers, ...) is rejected, never carried. */
@@ -65,13 +89,23 @@ export async function executeTool(params: ExecuteToolParams): Promise<ToolExecut
   const request = parsed.data;
   const toolExecutionId = request.toolExecutionId;
   const toolRef: ToolRef = { id: request.toolRef.id, version: request.toolRef.version };
-  const failWith = (failure: Omit<ToolFailure, "toolExecutionId" | "toolRef">) => fail({ ...failure, toolExecutionId, toolRef: { ...toolRef } });
+  const observer = params.observer;
+  // Filled once the Tool resolves; empty means the Tool (and its requirements) never resolved.
+  const permissionClasses: PermissionClass[] = [];
+  let invoked = false;
+  const failWith = async (failure: Omit<ToolFailure, "toolExecutionId" | "toolRef">): Promise<ToolExecutionResult> => {
+    const full: ToolFailure = { ...failure, toolExecutionId, toolRef: { ...toolRef } };
+    if (observer && invoked) await notify(observer, "failed", { toolRef, toolExecutionId, failure: full });
+    else if (observer) await notify(observer, "blocked", { toolRef, toolExecutionId, failure: full, ...(permissionClasses.length > 0 ? { permissionClasses: [...permissionClasses] } : {}) });
+    return fail(full);
+  };
 
   const tool = resolveToolBinding(params.tools, toolRef);
   if (tool === undefined) {
     return failWith({ code: "TOOL_NOT_FOUND", message: `Tool "${toolRef.id}" version "${toolRef.version}" is not registered.` });
   }
 
+  permissionClasses.push(...tool.spec.permissionClasses);
   const support = checkToolPermissionSupport(tool.spec);
   if (!support.supported) {
     return failWith({
@@ -106,6 +140,8 @@ export async function executeTool(params: ExecuteToolParams): Promise<ToolExecut
     return failWith({ code: "TOOL_INPUT_SCHEMA_MISMATCH", message: "Tool input does not match the Tool's inputSchema.", issues: inputCheck.issues });
   }
 
+  invoked = true;
+  if (observer) await notify(observer, "started", { toolRef, toolExecutionId, permissionClasses, authorization });
   let raw: unknown;
   try {
     raw = await tool.handler.execute({ toolExecutionId, tool: { ...toolRef }, input: clone(request.input), ...(params.signal ? { signal: params.signal } : {}) });
@@ -139,6 +175,7 @@ export async function executeTool(params: ExecuteToolParams): Promise<ToolExecut
   const result = ToolResultSchema.safeParse({ schemaVersion: 1, toolExecutionId, toolRef: { ...toolRef }, output: clone(output) });
   // Every field was validated above; a failure here is a Tool Runtime bug.
   if (!result.success) throw new Error("Tool Runtime produced a result that fails ToolResultSchema.");
+  if (observer) await notify(observer, "completed", { toolRef, toolExecutionId, permissionClasses });
   return { ok: true, result: result.data, authorization };
 }
 

@@ -64,6 +64,7 @@ describe("@aao/tool-runtime dependency boundary", () => {
       "registry.ts",
       "schema-validator.ts",
       "tool-node.ts",
+      "tool-trace.ts",
       "types.ts",
     ]);
   });
@@ -102,7 +103,12 @@ describe("@aao/tool-runtime dependency boundary", () => {
       // Retry execution belongs only to the Runtime Reliability Controller (ADR-018). Tool Runtime may
       // declare trusted metadata (`retrySafety`, a handler's `retryable` flag) but owns no attempts,
       // loops, sleeps, timers, or races.
-      expect(codeOnly).not.toMatch(/\bretry\b|retries|retrying|attempt|maxAttempts|backoff|fallback|sleep|setTimeout|setInterval|Promise\.race|AbortController|sqlite|postgres|redis|globalThis/i);
+      // tool-trace.ts reports the Runtime-assigned attempt number as observational trace metadata (ADR-020);
+      // it is held to every other constraint here. All other files may not even name an attempt.
+      const retryExecution = file.endsWith("tool-trace.ts")
+        ? /\bretry\b|retries|retrying|maxAttempts|backoff|fallback|sleep|setTimeout|setInterval|Promise\.race|AbortController|sqlite|postgres|redis|globalThis|\bfor\s*\(|\bwhile\s*\(/i
+        : /\bretry\b|retries|retrying|attempt|maxAttempts|backoff|fallback|sleep|setTimeout|setInterval|Promise\.race|AbortController|sqlite|postgres|redis|globalThis/i;
+      expect(codeOnly).not.toMatch(retryExecution);
       // Registries are created by factories; no module-level Map/Set/array holds Tool state.
       expect(codeOnly).not.toMatch(/^(?:export\s+)?(?:const|let|var)\s+\w+\s*=\s*new\s+(?:Map|Set)\b/m);
       // No authorization verdict is cached or remembered.

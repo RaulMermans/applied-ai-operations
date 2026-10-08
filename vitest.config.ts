@@ -23,6 +23,7 @@ export default defineConfig({
       workspaceSourceAlias("@aao/mcp-connector", "./packages/mcp-connector/src/index.ts"),
       workspaceSourceAlias("@aao/authorization", "./packages/authorization/src/index.ts"),
       workspaceSourceAlias("@aao/approval", "./packages/approval/src/index.ts"),
+      workspaceSourceAlias("@aao/observability", "./packages/observability/src/index.ts"),
       workspaceSourceAlias("@aao/durability", "./packages/durability/src/index.ts"),
       workspaceSourceAlias("@aao/governance", "./packages/governance/src/index.ts"),
       workspaceSourceAlias("@aao/agent-runtime", "./packages/agent-runtime/src/index.ts"),

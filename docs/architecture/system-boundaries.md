@@ -34,6 +34,8 @@ Implemented by `@aao/durability` (Sprint 14) behind a storage-neutral `Durabilit
 
 Observability owns canonical execution truth: run and node events, model and tool calls, retries, approvals, checkpoints, latency, measurable token and cost use, evaluation results, errors, and artifacts. It is part of correctness, not decorative monitoring.
 
+Since Sprint 15, `@aao/observability` owns the Trace Runtime. Execution packages emit through an optional, emit-only port, and observability depends only on `@aao/contracts`. Trace records authoritative decisions but never makes them. Metrics, cost, and Audit are Sprint 16. See [trace runtime](trace-runtime.md).
+
 Evaluation owns workflow and schema evaluation, tool-use and trace assertions, authorization tests, regression cases, safety tests, and model/capability benchmarks. A final response does not establish correct execution.
 
 The [MCP connector](mcp-connector.md) owns protocol/session infrastructure. SDK objects and transport configuration never enter canonical contracts or workflow state. Discovery metadata cannot supply permissions, grants, capability assignments, or AAO state mutations; `executeTool` owns the governed invocation path.
