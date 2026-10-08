@@ -75,7 +75,7 @@ Runtime V1 executes only unconditional routing with explicitly registered execut
 
 ## Managed runtime state and lifecycle
 
-`@aao/runtime` also maintains one authoritative representation of execution state at every safe boundary: an authoritative Run lifecycle (`RunRecord`), an authoritative Node lifecycle (`NodeStatusMap`), revisioned `RunState`, and a safe, in-memory `RuntimeExecutionSnapshot` — never a durable checkpoint. See [ADR-010](docs/decisions/ADR-010-managed-runtime-state-and-lifecycle.md) and [runtime state management](docs/architecture/runtime-state-management.md) for the full model and what remains deliberately deferred (durable resume, persistence, durable retry, tracing).
+`@aao/runtime` also maintains one authoritative representation of execution state at every safe boundary: an authoritative Run lifecycle (`RunRecord`), an authoritative Node lifecycle (`NodeStatusMap`), revisioned `RunState`, and a safe, in-memory `RuntimeExecutionSnapshot`. A snapshot is not itself a durable checkpoint; `@aao/durability` wraps it in a `DurableCheckpoint` when a host opts in. See [ADR-010](docs/decisions/ADR-010-managed-runtime-state-and-lifecycle.md) and [runtime state management](docs/architecture/runtime-state-management.md) for the full model and what remains deliberately deferred (durable resume, persistence, durable retry, tracing).
 
 ## Model Runtime and capability routing
 
@@ -142,7 +142,26 @@ trusted ReliabilityPolicy (host options, hard caps) → attempt (cloned state, A
 → structured failure category → retryable? + retry-safe? + budget left? → retry or terminate → ONE accepted outcome
 ```
 
-The default is one attempt. A retry needs a retryable category (`TIMEOUT`, `TRANSIENT_DEPENDENCY`, `RATE_LIMIT`), a trusted executor retry-safety declaration (Tool Node: only `read_only` Tools registered `retrySafety: "safe"`), and remaining budget (`maxAttempts ≤ 3`). Unknown failures, thrown values, validation, Authorization/Governance denials, the support gate, and approval outcomes are never retried. Failed and timed-out attempts commit no state, and late results are ignored. Nodes stay `RUNNING` across attempts. Reliability is process-local; durable retry accounting and idempotency belong to Sprint 14. See [ADR-018](docs/decisions/ADR-018-runtime-reliability-and-bounded-retries.md) and [reliability runtime](docs/architecture/reliability-runtime.md).
+The default is one attempt. A retry needs a retryable category (`TIMEOUT`, `TRANSIENT_DEPENDENCY`, `RATE_LIMIT`), a trusted executor retry-safety declaration (Tool Node: only `read_only` Tools registered `retrySafety: "safe"`), and remaining budget (`maxAttempts ≤ 3`). Unknown failures, thrown values, validation, Authorization/Governance denials, the support gate, and approval outcomes are never retried. Failed and timed-out attempts commit no state, and late results are ignored. Nodes stay `RUNNING` across attempts. Under `@aao/durability` (Sprint 14) attempt accounting survives restart. See [ADR-018](docs/decisions/ADR-018-runtime-reliability-and-bounded-retries.md) and [reliability runtime](docs/architecture/reliability-runtime.md).
+
+## Durable execution
+
+Sprint 14 adds `@aao/durability` around the single Runtime loop. It does not replace that loop:
+
+```text
+safe checkpoint → persist operation STARTED → executor → validate → persist accepted outcome → commit → next checkpoint
+restart → load + validate plan/checkpoint/ledger → continue | commit recorded outcome | bounded safe replay | fail closed
+```
+
+The Runtime exposes a generic durability port and `resumeWorkflow`; it never touches storage. `@aao/approval` exposes an `ApprovalRepository` port. Neither depends on `@aao/durability`.
+
+- Runs bind to a canonical plan fingerprint.
+- Checkpoints are immutable, contiguous, and taken only at safe boundaries.
+- Recorded outcomes are committed without re-invoking executors, and attempt numbering and `maxAttempts` survive restart.
+- An ambiguous operation replays at most once, and only when its executor is trusted recovery-safe. A `write_draft` Tool needs `idempotency: "execution_id"`, keyed by the stable `toolExecutionId`.
+- Durable approval continuation revalidates the subject, plan, and current Governance.
+
+The reference store is local, single-host, and single-writer. No exactly-once claim is made, and side-effect permission classes stay unsupported. See [ADR-019](docs/decisions/ADR-019-durable-execution-checkpoints-and-replay.md) and [durable execution](docs/architecture/durable-execution.md).
 
 ## Canonical architecture documents
 
@@ -157,6 +176,7 @@ The default is one attempt. A retry needs a retryable category (`TIMEOUT`, `TRAN
 - [Authorization](docs/architecture/authorization.md) — host-attested Authorization Context, the deterministic evaluator, Agent ceiling, and enforcement inside `executeTool`.
 - [Approval engine](docs/architecture/approval-engine.md) — human resolution and Runtime waitpoints.
 - [Reliability runtime](docs/architecture/reliability-runtime.md) — trusted bounded retry policy, failure taxonomy, retry safety, attempt timeouts, and late-result protection.
+- [Durable execution](docs/architecture/durable-execution.md) — durable checkpoints, write-ahead operation records, crash recovery, recovery safety, Tool idempotency, durable approvals, and safe-boundary cancellation.
 - [Governance](docs/architecture/governance.md) — host-attested actors, role bindings, deny policies, and resolved authority before Authorization.
 - [MCP connector](docs/architecture/mcp-connector.md) — isolated stdio sessions, bounded discovery, explicit Tool bindings, and normalized failures.
 - [System boundaries](docs/architecture/system-boundaries.md) — architectural layers and ownership.
@@ -177,7 +197,7 @@ Dependencies implement infrastructure; AAO defines product semantics.
 | Workflow semantics | Yes | LangGraph.js behind an adapter |
 | Model policy and contracts | Yes | Vercel AI SDK behind an adapter |
 | MCP policy and exposure | Yes | Official MCP TypeScript SDK as connector protocol |
-| Durability semantics | Yes | Backing store deferred |
+| Durability semantics | Yes | `@aao/durability`; local filesystem reference store, single host / single writer (Sprint 14) |
 | Canonical integrations | Yes | Provider capability adapters |
 | Visualization truth | Yes | xyflow may visualize backend truth later |
 | Authorization | Yes | `@aao/authorization`, no external dependency (Sprint 9) |

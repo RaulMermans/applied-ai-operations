@@ -61,6 +61,12 @@ export function createModelNodeExecutor(dependencies: ModelNodeExecutorDependenc
   return {
     kind: "model",
 
+    // Crash recovery (ADR-019): a model call has no external side effect in this
+    // architecture, so an attempt whose outcome was lost may be replayed (it may
+    // cost tokens and produce a different result; nothing was committed). This
+    // never enables ordinary retries, which stay governed by `retrySafety`.
+    recoverySafety: () => "safe",
+
     validateConfig({ node }): NodePreflightResult {
       const verdict = validate(node.config);
       return verdict.ok ? { ok: true } : verdict;

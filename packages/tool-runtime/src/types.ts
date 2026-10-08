@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { AuthorizationDenialReasonCodeSchema, type AuthorizationAllow } from "@aao/authorization";
-import { JsonValueSchema, PermissionClassSchema, ToolIdSchema, entityVersionSchema, identifierSchema, type JsonValue, type RetrySafety, type ToolSpec } from "@aao/contracts";
+import { JsonValueSchema, PermissionClassSchema, ToolIdSchema, entityVersionSchema, identifierSchema, type JsonValue, type RetrySafety, type ToolIdempotency, type ToolSpec } from "@aao/contracts";
 
 // --- Tool reference -----------------------------------------------------------
 
@@ -72,6 +72,15 @@ export interface RegisteredTool {
    * never Runtime-retried in Sprint 13. Not part of `ToolSpec`.
    */
   retrySafety?: RetrySafety;
+  /**
+   * Trusted idempotency assertion (ADR-019). Defaults to `"none"`.
+   * `"execution_id"` asserts that repeated invocations carrying the same
+   * `toolExecutionId` resolve to one logical operation. AAO guarantees the
+   * id is stable across retries, restarts, and recovery replays; it cannot
+   * verify an implementation or external provider honors it. It never
+   * enables ordinary Runtime retries of a `write_draft` Tool.
+   */
+  idempotency?: ToolIdempotency;
 }
 
 // --- Request ------------------------------------------------------------------

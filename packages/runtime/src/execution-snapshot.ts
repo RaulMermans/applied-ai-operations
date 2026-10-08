@@ -171,8 +171,8 @@ export function validateSnapshotAgainstPlan(snapshot: unknown, plan: CompiledWor
     }
   }
 
-  if (parsed.run.status === "FAILED" && parsed.run.currentNodeId !== undefined) {
-    return { code: "INVALID_EXECUTION_SNAPSHOT", message: "A FAILED snapshot must not carry a currentNodeId." };
+  if ((parsed.run.status === "FAILED" || parsed.run.status === "CANCELLED") && parsed.run.currentNodeId !== undefined) {
+    return { code: "INVALID_EXECUTION_SNAPSHOT", message: `A ${parsed.run.status} snapshot must not carry a currentNodeId.` };
   }
 
   return undefined;

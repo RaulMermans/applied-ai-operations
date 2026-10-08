@@ -27,7 +27,7 @@ WAITING_FOR_APPROVAL → RUNNING | FAILED | CANCELLED
 RETRYING → RUNNING | FAILED | CANCELLED
 ```
 
-Terminal statuses (`COMPLETED`, `FAILED`, and `CANCELLED`) have no normal outgoing transition. Recovery and replay semantics are deliberately deferred until the durability implementation establishes them.
+Terminal statuses (`COMPLETED`, `FAILED`, and `CANCELLED`) have no outgoing transition; durable recovery (Sprint 14) never resurrects a terminal Run.
 
 ## Intended node lifecycle
 
@@ -51,3 +51,7 @@ An explicitly registered Approval Node now returns a bounded Runtime wait result
 ## Sprint 13 reliability boundary
 
 Retries do not add lifecycle states. A retrying Node stays `RUNNING` and its Run stays `RUNNING` until one final outcome: `SUCCEEDED`, or `FAILED` (including `NODE_RETRY_EXHAUSTED`). There is no `READY → RUNNING` bounce per attempt. The canonical `RETRYING` Run status is intentionally unused by in-process retries; it is reserved for a future durable, scheduled retry. Approval waits are not failures and are never retried. See [reliability runtime](reliability-runtime.md) and [ADR-018](../decisions/ADR-018-runtime-reliability-and-bounded-retries.md).
+
+## Sprint 14 durability boundary
+
+Durable recovery adds no lifecycle states. A resumed Run continues from the status in its latest durable checkpoint. A Run is never re-created, and terminal Runs never execute again. Safe-boundary cancellation uses the canonical `CANCELLED`: the Run goes `RUNNING → CANCELLED` or `WAITING_FOR_APPROVAL → CANCELLED`. The Node that would have started goes `READY → CANCELLED`, the one Node transition added, or a waiting Approval Node goes `WAITING → CANCELLED`. `RETRYING` stays unused. See [durable execution](durable-execution.md) and [ADR-019](../decisions/ADR-019-durable-execution-checkpoints-and-replay.md).

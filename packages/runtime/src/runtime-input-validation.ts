@@ -54,6 +54,14 @@ export function validateRuntimeInput(request: ExecuteWorkflowRequest): RuntimeFa
     }
   }
 
+  const durability = request.options?.durability as unknown;
+  if (durability !== undefined) {
+    const candidate = durability as Record<string, unknown> | null;
+    if (typeof candidate !== "object" || candidate === null || !["persistCheckpoint", "beginAttempt", "recordAttemptOutcome", "isCancellationRequested"].every((name) => typeof candidate[name] === "function")) {
+      return { code: "INVALID_RUNTIME_INPUT", message: "request.options.durability must implement persistCheckpoint, beginAttempt, recordAttemptOutcome, and isCancellationRequested." };
+    }
+  }
+
   return undefined;
 }
 

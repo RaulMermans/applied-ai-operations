@@ -59,6 +59,11 @@ export function createAgentNodeExecutor(dependencies: AgentRuntimeDependencies):
   return {
     kind: "agent",
 
+    // Crash recovery (ADR-019): bounded Agents have no Tools, external actions,
+    // MCP, or delegation, so a lost attempt may be replayed. Revisit when Agent
+    // Tool use exists. This never enables ordinary retries.
+    recoverySafety: () => "safe",
+
     validateConfig({ node }): NodePreflightResult {
       const verdict = validate(node.config);
       return verdict.ok ? { ok: true } : verdict;

@@ -8,10 +8,10 @@ import type { NodeId, NodeStatus } from "@aao/contracts";
  */
 export type NodeStatusMap = Record<NodeId, NodeStatus>;
 
-/** Runtime Node lifecycle, including the approval wait boundary. SKIPPED remains unsupported. */
+/** Runtime Node lifecycle, including the approval wait boundary and safe-boundary cancellation of a READY Node (ADR-019). SKIPPED remains unsupported. */
 const LEGAL_NODE_TRANSITIONS: Readonly<Record<NodeStatus, readonly NodeStatus[]>> = {
   PENDING: ["READY"],
-  READY: ["RUNNING"],
+  READY: ["RUNNING", "CANCELLED"],
   RUNNING: ["SUCCEEDED", "FAILED", "WAITING"],
   SUCCEEDED: [],
   FAILED: [],

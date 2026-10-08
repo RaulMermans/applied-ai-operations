@@ -83,8 +83,19 @@ The attempt promise races the injected sleeper. On timeout the attempt's `AbortS
 
 ## Boundaries
 
-- Process-local only: no durable retry accounting, crash recovery, or replay protection (Sprint 14).
+- In-memory by default. With `@aao/durability` (Sprint 14), each attempt's intent and validated outcome are persisted, so attempt numbering and the `maxAttempts` budget survive restart.
 - Snapshots stay schema version 2 and are never captured mid-attempt.
-- Retry safety ≠ idempotency; there is no exactly-once execution.
+- Retry safety ≠ recovery safety ≠ idempotency; there is no exactly-once execution.
 - `external_side_effect`, `destructive`, and `sensitive_data` remain unsupported; nothing with side effects is retried.
 - No backoff, jitter, circuit breaker, distributed queue, MCP reconnect, or provider retry headers.
+
+## Sprint 14 durable retry accounting
+
+With a durability host, the controller brackets every attempt with write-ahead intent and outcome persistence. On resume it replays durably recorded attempt outcomes through the same retry decision:
+
+- After a recorded transient failure, the next actual attempt is `recorded + 1`.
+- A recorded final failure (non-retryable or exhausted) commits without new attempts.
+- A recorded success commits without invoking the executor.
+- `maxAttempts` remains one logical budget that a restart never resets.
+
+A *crash replay* is different from a *retry*. A crash replay re-invokes an attempt whose outcome was lost, under the same attempt number, and only for a recovery-safe executor. It is bounded separately (`MAX_RECOVERY_REPLAYS = 1`) and never consumes retry budget. Recovery safety is independent of retry safety: an idempotent `write_draft` Tool may be crash-replayed but is still never retried after a known failure. See [durable execution](durable-execution.md) and [ADR-019](../decisions/ADR-019-durable-execution-checkpoints-and-replay.md).

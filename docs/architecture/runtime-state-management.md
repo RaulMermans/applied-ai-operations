@@ -14,11 +14,11 @@
 | `RuntimeExecutionState` | The single in-memory bundle of the three above, plus step and history | `@aao/runtime` | No |
 | `StateSnapshot` | An immutable, timestamped capture of `RunState` alone | `@aao/contracts` (schema); `@aao/runtime` (`captureStateSnapshot`) | No — a capture, not a store |
 | `RuntimeExecutionSnapshot` | A safe capture of Run lifecycle + `StateSnapshot` + Node lifecycle + cursor + step | `@aao/runtime` | No |
-| `CheckpointRecord` | A contract for *durable recovery* state data | `@aao/contracts` | Contract only — no store exists yet |
+| `DurableCheckpoint` | Proof that one safe boundary (snapshot + history) was durably stored | `@aao/durability` (Sprint 14) | Yes, when a host opts in |
 | Trace | Future operational execution evidence (latency, cost, spans) | Not yet implemented | N/A |
 | Memory | Approved reusable knowledge across runs | Not in scope this sprint | N/A |
 
-The critical distinction: **`StateSnapshot` ≠ `RuntimeExecutionSnapshot` ≠ a durably persisted `CheckpointRecord`.** A `RuntimeExecutionSnapshot` is recovery-*ready* data — the shape a future persistence layer could serialize — not a recovery *guarantee*. Nothing in this sprint writes to a filesystem, database, or queue. Do not call any of this a "checkpoint" or "durable" anywhere in code or docs.
+The critical distinction: **`StateSnapshot` ≠ `RuntimeExecutionSnapshot` ≠ a durably persisted `DurableCheckpoint`.** A `RuntimeExecutionSnapshot` is the Runtime's serializable state at a safe boundary; it is not a recovery guarantee by itself. Since Sprint 14, `@aao/durability` wraps it with its execution history in a `DurableCheckpoint`, which is the one canonical durable checkpoint. The Sprint 2 `CheckpointRecord` placeholder was deleted (ADR-019). The Runtime itself still writes to no filesystem, database, or queue.
 
 ## Conceptual flow
 
@@ -169,6 +169,8 @@ A structurally valid `RuntimeExecutionSnapshot` is not automatically compatible 
 
 ## What this sprint deliberately does not build
 
+*Historical (Sprint 5). Durable resume, a filesystem run store, safe-boundary cancellation, and durable retry accounting were added in Sprint 14 outside this package. See the Sprint 14 section below.*
+
 Consistent with [ADR-010](../decisions/ADR-010-managed-runtime-state-and-lifecycle.md):
 
 - **No durable resume.** `continueWaitingWorkflow` advances an in-process waiting Run after validation. There is no restoring a Run from a persisted snapshot.
@@ -185,4 +187,16 @@ An explicitly registered Approval Node now returns a bounded Runtime wait result
 
 ## Sprint 13 reliability boundary
 
-Attempts are Runtime metadata, not business state. Every attempt receives a clone of the same authoritative state. Only the accepted successful attempt's patch is applied, so `RunState.revision` changes at most once per Node. Failed and timed-out attempts commit nothing, and a late result from a timed-out attempt is ignored. Safe snapshot boundaries are unchanged and are never captured mid-attempt. Snapshot `schemaVersion` stays 2 because attempt evidence lives in history and failures. A snapshot never implies that a timed-out, still-running attempt can be resumed. Reliability is process-local, and durable retry accounting is Sprint 14 work. See [reliability runtime](reliability-runtime.md) and [ADR-018](../decisions/ADR-018-runtime-reliability-and-bounded-retries.md).
+Attempts are Runtime metadata, not business state. Every attempt receives a clone of the same authoritative state. Only the accepted successful attempt's patch is applied, so `RunState.revision` changes at most once per Node. Failed and timed-out attempts commit nothing, and a late result from a timed-out attempt is ignored. Safe snapshot boundaries are unchanged and are never captured mid-attempt. Snapshot `schemaVersion` stays 2 because attempt evidence lives in history and failures. A snapshot never implies that a timed-out, still-running attempt can be resumed. Durable retry accounting arrived in Sprint 14 (below). See [reliability runtime](reliability-runtime.md) and [ADR-018](../decisions/ADR-018-runtime-reliability-and-bounded-retries.md).
+
+## Sprint 14 durability boundary
+
+A durability host persists the Runtime's own state representation without redefining it:
+
+- A `DurableCheckpoint` (`@aao/durability`) wraps the version-2 `RuntimeExecutionSnapshot` and its `NodeExecutionRecord[]` history.
+- Checkpoints are taken only at safe boundaries (never with a `RUNNING` Node) and are immutable and contiguous per Run.
+- Recovery reconstructs `RuntimeExecutionState` — Run, state, Node statuses, step, history, and wait — without creating a new Run, and validates it with `validateExecutionAgainstPlan`.
+- `resumeWorkflow` continues it through the single loop. A recorded accepted outcome's patch is applied exactly once through the normal commit path, so `RunState.revision` advances once.
+- A resumed process's clock is floored at the persisted `run.updatedAt`.
+
+See [durable execution](durable-execution.md) and [ADR-019](../decisions/ADR-019-durable-execution-checkpoints-and-replay.md).

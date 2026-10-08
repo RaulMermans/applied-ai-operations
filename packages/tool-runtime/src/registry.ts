@@ -1,4 +1,4 @@
-import { RetrySafetySchema, ToolSpecSchema, type RetrySafety, type ToolSpec } from "@aao/contracts";
+import { RetrySafetySchema, ToolIdempotencySchema, ToolSpecSchema, type RecoverySafety, type RetrySafety, type ToolIdempotency, type ToolSpec } from "@aao/contracts";
 import { isJsonSafe } from "@aao/runtime";
 import { compileToolSchema, type CompiledToolSchema } from "./schema-validator.js";
 import type { RegisteredTool, ToolHandler, ToolRef } from "./types.js";
@@ -48,6 +48,7 @@ export interface ToolBinding {
   readonly inputSchema: CompiledToolSchema;
   readonly outputSchema: CompiledToolSchema;
   readonly retrySafety: RetrySafety;
+  readonly idempotency: ToolIdempotency;
 }
 
 /**
@@ -73,6 +74,8 @@ export function createToolRegistry(): ToolRegistry {
       if (retrySafety.data === "safe" && !spec.permissionClasses.every((permissionClass) => permissionClass === "read_only")) {
         throw new Error(`ToolRegistry: tool "${spec.id}" version "${spec.version}" may declare retrySafety "safe" only when every permission class is read_only.`);
       }
+      const idempotency = ToolIdempotencySchema.safeParse(tool.idempotency ?? "none");
+      if (!idempotency.success) throw new Error(`ToolRegistry: tool "${spec.id}" version "${spec.version}" has an invalid idempotency.`);
       const key = toolKey(spec);
       if (tools.has(key)) throw new Error(`ToolRegistry: tool "${spec.id}" version "${spec.version}" is already registered.`);
 
@@ -81,7 +84,7 @@ export function createToolRegistry(): ToolRegistry {
       const outputSchema = compileToolSchema(cloneSpec(spec).outputSchema);
       if (!outputSchema.ok) throw new Error(`ToolRegistry: tool "${spec.id}" version "${spec.version}" has an unsupported outputSchema: ${outputSchema.issues.join("; ")}`);
 
-      tools.set(key, Object.freeze({ spec: deepFreeze(spec), handler: captureHandler(tool.handler), inputSchema: inputSchema.schema, outputSchema: outputSchema.schema, retrySafety: retrySafety.data }));
+      tools.set(key, Object.freeze({ spec: deepFreeze(spec), handler: captureHandler(tool.handler), inputSchema: inputSchema.schema, outputSchema: outputSchema.schema, retrySafety: retrySafety.data, idempotency: idempotency.data }));
     },
     getSpec(ref: ToolRef): ToolSpec | undefined {
       const tool = tools.get(toolKey(ref));
@@ -105,6 +108,26 @@ export function resolveToolBinding(registry: ToolRegistry, ref: ToolRef): ToolBi
   const tools = bindingsByRegistry.get(registry);
   if (tools === undefined) throw new Error("Tool Runtime requires a ToolRegistry created by createToolRegistry().");
   return tools.get(toolKey(ref));
+}
+
+/**
+ * Crash-recovery safety of one registered Tool (ADR-019), derived only from
+ * trusted registration metadata. An ambiguous attempt — intent persisted,
+ * outcome lost in a crash — may be replayed only when:
+ *
+ * - every permission class is `read_only` and the Tool declared
+ *   `retrySafety: "safe"` or `idempotency: "execution_id"`; or
+ * - every permission class is `read_only`/`write_draft` and the Tool
+ *   declared `idempotency: "execution_id"` (a draft could otherwise be
+ *   created twice).
+ *
+ * Everything else, including every unsupported permission class, is `unsafe`.
+ */
+export function toolRecoverySafety(binding: Pick<ToolBinding, "spec" | "retrySafety" | "idempotency">): RecoverySafety {
+  const classes = binding.spec.permissionClasses;
+  if (classes.every((permissionClass) => permissionClass === "read_only")) return binding.retrySafety === "safe" || binding.idempotency === "execution_id" ? "safe" : "unsafe";
+  if (classes.every((permissionClass) => permissionClass === "read_only" || permissionClass === "write_draft")) return binding.idempotency === "execution_id" ? "safe" : "unsafe";
+  return "unsafe";
 }
 
 /**

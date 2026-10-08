@@ -10,6 +10,8 @@ import type { NodeExecutor, NodeRegistry } from "./types.js";
  */
 export const finalOutputExecutor: NodeExecutor = {
   kind: "final_output",
+  // Pure: it reads state and proposes no patch, so replaying it after a crash cannot duplicate anything.
+  recoverySafety: () => "safe",
   async execute(context) {
     return { ok: true, output: context.state.values };
   },

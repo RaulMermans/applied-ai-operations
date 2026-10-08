@@ -16,7 +16,8 @@ packages/
   agent-runtime/           @aao/agent-runtime — bounded Agent registry, controller, decision contract, agent node (Sprint 7)
   tool-runtime/            @aao/tool-runtime — Tool Registry, safe Tool execution boundary, tool node (Sprint 8)
   authorization/           @aao/authorization — Authorization Context, deterministic permission evaluator (Sprint 9)
-  approval/                @aao/approval — process-local human approval engine and node executor (Sprint 12)
+  approval/                @aao/approval — human approval engine, repository port, and node executor (Sprint 12; durable-capable Sprint 14)
+  durability/              @aao/durability — durable checkpoints, operation ledger, crash recovery, file store, durable host (Sprint 14)
   mcp-connector/           @aao/mcp-connector — stdio sessions, discovery, explicit governed Tool bindings (Sprint 10)
   substrate-contracts/     research evidence, not production architecture
   substrate-spikes/        research evidence, not production architecture
@@ -51,7 +52,7 @@ The Workflow DSL and compiler (Sprint 3). Parses YAML/JSON workflow source into 
 
 ## `packages/runtime` — `@aao/runtime`
 
-The Node Registry, Runtime V1 (Sprint 4), and managed run state/lifecycle (Sprint 5). Consumes a `CompiledWorkflowPlan` (never parses workflow source itself) and executes it as a *managed* run: a constructible, non-global Node Registry; a runtime preflight that rejects conditional routing and missing node executors before any node runs; a deterministic sequential engine that applies validated, JSON-safe state patches and follows the plan's unconditional routing; an authoritative Run lifecycle and Node lifecycle; an explicit clock boundary; safe, in-memory `RuntimeExecutionSnapshot` capture at every safe boundary; and a small structured Runtime failure taxonomy. Its production dependencies are `@aao/contracts`, `@aao/workflow-dsl`, and `zod`; it does not depend on LangGraph, the Vercel AI SDK, the MCP SDK, Fastify, `apps/*`, or either `packages/substrate-*` package, and no app currently depends on it — there is no persistence or run-scheduling layer to wire it into yet. See [ADR-009](../decisions/ADR-009-node-registry-and-runtime-v1.md)/[ADR-010](../decisions/ADR-010-managed-runtime-state-and-lifecycle.md) and [runtime V1](../architecture/runtime-v1.md)/[runtime state management](../architecture/runtime-state-management.md).
+The Node Registry, Runtime V1 (Sprint 4), and managed run state/lifecycle (Sprint 5). Consumes a `CompiledWorkflowPlan` (never parses workflow source itself) and executes it as a *managed* run: a constructible, non-global Node Registry; a runtime preflight that rejects conditional routing and missing node executors before any node runs; a deterministic sequential engine that applies validated, JSON-safe state patches and follows the plan's unconditional routing; an authoritative Run lifecycle and Node lifecycle; an explicit clock boundary; safe, in-memory `RuntimeExecutionSnapshot` capture at every safe boundary; a generic durability port and `resumeWorkflow` (Sprint 14); and a small structured Runtime failure taxonomy. Its production dependencies are `@aao/contracts`, `@aao/workflow-dsl`, and `zod`; it does not depend on LangGraph, the Vercel AI SDK, the MCP SDK, Fastify, `apps/*`, or either `packages/substrate-*` package, and no app currently depends on it. Persistence lives in `@aao/durability`, which depends on it, never the reverse, and there is no run-scheduling layer yet. See [ADR-009](../decisions/ADR-009-node-registry-and-runtime-v1.md)/[ADR-010](../decisions/ADR-010-managed-runtime-state-and-lifecycle.md) and [runtime V1](../architecture/runtime-v1.md)/[runtime state management](../architecture/runtime-state-management.md).
 
 ## `packages/model-runtime` — `@aao/model-runtime`
 
@@ -71,7 +72,17 @@ The Authorization Boundary (Sprint 9): strict `AuthorizationContext`, `Authoriza
 
 ## `packages/approval` — `@aao/approval`
 
-The process-local Approval Engine, exact-request fingerprinting, host-attested human resolver checks through Governance, and the trusted Approval Node executor. Production dependencies: `@aao/contracts`, `@aao/runtime`, `@aao/governance`, `zod`; Workflow DSL, Tool Runtime, and Authorization are test-only. It provides validated in-process continuation but no persistence, scheduler, UI, notifications, or external side-effect execution. See [ADR-017](../decisions/ADR-017-human-approval-and-runtime-waitpoints.md) and [approval engine](../architecture/approval-engine.md).
+The Approval Engine over an `ApprovalRepository` port (in-memory by default), exact-request fingerprinting, host-attested human resolver checks through Governance, and the trusted Approval Node executor. Production dependencies: `@aao/contracts`, `@aao/runtime`, `@aao/governance`, `zod`; Workflow DSL, Tool Runtime, and Authorization are test-only. It provides validated continuation with revalidation of current authority. It does no storage of its own (the durable repository lives in `@aao/durability`), and has no scheduler, UI, notifications, or external side-effect execution. See [ADR-017](../decisions/ADR-017-human-approval-and-runtime-waitpoints.md) and [approval engine](../architecture/approval-engine.md).
+
+## `packages/durability` — `@aao/durability`
+
+Durable execution (Sprint 14). Its parts:
+
+- AAO-owned `RunManifest`, `DurableCheckpoint`, `DurableOperation`, and `CancellationRecord` contracts, and the canonical plan fingerprint.
+- The storage-neutral `DurabilityStore` port and the local filesystem reference store (atomic writes, single host, single writer), including a durable `ApprovalRepository`.
+- The deterministic recovery planner and `createDurableRuntimeHost` (`execute`, `resume`, `getRun`, `getApproval`, `requestCancellation`).
+
+Production dependencies: `@aao/contracts`, `@aao/runtime`, `@aao/approval`, `@aao/workflow-dsl`, `zod`. Governance and Tool Runtime are test-only. No package depends on it. After `pnpm build`, run `pnpm --filter @aao/durability smoke` for the real multi-process restart smoke. See [ADR-019](../decisions/ADR-019-durable-execution-checkpoints-and-replay.md) and [durable execution](../architecture/durable-execution.md).
 
 ## `packages/mcp-connector` — `@aao/mcp-connector`
 

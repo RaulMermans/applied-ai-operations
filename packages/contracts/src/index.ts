@@ -102,10 +102,8 @@ export {
 export {
   RunStateSchema,
   StateSnapshotSchema,
-  CheckpointRecordSchema,
   type RunState,
   type StateSnapshot,
-  type CheckpointRecord,
 } from "./state.js";
 
 export { AgentSpecSchema, type AgentSpec } from "./agent.js";
@@ -143,10 +141,14 @@ export {
   RELIABILITY_LIMITS,
   ReliabilityPolicySchema,
   RetrySafetySchema,
+  RecoverySafetySchema,
+  ToolIdempotencySchema,
   FailureCategorySchema,
   RETRYABLE_FAILURE_CATEGORIES,
   isRetryableFailureCategory,
   type ReliabilityPolicy,
   type RetrySafety,
+  type RecoverySafety,
+  type ToolIdempotency,
   type FailureCategory,
 } from "./reliability.js";

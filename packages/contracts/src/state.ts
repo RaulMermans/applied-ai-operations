@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CheckpointIdSchema, JsonObjectSchema, RunIdSchema, isoTimestampSchema, schemaVersionSchema } from "./common.js";
+import { JsonObjectSchema, RunIdSchema, isoTimestampSchema } from "./common.js";
 
 /**
  * State, short-term context, and long-term memory are distinct AAO concepts
@@ -32,20 +32,8 @@ export const StateSnapshotSchema = z
   .strict();
 export type StateSnapshot = z.infer<typeof StateSnapshotSchema>;
 
-/**
- * A contract for recovery state, not proof that persistence exists. This
- * schema makes no claim of exactly-once execution, transactional external
- * actions, or crash-safe/durable storage — those are future implementation
- * guarantees layered on top of this shape.
- */
-export const CheckpointRecordSchema = z
-  .object({
-    schemaVersion: schemaVersionSchema(1),
-    checkpointId: CheckpointIdSchema,
-    runId: RunIdSchema,
-    stateRevision: z.number().int().nonnegative(),
-    createdAt: isoTimestampSchema,
-    stateSnapshot: StateSnapshotSchema,
-  })
-  .strict();
-export type CheckpointRecord = z.infer<typeof CheckpointRecordSchema>;
+// The canonical durable execution checkpoint is `DurableCheckpoint` in
+// `@aao/durability` (ADR-019). It wraps the Runtime-owned
+// `RuntimeExecutionSnapshot`, which this package cannot depend on, so the
+// early Sprint 2 `CheckpointRecord` placeholder was deleted rather than kept
+// as a second, competing checkpoint contract.

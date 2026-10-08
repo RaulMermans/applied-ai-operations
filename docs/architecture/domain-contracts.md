@@ -58,7 +58,7 @@ Identifiers (`identifierSchema` and its aliases in `common.ts`, e.g. `WorkflowId
 - **Edge** (`EdgeDefinition`, in `workflow.ts`) — `sourceNodeId`, `targetNodeId`, an optional opaque `condition` reserved for future conditional routing.
 - **Run** (`RunRecord`, in `run.ts`) — run identity and lifecycle only (`schemaVersion`, `runId`, `workflowId`, `workflowVersion`, `status`, `createdAt`, `updatedAt`, `currentNodeId?`), no database-specific fields.
 - **Node lifecycle** (`NodeStatus`, in `run.ts`) — kept in the same module as `RunStatus` because both are lifecycle concerns, but the two enums are distinct and never conflated.
-- **State / State Snapshot / Checkpoint** (`state.ts`) — `RunState` is authoritative active run data (not model context, not logs, not long-term memory); `StateSnapshot` is an immutable point-in-execution capture; `CheckpointRecord` is a contract for recovery state, explicitly making no exactly-once, transactional, or crash-safe persistence claim.
+- **State / State Snapshot / Checkpoint** (`state.ts`) — `RunState` is authoritative active run data (not model context, not logs, not long-term memory); `StateSnapshot` is an immutable point-in-execution capture. The Sprint 2 `CheckpointRecord` placeholder was deleted in Sprint 14: the one canonical durable checkpoint is `DurableCheckpoint` in `@aao/durability`, because it wraps the Runtime-owned snapshot that this package cannot depend on (ADR-019).
 
 **Deferred to the Workflow DSL/compiler sprint:** expression parsing, condition evaluation, graph validation (cycles, reachability, entry/exit consistency), node transition logic, state reducers, and state/checkpoint persistence. None of it is implemented or implied by these schemas.
 
@@ -87,7 +87,7 @@ The `external_side_effect` → human-approval-before-execution rule and the `des
 
 ## Reliability contracts
 
-- **Reliability** (`reliability.ts`, Sprint 13) — `ReliabilityPolicy` (strict `{ maxAttempts, attemptTimeoutMs?, retryDelayMs? }` bounded by frozen `RELIABILITY_LIMITS`), `RetrySafety` (`safe` | `unsafe`), and the single `FailureCategory` taxonomy with `RETRYABLE_FAILURE_CATEGORIES` (`TIMEOUT`, `TRANSIENT_DEPENDENCY`, `RATE_LIMIT`). Policies are trusted host configuration, never workflow-authored. See [ADR-018](../decisions/ADR-018-runtime-reliability-and-bounded-retries.md).
+- **Reliability** (`reliability.ts`, Sprint 13) — `ReliabilityPolicy` (strict `{ maxAttempts, attemptTimeoutMs?, retryDelayMs? }` bounded by frozen `RELIABILITY_LIMITS`), `RetrySafety` (`safe` | `unsafe`), Sprint 14's `RecoverySafety` (`safe` | `unsafe`, crash-replay metadata) and `ToolIdempotency` (`none` | `execution_id`), and the single `FailureCategory` taxonomy with `RETRYABLE_FAILURE_CATEGORIES` (`TIMEOUT`, `TRANSIENT_DEPENDENCY`, `RATE_LIMIT`). Policies are trusted host configuration, never workflow-authored. See [ADR-018](../decisions/ADR-018-runtime-reliability-and-bounded-retries.md).
 
 ## Evaluation / observability contracts
 

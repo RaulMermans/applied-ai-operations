@@ -34,6 +34,25 @@ export const RetrySafetySchema = z.enum(["safe", "unsafe"]);
 export type RetrySafety = z.infer<typeof RetrySafetySchema>;
 
 /**
+ * Trusted crash-recovery metadata (ADR-019), distinct from `RetrySafety`.
+ * Retry safety: safe to try again after a *known* failure. Recovery safety:
+ * safe to replay after a crash left an attempt's outcome *unknown*. Absent
+ * or unknown means `unsafe`: an ambiguous operation then fails closed.
+ */
+export const RecoverySafetySchema = z.enum(["safe", "unsafe"]);
+export type RecoverySafety = z.infer<typeof RecoverySafetySchema>;
+
+/**
+ * A trusted Tool implementation's idempotency assertion (ADR-019). `none`
+ * (the default) promises nothing. `execution_id` asserts that repeated
+ * invocations carrying the same AAO `toolExecutionId` resolve to the same
+ * logical operation instead of creating another effect. AAO guarantees the
+ * key is stable and propagated; it cannot verify the implementation honors it.
+ */
+export const ToolIdempotencySchema = z.enum(["none", "execution_id"]);
+export type ToolIdempotency = z.infer<typeof ToolIdempotencySchema>;
+
+/**
  * The single canonical failure taxonomy. Only `TIMEOUT`,
  * `TRANSIENT_DEPENDENCY`, and `RATE_LIMIT` are retryable in nature; every
  * other category — and every unclassified failure — is not.

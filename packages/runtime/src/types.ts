@@ -1,4 +1,4 @@
-import type { FailureCategory, JsonObject, JsonValue, NodeDefinition, NodeId, NodeKind, ReliabilityPolicy, RetrySafety, RunId, RunRecord, RunState } from "@aao/contracts";
+import type { FailureCategory, JsonObject, JsonValue, NodeDefinition, NodeId, NodeKind, RecoverySafety, ReliabilityPolicy, RetrySafety, RunId, RunRecord, RunState } from "@aao/contracts";
 import type { CompiledWorkflowPlan } from "@aao/workflow-dsl";
 import type { RuntimeClock } from "./clock.js";
 import type { NodeStatusMap } from "./node-lifecycle.js";
@@ -30,6 +30,14 @@ export interface NodeExecutor {
    * Never derived from model output, workflow state, or failure messages.
    */
   retrySafety?(context: NodePreflightContext): RetrySafety;
+  /**
+   * Optional, trusted, deterministic crash-recovery-safety declaration for
+   * one node (ADR-019): may an attempt whose outcome is unknown after a
+   * crash be replayed? Distinct from `retrySafety`. Absent, thrown, or
+   * anything other than `"safe"` means `"unsafe"`. The Runtime never reads
+   * it; a durability host does, before deciding a recovery replay.
+   */
+  recoverySafety?(context: NodePreflightContext): RecoverySafety;
   execute(context: NodeExecutionContext): Promise<NodeExecutionResult>;
 }
 
@@ -147,6 +155,82 @@ export interface RuntimeOptions {
   reliability?: RuntimeReliabilityOptions;
   /** The Runtime's explicit delay boundary for timeouts and retry delays. Defaults to `createSystemSleeper()`; tests inject a deterministic one. */
   sleeper?: RuntimeSleeper;
+  /**
+   * Optional trusted durability port (ADR-019). Absent means in-memory
+   * execution exactly as before. Present, the Runtime persists intent before
+   * every executor attempt, persists every validated attempt outcome before
+   * committing it, persists every safe boundary before proceeding or
+   * returning, and honors safe-boundary cancellation. Storage lives outside
+   * the Runtime (`@aao/durability`); a rejected hook stops execution at the
+   * last durably persisted boundary with `DURABILITY_PERSISTENCE_FAILED`.
+   */
+  durability?: RuntimeDurabilityHooks;
+}
+
+/**
+ * The Runtime's generic durability port. Every method may reject; the
+ * Runtime never inspects the rejection. Hooks receive defensive copies and
+ * cannot mutate authoritative Runtime state.
+ */
+export interface RuntimeDurabilityHooks {
+  /** Persists one safe boundary. `failure` is present on a terminal FAILED or CANCELLED boundary as bounded evidence. */
+  persistCheckpoint(boundary: { execution: RuntimeExecutionState; snapshot: RuntimeExecutionSnapshot; failure?: RuntimeFailure }): Promise<void>;
+  /** Write-ahead intent for one executor attempt. The executor is invoked only after this resolves. */
+  beginAttempt(intent: NodeAttemptIntent): Promise<void>;
+  /** Persists one Runtime-validated attempt outcome before the Runtime commits or retries anything. */
+  recordAttemptOutcome(intent: NodeAttemptIntent, outcome: NodeAttemptOutcome): Promise<void>;
+  /** Checked at safe boundaries only, before a Node would begin and on a waiting resume. */
+  isCancellationRequested(runId: RunId): Promise<boolean>;
+}
+
+/** Identity of one executor attempt within one Node execution. JSON-safe. */
+export interface NodeAttemptIntent {
+  runId: RunId;
+  nodeId: NodeId;
+  kind: NodeKind;
+  step: number;
+  /** The authoritative state revision every attempt of this Node execution receives. */
+  stateRevision: number;
+  attempt: number;
+  maxAttempts: number;
+  /** True only when re-invoking an attempt whose earlier outcome was lost in a crash (never a reliability retry). */
+  recoveryReplay: boolean;
+}
+
+/**
+ * The Runtime-validated outcome of one attempt — never a raw executor
+ * response. Success and wait are accepted outcomes; failure is classified
+ * and bounded (Runtime-built message, structured category, optional
+ * `{ namespace, code }` executor causality; no stack, payload, or secret).
+ */
+export type NodeAttemptOutcome =
+  | { kind: "success"; statePatch?: JsonObject; output?: JsonValue }
+  | { kind: "wait"; wait: { kind: "approval"; referenceId: string; requestFingerprint: string } }
+  | { kind: "failure"; code: RuntimeFailureCode; category: FailureCategory; message: string; executorFailure?: NodeExecutorFailure };
+
+/**
+ * Durably recorded facts about the current READY Node's execution, supplied
+ * by a trusted durability host on resume. `priorOutcomes[i]` is attempt
+ * `i + 1`'s recorded outcome. A trailing accepted outcome is committed
+ * without invoking the executor; trailing failures resume attempt accounting.
+ * `replayAttempt` re-invokes the next attempt, whose earlier outcome is
+ * unknown, under the same attempt number — the host has already decided it
+ * is recovery-safe and within the replay bound.
+ */
+export interface NodeRecoveryDirective {
+  nodeId: NodeId;
+  step: number;
+  priorOutcomes: NodeAttemptOutcome[];
+  replayAttempt?: number;
+}
+
+/** Resumes a previously captured execution at its safe boundary through the single Runtime loop. */
+export interface ResumeWorkflowRequest {
+  plan: CompiledWorkflowPlan;
+  registry: NodeRegistry;
+  execution: RuntimeExecutionState;
+  recovery?: NodeRecoveryDirective;
+  options?: RuntimeOptions;
 }
 
 export interface RuntimeReliabilityOptions {
@@ -243,24 +327,36 @@ export interface RuntimeExecutionState {
  * JSON-safe, machine-readable, and free of environment/secret data — no raw
  * stack trace is ever exposed through this shape.
  */
-export type RuntimeFailureCode =
-  | "INVALID_RUNTIME_INPUT"
-  | "RUNTIME_PREFLIGHT_FAILED"
-  | "NODE_EXECUTOR_NOT_FOUND"
-  | "CONDITIONAL_ROUTING_UNSUPPORTED"
-  | "NODE_EXECUTION_FAILED"
-  | "INVALID_NODE_RESULT"
-  | "INVALID_STATE_PATCH"
-  | "MAX_STEPS_EXCEEDED"
-  | "NODE_ATTEMPT_TIMEOUT"
-  | "NODE_RETRY_EXHAUSTED"
-  | "INVALID_EXECUTION_SNAPSHOT"
-  | "INVALID_APPROVAL_CONTEXT"
-  | "APPROVAL_STILL_PENDING"
-  | "APPROVAL_REQUEST_MISMATCH"
-  | "APPROVAL_REJECTED"
-  | "APPROVAL_EXPIRED"
-  | "APPROVAL_CANCELLED";
+export const RUNTIME_FAILURE_CODES = [
+  "INVALID_RUNTIME_INPUT",
+  "RUNTIME_PREFLIGHT_FAILED",
+  "NODE_EXECUTOR_NOT_FOUND",
+  "CONDITIONAL_ROUTING_UNSUPPORTED",
+  "NODE_EXECUTION_FAILED",
+  "INVALID_NODE_RESULT",
+  "INVALID_STATE_PATCH",
+  "MAX_STEPS_EXCEEDED",
+  "NODE_ATTEMPT_TIMEOUT",
+  "NODE_RETRY_EXHAUSTED",
+  "INVALID_EXECUTION_SNAPSHOT",
+  "INVALID_APPROVAL_CONTEXT",
+  "APPROVAL_STILL_PENDING",
+  "APPROVAL_REQUEST_MISMATCH",
+  "APPROVAL_REQUESTER_NOT_AUTHORIZED",
+  "APPROVAL_RESOLVER_NOT_ELIGIBLE",
+  "APPROVAL_REJECTED",
+  "APPROVAL_EXPIRED",
+  "APPROVAL_CANCELLED",
+  /** A durability hook rejected; execution stopped at the last durably persisted boundary, whose Run status is unchanged. */
+  "DURABILITY_PERSISTENCE_FAILED",
+  /** A recovery directive is inconsistent with the execution, plan, or reliability policy. Nothing executed. */
+  "INVALID_RECOVERY_DIRECTIVE",
+  /** Safe-boundary cancellation ended the Run (`CANCELLED`). */
+  "RUN_CANCELLED",
+  /** Resume of a FAILED or CANCELLED Run: nothing executes. */
+  "RUN_ALREADY_TERMINAL",
+] as const;
+export type RuntimeFailureCode = (typeof RUNTIME_FAILURE_CODES)[number];
 
 export interface RuntimeFailure {
   code: RuntimeFailureCode;

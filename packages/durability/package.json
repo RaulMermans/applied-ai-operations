@@ -1,0 +1,30 @@
+{
+  "name": "@aao/durability",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "smoke": "node smoke/run-smoke.mjs"
+  },
+  "dependencies": {
+    "@aao/approval": "workspace:*",
+    "@aao/contracts": "workspace:*",
+    "@aao/runtime": "workspace:*",
+    "@aao/workflow-dsl": "workspace:*",
+    "zod": "^3.24.3"
+  },
+  "devDependencies": {
+    "@aao/governance": "workspace:*",
+    "@aao/tool-runtime": "workspace:*"
+  }
+}

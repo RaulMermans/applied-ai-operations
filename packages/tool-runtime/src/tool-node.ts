@@ -1,11 +1,11 @@
 import { z } from "zod";
-import { identifierSchema, type FailureCategory, type JsonObject, type RetrySafety } from "@aao/contracts";
+import { identifierSchema, type FailureCategory, type JsonObject, type RecoverySafety, type RetrySafety } from "@aao/contracts";
 import type { NodeExecutor, NodePreflightResult } from "@aao/runtime";
 import { deriveToolExecutionId } from "./execution-id.js";
 import type { AuthorizationContext } from "@aao/authorization";
 import { executeTool, type ToolRuntimeDependencies } from "./executor.js";
 import { checkToolPermissionSupport } from "./permissions.js";
-import { resolveToolBinding } from "./registry.js";
+import { resolveToolBinding, toolRecoverySafety } from "./registry.js";
 import { ToolRefSchema, type ToolFailure, type ToolRef } from "./types.js";
 
 /**
@@ -138,6 +138,14 @@ export function createToolNodeExecutor(dependencies: ToolNodeDependencies): Node
       return verdict.ok ? (resolveToolBinding(tools, verdict.config.toolRef)?.retrySafety ?? "unsafe") : "unsafe";
     },
 
+    // Crash-recovery safety is likewise trusted registration metadata (ADR-019); see `toolRecoverySafety`.
+    recoverySafety({ node }): RecoverySafety {
+      const verdict = validate(node.config);
+      if (!verdict.ok) return "unsafe";
+      const binding = resolveToolBinding(tools, verdict.config.toolRef);
+      return binding ? toolRecoverySafety(binding) : "unsafe";
+    },
+
     async execute(context) {
       const verdict = validate(context.node.config);
       // Preflight already proved this config valid; reaching here means the
@@ -154,6 +162,8 @@ export function createToolNodeExecutor(dependencies: ToolNodeDependencies): Node
         return fail("TOOL_AUTHORIZATION_REQUIRED");
       }
 
+      // `toolExecutionId` names the logical Tool operation: identical across
+      // Runtime retries, process restarts, and durable recovery replays.
       // The input is whatever the workflow state holds; `executeTool`
       // validates it (a missing value is INVALID_TOOL_REQUEST, a
       // non-conforming one TOOL_INPUT_SCHEMA_MISMATCH) like any untrusted request.

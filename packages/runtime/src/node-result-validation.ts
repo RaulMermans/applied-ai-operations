@@ -36,7 +36,7 @@ const NodeExecutionWaitShapeSchema = z.object({
 const EXECUTOR_FAILURE_NAMESPACE_PATTERN = /^[a-z][a-z0-9_]{0,31}$/;
 const EXECUTOR_FAILURE_CODE_PATTERN = /^[A-Z][A-Z0-9_]{0,63}$/;
 
-const NodeExecutorFailureSchema = z
+export const NodeExecutorFailureSchema = z
   .object({
     namespace: z.string().regex(EXECUTOR_FAILURE_NAMESPACE_PATTERN),
     code: z.string().regex(EXECUTOR_FAILURE_CODE_PATTERN),

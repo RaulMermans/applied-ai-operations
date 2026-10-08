@@ -26,7 +26,9 @@ Current `@aao/governance` resolves host-attested actors through explicit role bi
 
 ## Durability Layer
 
-Owns run persistence, checkpoints, resume, interruption recovery, persisted operation records, and future side-effect idempotency. AAO owns the semantics while storage technology remains replaceable. AAO makes no exactly-once claim.
+Owns run persistence, checkpoints, resume, interruption recovery, persisted operation records, and replay protection. AAO owns the semantics while storage technology remains replaceable. AAO makes no exactly-once claim.
+
+Implemented by `@aao/durability` (Sprint 14) behind a storage-neutral `DurabilityStore` port, with a local, single-host, single-writer filesystem reference store. The Runtime exposes only a generic durability port and `resumeWorkflow`; Approval exposes only a repository port. Tool Runtime and Governance contain no durability logic. Durability does not enable external side effects. See [durable execution](durable-execution.md).
 
 ## Observability and Evaluation Layers
 

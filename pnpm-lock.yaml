@@ -116,6 +116,31 @@ importers:
         specifier: ^3.24.3
         version: 3.25.76
 
+  packages/durability:
+    dependencies:
+      '@aao/approval':
+        specifier: workspace:*
+        version: link:../approval
+      '@aao/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@aao/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      '@aao/workflow-dsl':
+        specifier: workspace:*
+        version: link:../workflow-dsl
+      zod:
+        specifier: ^3.24.3
+        version: 3.25.76
+    devDependencies:
+      '@aao/governance':
+        specifier: workspace:*
+        version: link:../governance
+      '@aao/tool-runtime':
+        specifier: workspace:*
+        version: link:../tool-runtime
+
   packages/governance:
     dependencies:
       '@aao/contracts':

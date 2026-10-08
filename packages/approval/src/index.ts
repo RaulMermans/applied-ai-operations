@@ -37,49 +37,119 @@ function immutableRecord(record: ApprovalRecord): ApprovalRecord {
   return Object.freeze({ ...record, requestedBy: Object.freeze({ ...record.requestedBy }), ...(record.resolvedBy ? { resolvedBy: Object.freeze({ ...record.resolvedBy }) } : {}), requiredApproverRoleIds: Object.freeze([...record.requiredApproverRoleIds]) as unknown as string[], permissionClasses: Object.freeze([...record.permissionClasses]) as unknown as ApprovalRecord["permissionClasses"] });
 }
 
-/** Explicit process-local storage and clock. The trusted host supplies its Governance registry. */
-export function createApprovalEngine(dependencies: { governance: GovernanceRegistry; clock: RuntimeClock }) {
+/**
+ * Approval storage port (ADR-019). The engine owns every Approval semantic —
+ * validation, eligibility, immutability, exact-request idempotency — and the
+ * repository only stores validated records. `compareAndSetResolution` is the
+ * atomic `pending → terminal` step: it succeeds only while the stored record
+ * is still `pending`, so two resolutions can never both win. Synchronous by
+ * the Sprint 12 engine contract; `@aao/durability` provides a local
+ * filesystem implementation, and this package never touches storage itself.
+ */
+export interface ApprovalRepository {
+  get(approvalId: string): ApprovalRecord | undefined;
+  /** Stores a new pending record. Returns the already-stored record instead when one exists for that id (no overwrite). */
+  create(record: ApprovalRecord): ApprovalRecord;
+  /** Replaces a `pending` record with its resolution. Returns false, writing nothing, when the stored record is no longer `pending`. */
+  compareAndSetResolution(approvalId: string, resolved: ApprovalRecord): boolean;
+}
+
+/** Process-local repository: the Sprint 12 behavior, for nondurable use. A crash loses its approvals. */
+export function createInMemoryApprovalRepository(): ApprovalRepository {
   const records = new Map<string, ApprovalRecord>();
+  return Object.freeze({
+    get: (approvalId: string) => records.get(approvalId),
+    create(record: ApprovalRecord): ApprovalRecord {
+      const existing = records.get(record.approvalId);
+      if (existing) return existing;
+      const stored = immutableRecord(record);
+      records.set(stored.approvalId, stored);
+      return stored;
+    },
+    compareAndSetResolution(approvalId: string, resolved: ApprovalRecord): boolean {
+      if (records.get(approvalId)?.status !== "pending") return false;
+      records.set(approvalId, immutableRecord(resolved));
+      return true;
+    },
+  });
+}
+
+/** Deterministic evidence of the trusted Governance configuration (ADR-019). Evidence only: it never grants or restores authority. */
+export function fingerprintGovernance(governance: GovernanceRegistry): string {
+  return createHash("sha256").update(canonicalJsonStringify({ domain: "aao.governance.v1", configuration: governance.configuration as unknown as JsonValue })).digest("hex");
+}
+
+/**
+ * Explicit storage and clock. The trusted host supplies its Governance
+ * registry and, optionally, a repository (default: process-local memory).
+ */
+export function createApprovalEngine(dependencies: { governance: GovernanceRegistry; clock: RuntimeClock; repository?: ApprovalRepository }) {
+  const repository = dependencies.repository ?? createInMemoryApprovalRepository();
   const continued = new Set<string>();
-  const getApproval = (id: string) => records.get(id);
+  const getApproval = (id: string) => repository.get(id);
+  const sameRequest = (existing: ApprovalRecord, input: ApprovalRequest) =>
+    existing.requestFingerprint === input.requestFingerprint && existing.runId === input.runId && existing.nodeId === input.nodeId &&
+    canonicalJsonStringify({ requestedBy: existing.requestedBy, permissionClasses: existing.permissionClasses, requiredApproverRoleIds: existing.requiredApproverRoleIds, allowSelfApproval: existing.allowSelfApproval }) === canonicalJsonStringify({ requestedBy: input.requestedBy, permissionClasses: input.permissionClasses, requiredApproverRoleIds: input.requiredApproverRoleIds, allowSelfApproval: input.allowSelfApproval });
+  /**
+   * Exact-request idempotent: the same approval id with the same run, node,
+   * fingerprint, and request metadata returns the stored record — including
+   * an already-resolved one, which is never reopened or duplicated, so an
+   * Approval Node can be replayed safely after a crash. Anything else under
+   * that id is `APPROVAL_REQUEST_MISMATCH`.
+   */
   const requestApproval = (input: ApprovalRequest): ApprovalRecord => {
     const parsed = RequestSchema.safeParse(input);
     if (!parsed.success) throw new ApprovalError("INVALID_APPROVAL_CONTEXT");
     if (resolveAuthority(dependencies.governance, parsed.data.requestedBy, parsed.data.permissionClasses).decision !== "ALLOW") throw new ApprovalError("APPROVAL_REQUESTER_NOT_AUTHORIZED");
-    const existing = records.get(input.approvalId);
+    const existing = repository.get(parsed.data.approvalId);
     if (existing) {
-      if (existing.requestFingerprint !== input.requestFingerprint || existing.runId !== input.runId || existing.nodeId !== input.nodeId) throw new ApprovalError("APPROVAL_REQUEST_MISMATCH");
-      if (canonicalJsonStringify({ requestedBy: existing.requestedBy, permissionClasses: existing.permissionClasses, requiredApproverRoleIds: existing.requiredApproverRoleIds, allowSelfApproval: existing.allowSelfApproval }) !== canonicalJsonStringify({ requestedBy: input.requestedBy, permissionClasses: input.permissionClasses, requiredApproverRoleIds: input.requiredApproverRoleIds, allowSelfApproval: input.allowSelfApproval })) throw new ApprovalError("APPROVAL_REQUEST_MISMATCH");
-      if (existing.status !== "pending") throw new ApprovalError("APPROVAL_ALREADY_RESOLVED");
+      if (!sameRequest(existing, parsed.data)) throw new ApprovalError("APPROVAL_REQUEST_MISMATCH");
       return existing;
     }
-    const record = immutableRecord(ApprovalRecordSchema.parse({ schemaVersion: 2, ...parsed.data, status: "pending", requestedAt: dependencies.clock.now() }));
-    records.set(record.approvalId, record);
-    return record;
+    const record = ApprovalRecordSchema.parse({ schemaVersion: 2, ...parsed.data, status: "pending", requestedAt: dependencies.clock.now() });
+    const stored = repository.create(record);
+    if (!sameRequest(stored, parsed.data)) throw new ApprovalError("APPROVAL_REQUEST_MISMATCH");
+    return stored;
+  };
+  /** Eligibility = trusted registered human + current required-role membership + the self-approval rule. The approver need not hold the action's permissions. */
+  const resolverIneligibility = (record: ApprovalRecord, principal: unknown): "APPROVAL_HUMAN_REQUIRED" | "APPROVAL_RESOLVER_NOT_ELIGIBLE" | "APPROVAL_SELF_APPROVAL_FORBIDDEN" | undefined => {
+    const parsed = PrincipalSchema.safeParse(principal);
+    if (!parsed.success || parsed.data.type !== "user") return "APPROVAL_HUMAN_REQUIRED";
+    const membership = resolveRoleMembership(dependencies.governance, parsed.data);
+    if (!membership || !membership.roleIds.some((role) => record.requiredApproverRoleIds.includes(role))) return "APPROVAL_RESOLVER_NOT_ELIGIBLE";
+    if (!record.allowSelfApproval && record.requestedBy.id === parsed.data.id) return "APPROVAL_SELF_APPROVAL_FORBIDDEN";
+    return undefined;
   };
   const resolve = (id: string, status: "approved" | "rejected" | "expired" | "cancelled", principal?: Principal): ApprovalRecord => {
-    const prior = records.get(id);
+    const prior = repository.get(id);
     if (!prior) throw new ApprovalError("APPROVAL_NOT_FOUND");
     if (prior.status !== "pending") throw new ApprovalError("APPROVAL_ALREADY_RESOLVED");
     if (status === "approved" || status === "rejected") {
-      const parsed = PrincipalSchema.safeParse(principal);
-      if (!parsed.success || parsed.data.type !== "user") throw new ApprovalError("APPROVAL_HUMAN_REQUIRED");
-      // Eligibility = trusted registered human + current required-role membership. The approver need not hold the action's permissions.
-      const membership = resolveRoleMembership(dependencies.governance, parsed.data);
-      if (!membership || !membership.roleIds.some((role) => prior.requiredApproverRoleIds.includes(role))) throw new ApprovalError("APPROVAL_RESOLVER_NOT_ELIGIBLE");
-      if (!prior.allowSelfApproval && prior.requestedBy.id === parsed.data.id) throw new ApprovalError("APPROVAL_SELF_APPROVAL_FORBIDDEN");
+      const ineligible = resolverIneligibility(prior, principal);
+      if (ineligible) throw new ApprovalError(ineligible);
     }
     const resolvedAt = dependencies.clock.now();
     if (!isoTimestampSchema.safeParse(resolvedAt).success) throw new ApprovalError("INVALID_APPROVAL_CONTEXT");
     const parsed = ApprovalRecordSchema.safeParse({ ...prior, status, resolvedAt, ...(principal ? { resolvedBy: principal } : {}) });
     if (!parsed.success) throw new ApprovalError("INVALID_APPROVAL_CONTEXT");
-    const record = immutableRecord(parsed.data);
-    records.set(id, record);
-    return record;
+    // Atomic pending → terminal: a concurrent resolution that won first makes this one fail, never overwrite.
+    if (!repository.compareAndSetResolution(id, parsed.data)) throw new ApprovalError("APPROVAL_ALREADY_RESOLVED");
+    return repository.get(id)!;
+  };
+  /**
+   * A stored approval is evidence, never permanent authority. Before an
+   * approved record is consumed, current Governance must still allow the
+   * requester the stored permission classes and still find the resolver an
+   * eligible registered human in a required role.
+   */
+  const revalidateApproved = (record: ApprovalRecord): "APPROVAL_REQUESTER_NOT_AUTHORIZED" | "APPROVAL_RESOLVER_NOT_ELIGIBLE" | undefined => {
+    if (resolveAuthority(dependencies.governance, record.requestedBy, record.permissionClasses).decision !== "ALLOW") return "APPROVAL_REQUESTER_NOT_AUTHORIZED";
+    if (record.status === "approved" && resolverIneligibility(record, record.resolvedBy) !== undefined) return "APPROVAL_RESOLVER_NOT_ELIGIBLE";
+    return undefined;
   };
   const claimContinuation = (id: string): boolean => { if (continued.has(id)) return false; continued.add(id); return true; };
   const releaseContinuation = (id: string): void => { continued.delete(id); };
-  return Object.freeze({ requestApproval, getApproval, claimContinuation, releaseContinuation, approve: (id: string, principal: Principal) => resolve(id, "approved", principal), reject: (id: string, principal: Principal) => resolve(id, "rejected", principal), expire: (id: string) => resolve(id, "expired"), cancel: (id: string, principal?: Principal) => resolve(id, "cancelled", principal) });
+  return Object.freeze({ requestApproval, getApproval, claimContinuation, releaseContinuation, revalidateApproved, governanceFingerprint: fingerprintGovernance(dependencies.governance), approve: (id: string, principal: Principal) => resolve(id, "approved", principal), reject: (id: string, principal: Principal) => resolve(id, "rejected", principal), expire: (id: string) => resolve(id, "expired"), cancel: (id: string, principal?: Principal) => resolve(id, "cancelled", principal) });
 }
 export type ApprovalEngine = ReturnType<typeof createApprovalEngine>;
 
@@ -87,6 +157,8 @@ export type ApprovalEngine = ReturnType<typeof createApprovalEngine>;
 export function createApprovalNodeExecutor(engine: ApprovalEngine, requesterForRun: (runId: string) => Principal): NodeExecutor {
   return {
     kind: "approval",
+    // Crash recovery (ADR-019): the approval id is derived from the exact request and creation is exact-request idempotent, so replay never duplicates.
+    recoverySafety: () => "safe",
     validateConfig({ node }) { return ApprovalNodeConfigSchema.safeParse(node.config).success ? { ok: true } : { ok: false, issues: ["Invalid approval node configuration."] }; },
     async execute({ runId, node, state }) {
       const config = ApprovalNodeConfigSchema.parse(node.config);
@@ -109,7 +181,12 @@ export function currentApprovalFingerprint(execution: { run: { runId: string }; 
   return fingerprintApprovalSubject(execution.run.runId, execution.wait.nodeId, execution.state.revision, subject);
 }
 
-/** Trusted host bridge: read the engine's immutable record and recompute the exact subject before continuation. */
+/**
+ * Trusted host bridge: read the engine's immutable record, recompute the
+ * exact subject, and — for an approved record — revalidate current
+ * requester authority and resolver eligibility before continuation. A
+ * revoked approval leaves the Run waiting; it never continues.
+ */
 export async function continueApprovedWorkflow(engine: ApprovalEngine, request: Omit<ContinueWaitingWorkflowRequest, "approval" | "currentRequestFingerprint">): Promise<WorkflowExecutionResult> {
   const wait = request.execution.wait;
   const record = wait ? engine.getApproval(wait.referenceId) : undefined;
@@ -120,6 +197,10 @@ export async function continueApprovedWorkflow(engine: ApprovalEngine, request: 
   let currentRequestFingerprint: string;
   try { currentRequestFingerprint = currentApprovalFingerprint(request.execution, config.data); }
   catch { return { ok: false, failure: { code: "APPROVAL_REQUEST_MISMATCH", message: "APPROVAL_REQUEST_MISMATCH" }, execution: request.execution }; }
+  if (record.status === "approved" && currentRequestFingerprint === record.requestFingerprint) {
+    const revoked = engine.revalidateApproved(record);
+    if (revoked) return { ok: false, failure: { code: revoked, message: revoked, category: "AUTHORIZATION", retryable: false }, execution: request.execution };
+  }
   if (record.status !== "pending" && currentRequestFingerprint === record.requestFingerprint) {
     if (!engine.claimContinuation(record.approvalId)) return { ok: false, failure: { code: "INVALID_APPROVAL_CONTEXT", message: "INVALID_APPROVAL_CONTEXT" }, execution: request.execution };
   }

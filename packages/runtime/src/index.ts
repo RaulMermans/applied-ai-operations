@@ -9,6 +9,8 @@
 // @aao/contracts and @aao/workflow-dsl as canonical sources of truth; never
 // parses workflow source, never redefines Run/Node kinds or statuses, and
 // performs no built-in model/tool/agent execution or persistence. Approval waits use trusted registered executors.
+// Durable execution (ADR-019) is a host capability: the Runtime exposes a
+// generic durability port and `resumeWorkflow`; storage lives in @aao/durability.
 
 export type {
   NodeExecutor,
@@ -24,6 +26,11 @@ export type {
   NodeAttemptFailure,
   ExecuteWorkflowRequest,
   ContinueWaitingWorkflowRequest,
+  ResumeWorkflowRequest,
+  NodeRecoveryDirective,
+  RuntimeDurabilityHooks,
+  NodeAttemptIntent,
+  NodeAttemptOutcome,
   RuntimeWaitState,
   NodeExecutionRecord,
   RuntimeExecutionState,
@@ -39,7 +46,9 @@ export { runPreflight } from "./preflight.js";
 export { validateRuntimeInput } from "./runtime-input-validation.js";
 export { validateNodeExecutionResult } from "./node-result-validation.js";
 export { isJsonSafe } from "./json-safety.js";
-export { executeWorkflow, continueWaitingWorkflow } from "./engine.js";
+export { RUNTIME_FAILURE_CODES } from "./types.js";
+export { executeWorkflow, continueWaitingWorkflow, resumeWorkflow } from "./engine.js";
+export { NodeExecutionRecordSchema, NodeAttemptOutcomeSchema, RuntimeFailureSchema, parseNodeAttemptOutcome, parseExecutionHistory, parseRuntimeFailure, validateExecutionAgainstPlan } from "./execution-records.js";
 
 export { DEFAULT_RELIABILITY_POLICY, createSystemSleeper } from "./reliability.js";
 

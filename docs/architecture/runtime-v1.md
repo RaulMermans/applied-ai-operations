@@ -44,13 +44,13 @@ A `CompiledWorkflowPlan` that compiled successfully is not necessarily a plan Ru
 - Deterministic, framework-neutral node executors registered explicitly against a `NodeRegistry`
 - A built-in `final_output` executor (`createRuntimeV1Registry`) that returns `RunState.values` as the workflow's output
 - Sequential, unconditional routing exactly as the compiler indexed it (`outgoingEdgesByNode`)
-- In-memory execution only — no persistence
+- In-memory execution by default; durable persistence is an opt-in host port (Sprint 14, `@aao/durability`)
 - JSON-safe state, requests, and results throughout
 - A bounded step ceiling (`maxSteps`), defensive rather than load-bearing (Workflow Compiler V1 already rejects cycles)
 
 ## Unsupported V1 features
 
-Conditional routing, evaluator execution, replanning, persistence, durability, and parallel execution remain out of scope. Approval waitpoints are supported through a registered `@aao/approval` executor. Model execution exists since Sprint 6, but outside this package: `@aao/model-runtime` provides a `model` executor that callers register explicitly (see [model runtime](model-runtime.md)); without it, a model node still fails with `NODE_EXECUTOR_NOT_FOUND`. Bounded agent execution exists since Sprint 7, likewise outside this package: `@aao/agent-runtime` provides an `agent` executor that callers register explicitly (see [agent runtime](agent-runtime.md)); without it, an agent node fails with `NODE_EXECUTOR_NOT_FOUND`. Tool execution exists since Sprint 8, likewise outside this package: `@aao/tool-runtime` provides a `tool` executor that callers register explicitly (see [tool runtime](tool-runtime.md)); without it, a tool node fails with `NODE_EXECUTOR_NOT_FOUND`. Attempting any of them fails a specific, structured preflight check rather than partially executing.
+Conditional routing, evaluator execution, replanning, and parallel execution remain out of scope. Storage is outside this package: durability is a generic host port implemented by `@aao/durability`. Approval waitpoints are supported through a registered `@aao/approval` executor. Model execution exists since Sprint 6, but outside this package: `@aao/model-runtime` provides a `model` executor that callers register explicitly (see [model runtime](model-runtime.md)); without it, a model node still fails with `NODE_EXECUTOR_NOT_FOUND`. Bounded agent execution exists since Sprint 7, likewise outside this package: `@aao/agent-runtime` provides an `agent` executor that callers register explicitly (see [agent runtime](agent-runtime.md)); without it, an agent node fails with `NODE_EXECUTOR_NOT_FOUND`. Tool execution exists since Sprint 8, likewise outside this package: `@aao/tool-runtime` provides a `tool` executor that callers register explicitly (see [tool runtime](tool-runtime.md)); without it, a tool node fails with `NODE_EXECUTOR_NOT_FOUND`. Attempting any of them fails a specific, structured preflight check rather than partially executing.
 
 ## Node-specific static config validation
 
@@ -153,7 +153,7 @@ The Runtime never `eval`s workflow data, executes JavaScript from node `config`,
 
 ## Future extension
 
-Model, Agent, Tool, and Approval executors implement `NodeExecutor` and are explicitly registered against the `NodeRegistry` passed into `executeWorkflow`; evaluator remains future. Approval waitpoints added one generic control result and continuation to the shared `engine.ts` loop. Conditional routing, retries, persistence, and durable checkpointing are expected to extend the preflight/engine boundary in later sprints rather than replace it. See [ADR-009](../decisions/ADR-009-node-registry-and-runtime-v1.md) for what is deliberately deferred and why.
+Model, Agent, Tool, and Approval executors implement `NodeExecutor` and are explicitly registered against the `NodeRegistry` passed into `executeWorkflow`; evaluator remains future. Approval waitpoints added one generic control result and continuation to the shared `engine.ts` loop. Retries (Sprint 13) and durable checkpointing (Sprint 14) extended the preflight/engine boundary rather than replacing it; conditional routing is expected to do the same. See [ADR-009](../decisions/ADR-009-node-registry-and-runtime-v1.md) for what is deliberately deferred and why.
 
 `executeWorkflow` is now a *managed* execution: it builds and returns an authoritative `RuntimeExecutionState` (Run lifecycle, Node lifecycle, revisioned state, execution history) and a safe `RuntimeExecutionSnapshot` at every safe boundary, rather than only a final result. See [runtime state management](runtime-state-management.md) and [ADR-010](../decisions/ADR-010-managed-runtime-state-and-lifecycle.md) for the full model this section's pipeline now executes inside of.
 
@@ -164,3 +164,20 @@ An explicitly registered Approval Node now returns a bounded Runtime wait result
 ## Sprint 13 reliability boundary
 
 `runLoop` now executes each Node through one internal Reliability Controller. The default is one attempt, so behavior is unchanged without a policy. A trusted host may set `RuntimeOptions.reliability.policiesByNodeId` (hard-capped `maxAttempts ≤ 3`, `attemptTimeoutMs`, `retryDelayMs`) and inject a `RuntimeSleeper`. A retry happens only when a structured retryable failure category meets a retry-safe executor declaration and remaining budget. `NodeExecutionContext` gains `attempt` and a cooperative `AbortSignal`; history records gain `attemptCount`/`attemptFailures`; failures gain `category`, `retryable`, `attempt`, and `maxAttempts`, plus `NODE_ATTEMPT_TIMEOUT` and `NODE_RETRY_EXHAUSTED`. See [reliability runtime](reliability-runtime.md) and [ADR-018](../decisions/ADR-018-runtime-reliability-and-bounded-retries.md).
+
+## Sprint 14 durability boundary
+
+The Runtime gains a generic durability port, `RuntimeOptions.durability`, with four methods:
+
+- `persistCheckpoint`: persist a safe boundary.
+- `beginAttempt`: write-ahead intent before every executor attempt.
+- `recordAttemptOutcome`: persist the validated outcome before any commit or retry.
+- `isCancellationRequested`: checked only at safe boundaries.
+
+It also gains one resume primitive, `resumeWorkflow({ plan, registry, execution, recovery?, options })`. Both enter the same `runLoop` and commit path as `executeWorkflow` and `continueWaitingWorkflow`; there is no second loop. A rejected hook stops execution with `DURABILITY_PERSISTENCE_FAILED` at the last durably persisted boundary. A `NodeRecoveryDirective` supplies the current Node's recorded attempt outcomes and an optional replay attempt. Its rules:
+
+- A recorded accepted outcome commits without invoking the executor.
+- Recorded failures keep attempt numbering and the retry budget.
+- An inconsistent directive is `INVALID_RECOVERY_DIRECTIVE`.
+
+Safe-boundary cancellation adds `READY → CANCELLED` and `RUN_CANCELLED`, and resuming a terminal Run is `RUN_ALREADY_TERMINAL` with nothing executed. The Runtime never loads or stores anything; `@aao/durability` does. Without the port, behavior is unchanged. See [durable execution](durable-execution.md) and [ADR-019](../decisions/ADR-019-durable-execution-checkpoints-and-replay.md).

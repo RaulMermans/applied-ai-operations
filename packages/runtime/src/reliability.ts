@@ -3,7 +3,7 @@ import type { CompiledWorkflowPlan } from "@aao/workflow-dsl";
 import { isJsonSafe } from "./json-safety.js";
 import { validateNodeExecutionResult } from "./node-result-validation.js";
 import { cloneRunState } from "./state.js";
-import type { NodeAttemptFailure, NodeExecutor, NodeExecutorFailure, RuntimeFailure, RuntimeOptions, RuntimeSleeper, RuntimeWaitState } from "./types.js";
+import type { NodeAttemptFailure, NodeAttemptIntent, NodeAttemptOutcome, NodeExecutor, NodeExecutorFailure, NodeRecoveryDirective, RuntimeDurabilityHooks, RuntimeFailure, RuntimeOptions, RuntimeSleeper, RuntimeWaitState } from "./types.js";
 
 /**
  * Runtime Reliability Controller (ADR-018, docs/architecture/reliability-runtime.md).
@@ -79,7 +79,10 @@ export function resolveReliability(options: RuntimeOptions | undefined, plan: Co
 export type NodeAttemptsOutcome =
   | { kind: "success"; statePatch?: JsonObject; output?: JsonValue; attemptCount: number; attemptFailures: NodeAttemptFailure[] }
   | { kind: "wait"; wait: Omit<RuntimeWaitState, "nodeId">; attemptCount: number; attemptFailures: NodeAttemptFailure[] }
-  | { kind: "failure"; failure: RuntimeFailure; attemptCount: number; attemptFailures: NodeAttemptFailure[] };
+  | { kind: "failure"; failure: RuntimeFailure; attemptCount: number; attemptFailures: NodeAttemptFailure[] }
+  /** A durability hook rejected: nothing past the last durable boundary may be committed. */
+  | { kind: "durability_failure" }
+  | { kind: "invalid_recovery"; message: string };
 
 interface AttemptFailure {
   code: RuntimeFailure["code"];
@@ -94,6 +97,14 @@ type AttemptSettlement = { kind: "returned"; value: unknown } | { kind: "threw" 
  * Runs the bounded attempt sequence for one Node. Every attempt receives a
  * fresh defensive clone of the same authoritative input state, so a failed
  * or abandoned attempt can never influence the next one or commit anything.
+ *
+ * With durability hooks (ADR-019) each attempt is bracketed: intent is
+ * persisted before the executor is eligible, and the Runtime-validated
+ * outcome is persisted before anything is committed or retried. With a
+ * recovery directive, durably recorded outcomes are replayed through the
+ * same classification and retry decision — an accepted outcome is returned
+ * without invoking the executor, and recorded failures keep attempt
+ * numbering and the `maxAttempts` budget across restarts.
  */
 export async function executeNodeAttempts(params: {
   runId: RunId;
@@ -103,58 +114,97 @@ export async function executeNodeAttempts(params: {
   step: number;
   policy: Readonly<ReliabilityPolicy>;
   sleeper: RuntimeSleeper;
+  hooks?: RuntimeDurabilityHooks;
+  recovery?: Pick<NodeRecoveryDirective, "priorOutcomes" | "replayAttempt">;
 }): Promise<NodeAttemptsOutcome> {
-  const { runId, node, executor, state, step, policy, sleeper } = params;
+  const { runId, node, executor, state, step, policy, sleeper, hooks, recovery } = params;
   const maxAttempts = policy.maxAttempts;
   const retrySafe = maxAttempts > 1 && resolveRetrySafety(executor, node);
   const attemptFailures: NodeAttemptFailure[] = [];
 
-  for (let attempt = 1; ; attempt += 1) {
+  /** The single retry decision: undefined means "try again", otherwise the Node's final failure. */
+  const decide = (attempt: number, failed: AttemptFailure): NodeAttemptsOutcome | undefined => {
+    attemptFailures.push({ attempt, category: failed.category, causeCode: failed.executorFailure?.code ?? failed.code });
+    const retryable = isRetryableFailureCategory(failed.category);
+    if (retryable && retrySafe && attempt < maxAttempts) return undefined;
+    const exhausted = retryable && retrySafe && attempt >= maxAttempts;
+    const failure: RuntimeFailure = {
+      code: exhausted ? "NODE_RETRY_EXHAUSTED" : failed.code,
+      message: exhausted ? `Node "${node.id}" (kind "${node.kind}") failed all ${maxAttempts} attempts.` : failed.message,
+      nodeId: node.id,
+      step,
+      ...(failed.executorFailure ? { executorFailure: failed.executorFailure } : {}),
+      category: failed.category,
+      retryable,
+      attempt,
+      maxAttempts,
+      ...(exhausted ? { causeCode: failed.executorFailure?.code ?? failed.code } : {}),
+    };
+    return { kind: "failure", failure, attemptCount: attempt, attemptFailures };
+  };
+  const accepted = (outcome: Exclude<NodeAttemptOutcome, { kind: "failure" }>, attempt: number): NodeAttemptsOutcome =>
+    outcome.kind === "wait"
+      ? { kind: "wait", wait: { ...outcome.wait }, attemptCount: attempt, attemptFailures }
+      : { kind: "success", ...(outcome.statePatch !== undefined ? { statePatch: outcome.statePatch } : {}), ...(outcome.output !== undefined ? { output: outcome.output } : {}), attemptCount: attempt, attemptFailures };
+
+  // Durably recorded attempts are replayed through the same decision, never re-executed.
+  let attempt = 1;
+  const prior = recovery?.priorOutcomes ?? [];
+  for (const [index, outcome] of prior.entries()) {
+    const recorded = index + 1;
+    const last = index === prior.length - 1;
+    if (outcome.kind !== "failure") {
+      if (!last || recovery?.replayAttempt !== undefined) return { kind: "invalid_recovery", message: "An accepted outcome must be the last recorded attempt." };
+      if (outcome.kind === "wait" && node.kind !== "approval") return { kind: "invalid_recovery", message: "Only an approval node may have a recorded wait." };
+      return accepted(outcome, recorded);
+    }
+    const final = decide(recorded, outcome);
+    if (final !== undefined) {
+      if (!last || recovery?.replayAttempt !== undefined) return { kind: "invalid_recovery", message: "Recorded attempts continue past a final failure under the current reliability policy." };
+      return final;
+    }
+    attempt = recorded + 1;
+  }
+  const replayAttempt = recovery?.replayAttempt;
+  if (replayAttempt !== undefined && replayAttempt !== attempt) return { kind: "invalid_recovery", message: "The replayed attempt must directly follow the recorded attempts." };
+  if (prior.length > 0 && replayAttempt === undefined && policy.retryDelayMs !== undefined && policy.retryDelayMs > 0) await sleeper.sleep(policy.retryDelayMs);
+
+  for (; ; attempt += 1) {
+    const intent: NodeAttemptIntent = { runId, nodeId: node.id, kind: node.kind, step, stateRevision: state.revision, attempt, maxAttempts, recoveryReplay: attempt === replayAttempt };
+    // Write-ahead: if intent cannot be persisted, the executor never becomes eligible.
+    if (hooks) {
+      try { await hooks.beginAttempt({ ...intent }); } catch { return { kind: "durability_failure" }; }
+    }
     const settlement = await runAttempt(executor, sleeper, policy.attemptTimeoutMs, { runId, node: cloneNodeDefinition(node), state: cloneRunState(state), step, attempt });
 
-    let failed: AttemptFailure;
+    let outcome: NodeAttemptOutcome;
     if (settlement.kind === "timeout") {
-      failed = { code: "NODE_ATTEMPT_TIMEOUT", category: "TIMEOUT", message: `Node "${node.id}" (kind "${node.kind}") attempt ${attempt} exceeded its ${policy.attemptTimeoutMs} ms timeout.` };
+      outcome = { kind: "failure", code: "NODE_ATTEMPT_TIMEOUT", category: "TIMEOUT", message: `Node "${node.id}" (kind "${node.kind}") attempt ${attempt} exceeded its ${policy.attemptTimeoutMs} ms timeout.` };
     } else if (settlement.kind === "threw") {
       // Deliberately generic: the thrown value is never inspected or exposed.
-      failed = { code: "NODE_EXECUTION_FAILED", category: "INTERNAL", message: `Node "${node.id}" (kind "${node.kind}") threw during execution.` };
+      outcome = { kind: "failure", code: "NODE_EXECUTION_FAILED", category: "INTERNAL", message: `Node "${node.id}" (kind "${node.kind}") threw during execution.` };
     } else {
       const validated = validateNodeExecutionResult(settlement.value);
       if (!validated.ok) {
-        failed = { code: validated.code, category: "VALIDATION", message: `Node "${node.id}": ${validated.message}` };
+        outcome = { kind: "failure", code: validated.code, category: "VALIDATION", message: `Node "${node.id}": ${validated.message}` };
       } else if (!validated.result.ok) {
         const executorFailure = { ...validated.result.failure };
-        failed = { code: "NODE_EXECUTION_FAILED", category: executorFailure.category ?? "EXECUTION", message: `Node "${node.id}" (kind "${node.kind}") reported an executor failure.`, executorFailure };
+        outcome = { kind: "failure", code: "NODE_EXECUTION_FAILED", category: executorFailure.category ?? "EXECUTION", message: `Node "${node.id}" (kind "${node.kind}") reported an executor failure.`, executorFailure };
       } else if ("wait" in validated.result) {
-        if (node.kind !== "approval") {
-          failed = { code: "INVALID_NODE_RESULT", category: "VALIDATION", message: "Only an approval node may request an approval wait." };
-        } else {
-          return { kind: "wait", wait: { ...validated.result.wait }, attemptCount: attempt, attemptFailures };
-        }
+        outcome = node.kind === "approval" ? { kind: "wait", wait: { ...validated.result.wait } } : { kind: "failure", code: "INVALID_NODE_RESULT", category: "VALIDATION", message: "Only an approval node may request an approval wait." };
       } else {
         const { statePatch, output } = validated.result;
-        return { kind: "success", ...(statePatch !== undefined ? { statePatch } : {}), ...(output !== undefined ? { output } : {}), attemptCount: attempt, attemptFailures };
+        outcome = { kind: "success", ...(statePatch !== undefined ? { statePatch } : {}), ...(output !== undefined ? { output } : {}) };
       }
     }
 
-    attemptFailures.push({ attempt, category: failed.category, causeCode: failed.executorFailure?.code ?? failed.code });
-    const retryable = isRetryableFailureCategory(failed.category);
-    if (!retryable || !retrySafe || attempt >= maxAttempts) {
-      const exhausted = retryable && retrySafe && attempt >= maxAttempts;
-      const failure: RuntimeFailure = {
-        code: exhausted ? "NODE_RETRY_EXHAUSTED" : failed.code,
-        message: exhausted ? `Node "${node.id}" (kind "${node.kind}") failed all ${maxAttempts} attempts.` : failed.message,
-        nodeId: node.id,
-        step,
-        ...(failed.executorFailure ? { executorFailure: failed.executorFailure } : {}),
-        category: failed.category,
-        retryable,
-        attempt,
-        maxAttempts,
-        ...(exhausted ? { causeCode: failed.executorFailure?.code ?? failed.code } : {}),
-      };
-      return { kind: "failure", failure, attemptCount: attempt, attemptFailures };
+    // Outcome-first: only a validated outcome is persisted, and only after it is durable may anything commit or retry.
+    if (hooks) {
+      try { await hooks.recordAttemptOutcome({ ...intent }, JSON.parse(JSON.stringify(outcome)) as NodeAttemptOutcome); } catch { return { kind: "durability_failure" }; }
     }
+    if (outcome.kind !== "failure") return accepted(outcome, attempt);
+    const final = decide(attempt, outcome);
+    if (final !== undefined) return final;
     if (policy.retryDelayMs !== undefined && policy.retryDelayMs > 0) await sleeper.sleep(policy.retryDelayMs);
   }
 }
