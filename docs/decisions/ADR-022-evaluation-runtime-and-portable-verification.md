@@ -107,3 +107,7 @@ Two risks dominate:
 - Sprint 18 can build result history, dataset analytics, baseline and candidate comparison, CI quality and regression gates, and adapter verification on serializable `EvalResult`s. Stable `resultId`, `evalRef`, `graderRef`, and `datasetRef` + `caseId` make that possible.
 - Sprint 20 formalizes `AdapterManifest`, capability declarations, the compatibility matrix, conformance contracts, and AAO port interfaces under one principle: *external substrates implement AAO interfaces; they do not define AAO semantics.*
 - Future Toolbox evaluators stay provider-neutral. They assert the right *capability* was used (`crm.accounts.search`), not that a vendor SDK method was called, except in explicit adapter-conformance evals.
+
+## Amendment: Approval guard Nodes (Sprint 17 closure)
+
+`aao.approval-compliance` 1.0.0 correlated Tool checks with the first approved or non-approved Approval anywhere in the Run. That is unsafe for workflows with more than one Approval boundary. Grader 2.0.0 requires an explicit `guardApprovalNodeId` for every Tool check and correlates only through canonical Node identity. 1.0.0 is retired rather than reinterpreted, and the affected foundation definitions were re-versioned to 2.0.0. See [evaluation-runtime.md](../architecture/evaluation-runtime.md#approval-guard-nodes-sprint-17-closure).

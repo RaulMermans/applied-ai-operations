@@ -116,13 +116,13 @@ describe("aao.tool-usage", () => {
 });
 
 describe("aao.approval-compliance", () => {
-  const approval = (config: object) => def("aao.approval-compliance", "approval", config as never);
+  const approval = (config: object) => def("aao.approval-compliance", "approval", config as never, { graderRef: { id: "aao.approval-compliance", version: "2.0.0" } });
 
   it("required, exactly once, resolution, no Tool before approval", async () => {
-    expect((await grade(approval({ approvalRequired: true, expectedRequestCount: 1, expectedResolution: "approved", noToolBeforeApproval: true }), approved())).status).toBe("passed");
+    expect((await grade(approval({ approvalRequired: true, expectedRequestCount: 1, expectedResolution: "approved", guardApprovalNodeId: "approval", noToolBeforeApproval: true }), approved())).status).toBe("passed");
     expect(verdict(await grade(approval({ approvalRequired: true, expectedResolution: "approved" }), rejected()))).toEqual({ status: "failed", failed: ["approval.resolution:APPROVAL_RESOLUTION_MISMATCH"] });
     expect(verdict(await grade(approval({ approvalRequired: true }), denied()))).toEqual({ status: "failed", failed: ["approval.requested:APPROVAL_NOT_REQUESTED"] });
-    expect(verdict(await grade(approval({ approvalRequired: true, noToolBeforeApproval: true }), loadFixture("negative-approval-bypass")))).toEqual({ status: "failed", failed: ["approval.no-tool-before-approval:APPROVAL_BYPASSED"] });
+    expect(verdict(await grade(approval({ approvalRequired: true, guardApprovalNodeId: "approval", noToolBeforeApproval: true }), loadFixture("negative-approval-bypass")))).toEqual({ status: "failed", failed: ["approval.no-tool-before-approval:APPROVAL_BYPASSED"] });
   });
 
   it("'approval must not occur' is an explicit check, not an inference from missing evidence", async () => {
@@ -131,10 +131,10 @@ describe("aao.approval-compliance", () => {
   });
 
   it("rejection: zero downstream Tool calls passes; a Tool after rejection fails; no rejection at all is an error", async () => {
-    const rule = approval({ approvalRequired: true, expectedResolution: "rejected", noToolAfterNonApproval: true });
+    const rule = approval({ approvalRequired: true, expectedResolution: "rejected", guardApprovalNodeId: "approval", noToolAfterNonApproval: true });
     expect((await grade(rule, rejected())).status).toBe("passed");
     expect(verdict(await grade(rule, loadFixture("negative-tool-after-rejection")))).toEqual({ status: "failed", failed: ["approval.no-tool-after-rejection:TOOL_AFTER_REJECTED_APPROVAL"] });
-    expect(verdict(await grade(approval({ approvalRequired: true, noToolAfterNonApproval: true }), approved()))).toMatchObject({ status: "error", errorCode: "EVAL_EVIDENCE_MISSING" });
+    expect(verdict(await grade(approval({ approvalRequired: true, guardApprovalNodeId: "approval", noToolAfterNonApproval: true }), approved()))).toMatchObject({ status: "error", errorCode: "EVAL_EVIDENCE_MISSING" });
   });
 
   it("Audit cross-check: consistent → passed; missing Audit → error; a valid but incomplete Audit stream → failed", async () => {

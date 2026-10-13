@@ -13,7 +13,7 @@ const okCase = (id: string, evidenceRef = "fixture://flagship-approved") => ({ i
 describe("dataset loading", () => {
   it("loads the committed YAML dataset and definitions; JSON is equivalent", () => {
     const yaml = parseEvalDataset(datasetYaml(), "yaml");
-    expect(yaml.ok && yaml.value.cases.length).toBe(30);
+    expect(yaml.ok && yaml.value.cases.length).toBe(35);
     const json = parseEvalDataset(JSON.stringify(loadDataset()), "json");
     expect(json).toEqual(yaml);
     expect(loadDefinitions().length).toBeGreaterThanOrEqual(15);

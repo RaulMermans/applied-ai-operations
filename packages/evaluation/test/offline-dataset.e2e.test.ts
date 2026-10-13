@@ -3,7 +3,7 @@ import { EvalDatasetRunSchema } from "@aao/contracts";
 import { runEvalDataset } from "../src/index.js";
 import { fixtureResolver, loadDataset, loadDefinitions, registry } from "./support/evals.js";
 
-describe("offline dataset E2E: runtime-foundation.v1", () => {
+describe("offline dataset E2E: runtime-foundation", () => {
   it("every case produces exactly one EvalResult matching its stated expectation, in dataset order", async () => {
     const dataset = loadDataset();
     const outcome = await runEvalDataset({ dataset, definitions: loadDefinitions(), registry: registry(), evidenceResolver: fixtureResolver() });
@@ -16,6 +16,6 @@ describe("offline dataset E2E: runtime-foundation.v1", () => {
     // Errors occur only in cases explicitly designed as evaluator-error fixtures.
     const errorCases = run.cases.filter((entry) => entry.result.status === "error").map((entry) => entry.caseId);
     expect(errorCases.sort()).toEqual(dataset.cases.filter((evalCase) => evalCase.expected?.status === "error").map((evalCase) => evalCase.id).sort());
-    for (const entry of run.cases) expect(entry.result).toMatchObject({ datasetRef: { id: "aao.runtime-foundation", version: "1.0.0" }, caseId: entry.caseId, mode: "OFFLINE" });
+    for (const entry of run.cases) expect(entry.result).toMatchObject({ datasetRef: { id: "aao.runtime-foundation", version: "1.1.0" }, caseId: entry.caseId, mode: "OFFLINE" });
   });
 });

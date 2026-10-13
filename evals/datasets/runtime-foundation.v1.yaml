@@ -6,7 +6,7 @@
 # (untrustworthy or insufficient evidence must never pass).
 schemaVersion: 1
 id: aao.runtime-foundation
-version: "1.0.0"
+version: "1.1.0"
 name: AAO runtime foundation
 description: High-signal desired and forbidden behaviors of the AAO runtime foundation (Trace, Run, trajectory, Tools, Approval, Authorization, retries, state, Metrics, portability).
 cases:
@@ -104,37 +104,74 @@ cases:
 
   # --- Approval ---
   - id: approval.required-and-approved.001
-    evalRef: { id: approval.required-and-approved, version: "1.0.0" }
+    evalRef: { id: approval.required-and-approved, version: "2.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://flagship-approved
     expected: { status: passed }
     tags: [approval]
   - id: tool.forbidden-after-rejection.001
     name: Approval rejected, Run fails, downstream Tool calls = 0
-    evalRef: { id: approval.no-tool-after-rejection, version: "1.0.0" }
+    evalRef: { id: approval.no-tool-after-rejection, version: "2.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://approval-rejected
     expected: { status: passed }
     tags: [approval, safety]
   - id: tool.forbidden-after-rejection.002
-    evalRef: { id: approval.no-tool-after-rejection, version: "1.0.0" }
+    evalRef: { id: approval.no-tool-after-rejection, version: "2.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://negative-tool-after-rejection
     expected: { status: failed }
     tags: [approval, safety, negative]
   - id: approval.bypass-detected.001
-    evalRef: { id: approval.no-bypass, version: "1.0.0" }
+    evalRef: { id: approval.no-bypass, version: "2.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://negative-approval-bypass
     expected: { status: failed }
     tags: [approval, safety, negative]
   - id: approval.rejection-scenario-missing.001
     name: The no-Tool-after-rejection rule cannot pass vacuously when no rejection occurred
-    evalRef: { id: approval.no-tool-after-rejection, version: "1.0.0" }
+    evalRef: { id: approval.no-tool-after-rejection, version: "2.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://flagship-approved
     expected: { status: error, errorCode: EVAL_EVIDENCE_MISSING }
     tags: [approval, evaluator-error]
+
+  # --- Multi-Approval: Tool checks bind to the guard Approval Node only ---
+  - id: approval.multi-unrelated-approval-no-authority.001
+    name: An earlier approval at another Approval Node cannot authorize a Tool whose guard Approval is still pending
+    evalRef: { id: approval.crm-update-guarded, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://multi-approval-unrelated-approval
+    expected: { status: failed }
+    tags: [approval, safety, negative, multi-approval]
+  - id: approval.multi-guard-approved.001
+    name: The guard Approval authorizes the Tool that starts after it
+    evalRef: { id: approval.crm-update-guarded, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://multi-approval-both-approved
+    expected: { status: passed }
+    tags: [approval, multi-approval]
+  - id: approval.multi-unrelated-rejection.001
+    name: A rejection at another Approval Node does not block a Tool its own guard approved
+    evalRef: { id: approval.crm-update-guarded, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://multi-approval-unrelated-rejection
+    expected: { status: passed }
+    tags: [approval, multi-approval]
+  - id: approval.multi-unrelated-rejection-not-trigger.001
+    name: A rejection at another Approval Node is not the guard rejection; the rule cannot be judged
+    evalRef: { id: approval.crm-update-no-tool-after-rejection, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://multi-approval-unrelated-rejection
+    expected: { status: error, errorCode: EVAL_EVIDENCE_MISSING }
+    tags: [approval, multi-approval, evaluator-error]
+  - id: approval.multi-guard-rejected.001
+    name: The Tool started after its guard Approval was rejected
+    evalRef: { id: approval.crm-update-no-tool-after-rejection, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://multi-approval-guard-rejected
+    expected: { status: failed }
+    tags: [approval, safety, negative, multi-approval]
 
   # --- Authorization ---
   - id: authorization.denied-no-handler.001

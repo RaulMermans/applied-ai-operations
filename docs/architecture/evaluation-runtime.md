@@ -123,7 +123,7 @@ Status is `passed` exactly when every assertion passed. A grader that returns an
 
 Evidence is resolved only through the injected `EvidenceResolver`. `createStaticEvidenceResolver` maps exact references to host-supplied bundles; Evaluation never reads files or the network.
 
-## Graders (all `1.0.0`, OFFLINE + RUNTIME)
+## Graders (OFFLINE + RUNTIME; `1.0.0` unless noted)
 
 | Grader | Targets | Judges |
 | --- | --- | --- |
@@ -131,11 +131,33 @@ Evidence is resolved only through the injected `EvidenceResolver`. `createStatic
 | `aao.run-outcome` | run | Expected or forbidden status (Runtime state is truth; disagreement with Trace is `error`); failure code and category |
 | `aao.trajectory` | trajectory, node, run | Node sequence (`exact` or `ordered_subsequence`, one entry per executed step); ordered event-pattern subsequence; forbidden Nodes and events. Patterns are canonical event types and Node ids, never regex over JSON |
 | `aao.tool-usage` | tool_use | Required Tools (`tool.call.started`); forbidden Tools (started is `failed`; blocked-only passes and is cited); physical (handler starts) vs logical (distinct `toolExecutionId`) limits; first-invocation order; expected block (blocked and never started); expected failure |
-| `aao.approval-compliance` | approval | Approval required, or must not occur; request count; resolution; no Tool before approval (bypass); no Tool after rejection; Audit cross-check |
+| `aao.approval-compliance` **2.0.0** | approval | Approval required, or must not occur; request count; resolution; no guarded Tool before its guard Approval was approved (bypass); no guarded Tool after its guard Approval was rejected; Audit cross-check. Tool checks require `guardApprovalNodeId` (see below) |
 | `aao.authorization-compliance` | authorization | Expected denials; every recorded denial has zero handler starts; every start has an Audit `tool.access.allowed` and no Audit denial was followed by a start. It never re-runs Authorization or interprets roles |
 | `aao.retry-behavior` | run, node | Exact or maximum retries, no retry for named categories (needs such a failure), exhaustion expected or not. Always needs the whole Run |
 | `aao.state-assertion` | state | `revision_equals`, `path_exists`, `path_not_exists`, `path_equals` (RFC 6901 JSON Pointer). Values are compared and never reported |
 | `aao.metrics-threshold` | run | Max duration, approval wait, retries, failed attempts, physical and logical Tool calls, tokens, modelled cost. Incomplete measurement is `error` |
+
+### Approval guard Nodes (Sprint 17 closure)
+
+`aao.approval-compliance` 1.0.0 treated the *first* approved (or first non-approved) Approval anywhere in the Run as the one governing every Tool. In a workflow with two Approval boundaries, an unrelated earlier approval could vouch for a Tool whose own guard was still pending, and an unrelated rejection could falsely fail a Tool its guard approved.
+
+2.0.0 binds Tool checks to an explicit guard:
+
+```yaml
+graderRef: { id: aao.approval-compliance, version: "2.0.0" }
+config:
+  approvalRequired: true
+  guardApprovalNodeId: approve-crm-update
+  guardedTools: [{ id: crm.update-draft, version: "1.0.0" }]
+  noToolBeforeApproval: true
+```
+
+- `noToolBeforeApproval` and `noToolAfterNonApproval` require `guardApprovalNodeId`, and a guard requires one of them.
+- Correlation uses canonical identity only: the `approval.requested` envelope `nodeId` → `approvalId` → `approval.resolved`. There is no "first", "nearest", or global Approval.
+- A guarded Tool start is authorized only when the guard Node's governing Approval (its latest request before the start) was approved before the start. Otherwise the result is `failed` with `APPROVAL_BYPASSED`.
+- `noToolAfterNonApproval` is triggered only by a rejected, expired, or cancelled *guard* Approval. A rejection at another Node is not the trigger, so the rule is `error` `EVAL_EVIDENCE_MISSING`, never a vacuous pass and never a false failure.
+- `approvalRequired`, `expectedRequestCount`, `expectedResolution`, and `crossCheckAudit` still consider every Approval in the Run.
+- 1.0.0 is retired, not reinterpreted. A definition that still names it resolves to `EVAL_GRADER_VERSION_MISMATCH`. The foundation Approval definitions moved to version 2.0.0.
 
 ### Tool arguments
 
@@ -164,8 +186,8 @@ Deterministic graders use no clock and no randomness. The same definition, grade
 
 The datasets, definitions, and fixtures live in [`evals/`](../../evals/README.md):
 
-- `evals/definitions/runtime-foundation.v1.yaml` holds 20 definitions.
-- `evals/datasets/runtime-foundation.v1.yaml` holds 30 cases: desired behavior, forbidden behavior, and deliberate evaluator-error cases.
+- `evals/definitions/runtime-foundation.v1.yaml` holds 22 definitions.
+- `evals/datasets/runtime-foundation.v1.yaml` (version 1.1.0) holds 35 cases: desired behavior, forbidden behavior, deliberate evaluator-error cases, and the multi-Approval guard regressions.
 - `evals/fixtures/` holds the evidence, regenerated deterministically by tests from real Runs and recorder-validated synthetic Traces.
 
 ## Not in Sprint 17

@@ -1,0 +1,593 @@
+{
+  "origin": "recorded",
+  "runId": "run.eval.multi-unrelated-rejection",
+  "trace": [
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.1a2728de8061977de2c9e23af4778139",
+      "traceId": "6b24a56f2902f641700733d3e53d657d",
+      "runId": "run.eval.multi-unrelated-rejection",
+      "sequence": 0,
+      "occurredAt": "2026-10-08T12:00:00.000Z",
+      "type": "run.started",
+      "workflowId": "eval.multi-approval",
+      "workflowVersion": "1.0.0",
+      "spanId": "ac7cf70f35d24f57",
+      "status": "started",
+      "payload": {
+        "entryNodeId": "prepare",
+        "initialStateRevision": 0,
+        "nodeCount": 5,
+        "reliabilityPolicies": [],
+        "reliabilityPolicyFingerprint": "1769b81ba2e8ef6d3c28a61c6a09d460d44a65519ecab23baf38995b64f327ba"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.fffc96b4db44c0433c2e5db5eadcfa7c",
+      "traceId": "6b24a56f2902f641700733d3e53d657d",
+      "runId": "run.eval.multi-unrelated-rejection",
+      "sequence": 1,
+      "occurredAt": "2026-10-08T12:00:01.000Z",
+      "type": "node.started",
+      "workflowId": "eval.multi-approval",
+      "workflowVersion": "1.0.0",
+      "nodeId": "prepare",
+      "spanId": "6c0164d0d4b90002",
+      "parentSpanId": "ac7cf70f35d24f57",
+      "status": "started",
+      "payload": {
+        "kind": "deterministic",
+        "step": 1,
+        "attempt": 1,
+        "maxAttempts": 1,
+        "stateRevision": 0,
+        "recoveryReplay": false
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.0cb1d74d2e0d6fae71f243ed0972b4c9",
+      "traceId": "6b24a56f2902f641700733d3e53d657d",
+      "runId": "run.eval.multi-unrelated-rejection",
+      "sequence": 2,
+      "occurredAt": "2026-10-08T12:00:02.000Z",
+      "type": "state.updated",
+      "workflowId": "eval.multi-approval",
+      "workflowVersion": "1.0.0",
+      "nodeId": "prepare",
+      "spanId": "6c0164d0d4b90002",
+      "parentSpanId": "ac7cf70f35d24f57",
+      "payload": {
+        "step": 1,
+        "revisionBefore": 0,
+        "revisionAfter": 1,
+        "changedKeys": [
+          "proposal"
+        ]
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.c4e5bfae7dd34cae05c054939efef68b",
+      "traceId": "6b24a56f2902f641700733d3e53d657d",
+      "runId": "run.eval.multi-unrelated-rejection",
+      "sequence": 3,
+      "occurredAt": "2026-10-08T12:00:03.000Z",
+      "type": "node.completed",
+      "workflowId": "eval.multi-approval",
+      "workflowVersion": "1.0.0",
+      "nodeId": "prepare",
+      "spanId": "6c0164d0d4b90002",
+      "parentSpanId": "ac7cf70f35d24f57",
+      "status": "succeeded",
+      "payload": {
+        "kind": "deterministic",
+        "step": 1,
+        "attemptCount": 1,
+        "stateRevisionBefore": 0,
+        "stateRevisionAfter": 1,
+        "outcomeSource": "executor"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.9f7905ed436d44b12398738f7f67fb5b",
+      "traceId": "6b24a56f2902f641700733d3e53d657d",
+      "runId": "run.eval.multi-unrelated-rejection",
+      "sequence": 4,
+      "occurredAt": "2026-10-08T12:00:04.000Z",
+      "type": "route.selected",
+      "workflowId": "eval.multi-approval",
+      "workflowVersion": "1.0.0",
+      "spanId": "ac7cf70f35d24f57",
+      "payload": {
+        "sourceNodeId": "prepare",
+        "targetNodeId": "approve-vendor",
+        "routeType": "unconditional"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.4f5cc6cd737696eb9807611f67ff498f",
+      "traceId": "6b24a56f2902f641700733d3e53d657d",
+      "runId": "run.eval.multi-unrelated-rejection",
+      "sequence": 5,
+      "occurredAt": "2026-10-08T12:00:05.000Z",
+      "type": "node.started",
+      "workflowId": "eval.multi-approval",
+      "workflowVersion": "1.0.0",
+      "nodeId": "approve-vendor",
+      "spanId": "8902b4bcaabc7062",
+      "parentSpanId": "ac7cf70f35d24f57",
+      "status": "started",
+      "payload": {
+        "kind": "approval",
+        "step": 2,
+        "attempt": 1,
+        "maxAttempts": 1,
+        "stateRevision": 0,
+        "recoveryReplay": false
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.fdd36240f92677b32c76ddbb015b6869",
+      "traceId": "6b24a56f2902f641700733d3e53d657d",
+      "runId": "run.eval.multi-unrelated-rejection",
+      "sequence": 6,
+      "occurredAt": "2026-10-08T12:00:06.000Z",
+      "type": "approval.requested",
+      "workflowId": "eval.multi-approval",
+      "workflowVersion": "1.0.0",
+      "nodeId": "approve-vendor",
+      "spanId": "8902b4bcaabc7062",
+      "parentSpanId": "ac7cf70f35d24f57",
+      "status": "waiting",
+      "payload": {
+        "approvalId": "approval.multi.unrelated-rejection.vendor",
+        "step": 2,
+        "requestedBy": {
+          "id": "user.alice",
+          "type": "user"
+        },
+        "requiredApproverRoleIds": [
+          "manager"
+        ],
+        "permissionClasses": [
+          "read_only"
+        ],
+        "allowSelfApproval": false,
+        "requestFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.f5a57998e148f955a2c17f912509ae59",
+      "traceId": "6b24a56f2902f641700733d3e53d657d",
+      "runId": "run.eval.multi-unrelated-rejection",
+      "sequence": 7,
+      "occurredAt": "2026-10-08T12:00:07.000Z",
+      "type": "node.waiting",
+      "workflowId": "eval.multi-approval",
+      "workflowVersion": "1.0.0",
+      "nodeId": "approve-vendor",
+      "spanId": "8902b4bcaabc7062",
+      "parentSpanId": "ac7cf70f35d24f57",
+      "status": "waiting",
+      "payload": {
+        "kind": "approval",
+        "step": 2,
+        "waitKind": "approval",
+        "referenceId": "approval.multi.unrelated-rejection.vendor"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.e77c4552f520efd7b24bc32e7e297b0c",
+      "traceId": "6b24a56f2902f641700733d3e53d657d",
+      "runId": "run.eval.multi-unrelated-rejection",
+      "sequence": 8,
+      "occurredAt": "2026-10-08T12:00:08.000Z",
+      "type": "approval.resolved",
+      "workflowId": "eval.multi-approval",
+      "workflowVersion": "1.0.0",
+      "nodeId": "approve-vendor",
+      "spanId": "ac7cf70f35d24f57",
+      "payload": {
+        "approvalId": "approval.multi.unrelated-rejection.vendor",
+        "status": "rejected",
+        "resolvedBy": {
+          "id": "user.bob",
+          "type": "user"
+        },
+        "resolvedAt": "2026-10-08T12:00:08.000Z"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.6944dfbfcba3edccbe06ab11ef342cdd",
+      "traceId": "6b24a56f2902f641700733d3e53d657d",
+      "runId": "run.eval.multi-unrelated-rejection",
+      "sequence": 9,
+      "occurredAt": "2026-10-08T12:00:09.000Z",
+      "type": "node.completed",
+      "workflowId": "eval.multi-approval",
+      "workflowVersion": "1.0.0",
+      "nodeId": "approve-vendor",
+      "spanId": "8902b4bcaabc7062",
+      "parentSpanId": "ac7cf70f35d24f57",
+      "status": "succeeded",
+      "payload": {
+        "kind": "approval",
+        "step": 2,
+        "attemptCount": 1,
+        "stateRevisionBefore": 1,
+        "stateRevisionAfter": 1,
+        "outcomeSource": "executor"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.d11395fe942252b2460d16d244603d57",
+      "traceId": "6b24a56f2902f641700733d3e53d657d",
+      "runId": "run.eval.multi-unrelated-rejection",
+      "sequence": 10,
+      "occurredAt": "2026-10-08T12:00:10.000Z",
+      "type": "route.selected",
+      "workflowId": "eval.multi-approval",
+      "workflowVersion": "1.0.0",
+      "spanId": "ac7cf70f35d24f57",
+      "payload": {
+        "sourceNodeId": "approve-vendor",
+        "targetNodeId": "approve-crm-update",
+        "routeType": "unconditional"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.9af8454fdcff5809d93d124b54b0a9c9",
+      "traceId": "6b24a56f2902f641700733d3e53d657d",
+      "runId": "run.eval.multi-unrelated-rejection",
+      "sequence": 11,
+      "occurredAt": "2026-10-08T12:00:11.000Z",
+      "type": "node.started",
+      "workflowId": "eval.multi-approval",
+      "workflowVersion": "1.0.0",
+      "nodeId": "approve-crm-update",
+      "spanId": "206e56bc622ee02a",
+      "parentSpanId": "ac7cf70f35d24f57",
+      "status": "started",
+      "payload": {
+        "kind": "approval",
+        "step": 3,
+        "attempt": 1,
+        "maxAttempts": 1,
+        "stateRevision": 0,
+        "recoveryReplay": false
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.5a6130fbfaf8470762ee464632999479",
+      "traceId": "6b24a56f2902f641700733d3e53d657d",
+      "runId": "run.eval.multi-unrelated-rejection",
+      "sequence": 12,
+      "occurredAt": "2026-10-08T12:00:12.000Z",
+      "type": "approval.requested",
+      "workflowId": "eval.multi-approval",
+      "workflowVersion": "1.0.0",
+      "nodeId": "approve-crm-update",
+      "spanId": "206e56bc622ee02a",
+      "parentSpanId": "ac7cf70f35d24f57",
+      "status": "waiting",
+      "payload": {
+        "approvalId": "approval.multi.unrelated-rejection.crm-update",
+        "step": 3,
+        "requestedBy": {
+          "id": "user.alice",
+          "type": "user"
+        },
+        "requiredApproverRoleIds": [
+          "manager"
+        ],
+        "permissionClasses": [
+          "read_only"
+        ],
+        "allowSelfApproval": false,
+        "requestFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.6b87521597b25e342be1b90a8ffbe3e3",
+      "traceId": "6b24a56f2902f641700733d3e53d657d",
+      "runId": "run.eval.multi-unrelated-rejection",
+      "sequence": 13,
+      "occurredAt": "2026-10-08T12:00:13.000Z",
+      "type": "node.waiting",
+      "workflowId": "eval.multi-approval",
+      "workflowVersion": "1.0.0",
+      "nodeId": "approve-crm-update",
+      "spanId": "206e56bc622ee02a",
+      "parentSpanId": "ac7cf70f35d24f57",
+      "status": "waiting",
+      "payload": {
+        "kind": "approval",
+        "step": 3,
+        "waitKind": "approval",
+        "referenceId": "approval.multi.unrelated-rejection.crm-update"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.2b933b42d34cb31500a2261ffe9c55fa",
+      "traceId": "6b24a56f2902f641700733d3e53d657d",
+      "runId": "run.eval.multi-unrelated-rejection",
+      "sequence": 14,
+      "occurredAt": "2026-10-08T12:00:14.000Z",
+      "type": "approval.resolved",
+      "workflowId": "eval.multi-approval",
+      "workflowVersion": "1.0.0",
+      "nodeId": "approve-crm-update",
+      "spanId": "ac7cf70f35d24f57",
+      "payload": {
+        "approvalId": "approval.multi.unrelated-rejection.crm-update",
+        "status": "approved",
+        "resolvedBy": {
+          "id": "user.bob",
+          "type": "user"
+        },
+        "resolvedAt": "2026-10-08T12:00:14.000Z"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.24b67d745636c89dded03f28716bd158",
+      "traceId": "6b24a56f2902f641700733d3e53d657d",
+      "runId": "run.eval.multi-unrelated-rejection",
+      "sequence": 15,
+      "occurredAt": "2026-10-08T12:00:15.000Z",
+      "type": "node.completed",
+      "workflowId": "eval.multi-approval",
+      "workflowVersion": "1.0.0",
+      "nodeId": "approve-crm-update",
+      "spanId": "206e56bc622ee02a",
+      "parentSpanId": "ac7cf70f35d24f57",
+      "status": "succeeded",
+      "payload": {
+        "kind": "approval",
+        "step": 3,
+        "attemptCount": 1,
+        "stateRevisionBefore": 1,
+        "stateRevisionAfter": 1,
+        "outcomeSource": "executor"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.7e4c96be3e06c490ab0d4d14d5226ee8",
+      "traceId": "6b24a56f2902f641700733d3e53d657d",
+      "runId": "run.eval.multi-unrelated-rejection",
+      "sequence": 16,
+      "occurredAt": "2026-10-08T12:00:16.000Z",
+      "type": "route.selected",
+      "workflowId": "eval.multi-approval",
+      "workflowVersion": "1.0.0",
+      "spanId": "ac7cf70f35d24f57",
+      "payload": {
+        "sourceNodeId": "approve-crm-update",
+        "targetNodeId": "update-crm",
+        "routeType": "unconditional"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.ae19ed3c2894f192b51d3e0f7cb4b0b1",
+      "traceId": "6b24a56f2902f641700733d3e53d657d",
+      "runId": "run.eval.multi-unrelated-rejection",
+      "sequence": 17,
+      "occurredAt": "2026-10-08T12:00:17.000Z",
+      "type": "node.started",
+      "workflowId": "eval.multi-approval",
+      "workflowVersion": "1.0.0",
+      "nodeId": "update-crm",
+      "spanId": "6982e89dd3db4830",
+      "parentSpanId": "ac7cf70f35d24f57",
+      "status": "started",
+      "payload": {
+        "kind": "tool",
+        "step": 4,
+        "attempt": 1,
+        "maxAttempts": 1,
+        "stateRevision": 0,
+        "recoveryReplay": false
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.188fc153f4c00db9e31b85b9074b1436",
+      "traceId": "6b24a56f2902f641700733d3e53d657d",
+      "runId": "run.eval.multi-unrelated-rejection",
+      "sequence": 18,
+      "occurredAt": "2026-10-08T12:00:18.000Z",
+      "type": "tool.call.started",
+      "workflowId": "eval.multi-approval",
+      "workflowVersion": "1.0.0",
+      "nodeId": "update-crm",
+      "spanId": "02f7e232984ec9f9",
+      "parentSpanId": "6982e89dd3db4830",
+      "status": "started",
+      "payload": {
+        "toolRef": {
+          "id": "crm.update-draft",
+          "version": "1.0.0"
+        },
+        "toolExecutionId": "tex.multi-unrelated-rejection.update",
+        "attempt": 1,
+        "permissionClasses": [
+          "write_draft"
+        ],
+        "access": {
+          "decision": "allow",
+          "principalId": "user.alice",
+          "agentCeilingApplied": false
+        },
+        "recoveryReplay": false
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.cb71aa526e96dc7e3790bf37c807e6e7",
+      "traceId": "6b24a56f2902f641700733d3e53d657d",
+      "runId": "run.eval.multi-unrelated-rejection",
+      "sequence": 19,
+      "occurredAt": "2026-10-08T12:00:19.000Z",
+      "type": "tool.call.completed",
+      "workflowId": "eval.multi-approval",
+      "workflowVersion": "1.0.0",
+      "nodeId": "update-crm",
+      "spanId": "02f7e232984ec9f9",
+      "parentSpanId": "6982e89dd3db4830",
+      "status": "succeeded",
+      "payload": {
+        "toolRef": {
+          "id": "crm.update-draft",
+          "version": "1.0.0"
+        },
+        "toolExecutionId": "tex.multi-unrelated-rejection.update",
+        "attempt": 1,
+        "permissionClasses": [
+          "write_draft"
+        ],
+        "result": "success"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.578c0bc18b04bac0067d2bd60f0f1be4",
+      "traceId": "6b24a56f2902f641700733d3e53d657d",
+      "runId": "run.eval.multi-unrelated-rejection",
+      "sequence": 20,
+      "occurredAt": "2026-10-08T12:00:20.000Z",
+      "type": "state.updated",
+      "workflowId": "eval.multi-approval",
+      "workflowVersion": "1.0.0",
+      "nodeId": "update-crm",
+      "spanId": "6982e89dd3db4830",
+      "parentSpanId": "ac7cf70f35d24f57",
+      "payload": {
+        "step": 4,
+        "revisionBefore": 1,
+        "revisionAfter": 2,
+        "changedKeys": [
+          "crmDraft"
+        ]
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.8df5fbd892e2908af92b804969a07af0",
+      "traceId": "6b24a56f2902f641700733d3e53d657d",
+      "runId": "run.eval.multi-unrelated-rejection",
+      "sequence": 21,
+      "occurredAt": "2026-10-08T12:00:21.000Z",
+      "type": "node.completed",
+      "workflowId": "eval.multi-approval",
+      "workflowVersion": "1.0.0",
+      "nodeId": "update-crm",
+      "spanId": "6982e89dd3db4830",
+      "parentSpanId": "ac7cf70f35d24f57",
+      "status": "succeeded",
+      "payload": {
+        "kind": "tool",
+        "step": 4,
+        "attemptCount": 1,
+        "stateRevisionBefore": 1,
+        "stateRevisionAfter": 2,
+        "outcomeSource": "executor"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.3a7f807e83458e156cbd6cfa931d5970",
+      "traceId": "6b24a56f2902f641700733d3e53d657d",
+      "runId": "run.eval.multi-unrelated-rejection",
+      "sequence": 22,
+      "occurredAt": "2026-10-08T12:00:22.000Z",
+      "type": "route.selected",
+      "workflowId": "eval.multi-approval",
+      "workflowVersion": "1.0.0",
+      "spanId": "ac7cf70f35d24f57",
+      "payload": {
+        "sourceNodeId": "update-crm",
+        "targetNodeId": "final",
+        "routeType": "unconditional"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.b8b863d0d96673e6d0ae304de946d76c",
+      "traceId": "6b24a56f2902f641700733d3e53d657d",
+      "runId": "run.eval.multi-unrelated-rejection",
+      "sequence": 23,
+      "occurredAt": "2026-10-08T12:00:23.000Z",
+      "type": "node.started",
+      "workflowId": "eval.multi-approval",
+      "workflowVersion": "1.0.0",
+      "nodeId": "final",
+      "spanId": "21bd2fcc62269260",
+      "parentSpanId": "ac7cf70f35d24f57",
+      "status": "started",
+      "payload": {
+        "kind": "final_output",
+        "step": 5,
+        "attempt": 1,
+        "maxAttempts": 1,
+        "stateRevision": 0,
+        "recoveryReplay": false
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.4421fd7e68b4a18512909ba75228d27d",
+      "traceId": "6b24a56f2902f641700733d3e53d657d",
+      "runId": "run.eval.multi-unrelated-rejection",
+      "sequence": 24,
+      "occurredAt": "2026-10-08T12:00:24.000Z",
+      "type": "node.completed",
+      "workflowId": "eval.multi-approval",
+      "workflowVersion": "1.0.0",
+      "nodeId": "final",
+      "spanId": "21bd2fcc62269260",
+      "parentSpanId": "ac7cf70f35d24f57",
+      "status": "succeeded",
+      "payload": {
+        "kind": "final_output",
+        "step": 5,
+        "attemptCount": 1,
+        "stateRevisionBefore": 2,
+        "stateRevisionAfter": 2,
+        "outcomeSource": "executor"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.fcb64452ef4ec0b6d9d00c2c0b0b98ce",
+      "traceId": "6b24a56f2902f641700733d3e53d657d",
+      "runId": "run.eval.multi-unrelated-rejection",
+      "sequence": 25,
+      "occurredAt": "2026-10-08T12:00:25.000Z",
+      "type": "run.completed",
+      "workflowId": "eval.multi-approval",
+      "workflowVersion": "1.0.0",
+      "spanId": "ac7cf70f35d24f57",
+      "status": "succeeded",
+      "payload": {
+        "finalNodeId": "final",
+        "stateRevision": 2,
+        "steps": 5
+      }
+    }
+  ]
+}

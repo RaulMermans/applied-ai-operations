@@ -151,7 +151,7 @@ Audit is opt-in, like Trace: a host constructs `createFileAuditStore({ root })` 
 
 The Evaluation Runtime smoke runs entirely from compiled `dist/` output in three parts:
 
-1. **Offline.** It loads `evals/definitions/runtime-foundation.v1.yaml` and `evals/datasets/runtime-foundation.v1.yaml`, maps `fixture://<name>` to `evals/fixtures/<name>.json` explicitly (the host, not the evaluator, reads files), and runs every deterministic grader. Each of the 30 cases must match its stated expectation, and a repeat run must be identical.
+1. **Offline.** It loads `evals/definitions/runtime-foundation.v1.yaml` and `evals/datasets/runtime-foundation.v1.yaml`, maps `fixture://<name>` to `evals/fixtures/<name>.json` explicitly (the host, not the evaluator, reads files), and runs every deterministic grader. Each of the 35 cases must match its stated expectation, and a repeat run must be identical.
 2. **Model judge.** It runs a bounded fake model judge through the injected port: one call, a structured score, and no subject persisted. A throwing judge must yield `error`.
 3. **Runtime.** It runs a real compiled flagship Run (approval, retry-safe Tool, completion with Trace and Audit) and evaluates it in `RUNTIME` mode after the Runtime returned. It checks that execution evidence is unchanged.
 

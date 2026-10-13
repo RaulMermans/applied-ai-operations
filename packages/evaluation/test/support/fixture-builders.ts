@@ -2,7 +2,7 @@ import { continueApprovedWorkflow } from "@aao/approval";
 import { deriveRunMetrics } from "@aao/observability";
 import { executeWorkflow, type RuntimeExecutionState } from "@aao/runtime";
 import type { EvalEvidenceBundle } from "../../src/index.js";
-import { LOOKUP, SEND_EMAIL, at, d, traceOf, type Draft, type TraceIdentity } from "./synthetic.js";
+import { CRM_UPDATE, LOOKUP, SEND_EMAIL, at, d, traceOf, type Draft, type TraceIdentity } from "./synthetic.js";
 import { TRANSIENT, bob, compile, toolYaml, world } from "./world.js";
 
 /**
@@ -214,6 +214,47 @@ export async function buildFoundationFixtures(): Promise<Record<string, EvalEvid
     [9, d.runCompleted(2, 1)],
   ]);
 
+  // Two independent Approval boundaries: approve-vendor (A) and approve-crm-update (B). Only B
+  // governs the CRM update Tool. `a`/`b` script each resolution; `undefined` leaves it pending.
+  const multiApproval = (name: string, a: "approved" | "rejected", b: "approved" | "rejected" | undefined) => {
+    const approvalA = `approval.multi.${name}.vendor`;
+    const approvalB = `approval.multi.${name}.crm-update`;
+    const resolveB: Array<[number, Draft]> = b === undefined ? [] : [[14, d.approvalResolved("approve-crm-update", approvalB, b, at(14))], [15, d.nodeCompleted("approve-crm-update", 3, "approval", 1, 1, 1)]];
+    return traceOf(id(`run.eval.multi-${name}`, "eval.multi-approval"), [
+      [0, d.runStarted("prepare", 5)],
+      [1, d.nodeStarted("prepare", 1, "deterministic")],
+      [2, d.stateUpdated("prepare", 1, 1, ["proposal"])],
+      [3, d.nodeCompleted("prepare", 1, "deterministic", 1, 0, 1)],
+      [4, d.route("prepare", "approve-vendor")],
+      [5, d.nodeStarted("approve-vendor", 2, "approval")],
+      [6, d.approvalRequested("approve-vendor", 2, approvalA)],
+      [7, d.nodeWaiting("approve-vendor", 2, approvalA)],
+      [8, d.approvalResolved("approve-vendor", approvalA, a, at(8))],
+      [9, d.nodeCompleted("approve-vendor", 2, "approval", 1, 1, 1)],
+      [10, d.route("approve-vendor", "approve-crm-update")],
+      [11, d.nodeStarted("approve-crm-update", 3, "approval")],
+      [12, d.approvalRequested("approve-crm-update", 3, approvalB)],
+      [13, d.nodeWaiting("approve-crm-update", 3, approvalB)],
+      ...resolveB,
+      [16, d.route("approve-crm-update", "update-crm")],
+      [17, d.nodeStarted("update-crm", 4, "tool")],
+      [18, d.toolStarted("update-crm", 4, `tex.multi-${name}.update`, CRM_UPDATE, 1, false, "write_draft")],
+      [19, d.toolCompleted("update-crm", 4, `tex.multi-${name}.update`, CRM_UPDATE, 1, false, "write_draft")],
+      [20, d.stateUpdated("update-crm", 4, 2, ["crmDraft"])],
+      [21, d.nodeCompleted("update-crm", 4, "tool", 1, 1, 2)],
+      [22, d.route("update-crm", "final")],
+      [23, d.nodeStarted("final", 5, "final_output")],
+      [24, d.nodeCompleted("final", 5, "final_output", 1, 2, 2)],
+      [25, d.runCompleted(5, 2)],
+    ]);
+  };
+  // A: unrelated approval, guard pending, Tool started (bypass). B: both approved, Tool after B.
+  // C: unrelated rejection, guard approved. D: unrelated approval, guard rejected, Tool started.
+  const multiUnrelatedApproval = await multiApproval("unrelated-approval", "approved", undefined);
+  const multiBothApproved = await multiApproval("both-approved", "approved", "approved");
+  const multiUnrelatedRejection = await multiApproval("unrelated-rejection", "rejected", "approved");
+  const multiGuardRejected = await multiApproval("guard-rejected", "approved", "rejected");
+
   // Corrupt evidence: one committed event removed (sequence gap). Untrustworthy, not a behavior violation.
   const corrupt = (approved.bundle.trace as unknown[]).filter((_, index) => index !== 5);
 
@@ -239,5 +280,9 @@ export async function buildFoundationFixtures(): Promise<Record<string, EvalEvid
     "metrics-budget": recorded("run.eval.budget", budgetTrace, { metrics: metricsOf(budgetTrace) }),
     "metrics-cost-unavailable": recorded("run.eval.unpriced", unpricedTrace, { metrics: metricsOf(unpricedTrace) }),
     "corrupt-trace-gap": recorded("run.eval.flagship", corrupt),
+    "multi-approval-unrelated-approval": recorded("run.eval.multi-unrelated-approval", multiUnrelatedApproval),
+    "multi-approval-both-approved": recorded("run.eval.multi-both-approved", multiBothApproved),
+    "multi-approval-unrelated-rejection": recorded("run.eval.multi-unrelated-rejection", multiUnrelatedRejection),
+    "multi-approval-guard-rejected": recorded("run.eval.multi-guard-rejected", multiGuardRejected),
   };
 }

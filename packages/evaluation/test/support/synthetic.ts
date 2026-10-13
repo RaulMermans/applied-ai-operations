@@ -31,6 +31,7 @@ const run = { kind: "run" } as const;
 const nodeSpan = (nodeId: string, step: number, attempt: number) => ({ kind: "node" as const, nodeId, step, attempt });
 export const LOOKUP = { id: "local.lookup", version: "1.0.0" } as const;
 export const SEND_EMAIL = { id: "external.send-email", version: "1.0.0" } as const;
+export const CRM_UPDATE = { id: "crm.update-draft", version: "1.0.0" } as const;
 
 export const d = {
   runStarted: (entryNodeId: string, nodeCount = 4, policies: Array<{ nodeId: string; maxAttempts: number }> = []): Draft => ({ type: "run.started", span: run, key: {}, payload: { entryNodeId, initialStateRevision: 0, nodeCount, reliabilityPolicies: policies } }),
