@@ -168,8 +168,8 @@ describe("Sprint 16 does not widen execution", () => {
     expect(supported).not.toMatch(/external_side_effect|destructive|sensitive_data/);
   });
 
-  it("no Eval Runtime or UI package was introduced", () => {
+  it("no metrics, audit, analytics, or UI package was introduced; the only Eval package is Sprint 17's separate @aao/evaluation layer", () => {
     const packages = readdirSync(packagesDir).sort();
-    expect(packages.filter((name) => /eval|metrics|audit|analytics|dashboard|ui|control-center/i.test(name))).toEqual([]);
+    expect(packages.filter((name) => /eval|metrics|audit|analytics|dashboard|ui|control-center/i.test(name))).toEqual(["evaluation"]);
   });
 });

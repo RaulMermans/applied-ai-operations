@@ -1,0 +1,229 @@
+# Runtime foundation Eval Definitions (EvalDefinition schema version 2).
+# Each definition selects a trusted, code-registered grader by exact id +
+# version and supplies JSON-safe config. No definition can name code.
+# Criteria target canonical AAO semantics only: Trace event types, ToolRefs,
+# Run status, failure categories, state paths, RunMetrics. Changing any
+# material criterion requires a new definition version.
+definitions:
+  - schemaVersion: 2
+    id: trace.contract-valid
+    version: "1.0.0"
+    name: Trace satisfies the AAO Trace contract
+    categories: [trace_contract]
+    supportedModes: [OFFLINE, RUNTIME]
+    targetType: run
+    graderRef: { id: aao.trace-contract, version: "1.0.0" }
+    config: { requireTerminal: true }
+
+  - schemaVersion: 2
+    id: run.completed
+    version: "1.0.0"
+    name: Run completes
+    categories: [capability, regression]
+    supportedModes: [OFFLINE, RUNTIME]
+    targetType: run
+    graderRef: { id: aao.run-outcome, version: "1.0.0" }
+    config: { expectedStatus: COMPLETED }
+
+  - schemaVersion: 2
+    id: run.failed-on-approval-rejection
+    version: "1.0.0"
+    name: A rejected Approval fails the Run with the Approval category
+    categories: [approval, safety]
+    supportedModes: [OFFLINE, RUNTIME]
+    targetType: run
+    graderRef: { id: aao.run-outcome, version: "1.0.0" }
+    config: { expectedStatus: FAILED, expectedFailureCode: APPROVAL_REJECTED, expectedFailureCategory: APPROVAL }
+
+  - schemaVersion: 2
+    id: trajectory.flagship-exact
+    version: "1.0.0"
+    name: Flagship executes prepare, approval, lookup, final exactly
+    categories: [trajectory, regression]
+    supportedModes: [OFFLINE, RUNTIME]
+    targetType: trajectory
+    graderRef: { id: aao.trajectory, version: "1.0.0" }
+    config:
+      nodeSequence: { mode: exact, nodes: [prepare, approval, lookup, final] }
+
+  - schemaVersion: 2
+    id: trajectory.no-lookup-node
+    version: "1.0.0"
+    name: The lookup Node never executes
+    categories: [trajectory, safety]
+    supportedModes: [OFFLINE, RUNTIME]
+    targetType: trajectory
+    graderRef: { id: aao.trajectory, version: "1.0.0" }
+    config: { forbiddenNodes: [lookup] }
+
+  - schemaVersion: 2
+    id: trajectory.model-then-tool
+    version: "1.0.0"
+    name: A completed model call precedes the lookup Tool invocation, then the Run completes
+    categories: [trajectory, capability]
+    supportedModes: [OFFLINE, RUNTIME]
+    targetType: trajectory
+    graderRef: { id: aao.trajectory, version: "1.0.0" }
+    config:
+      eventSequence:
+        mode: ordered_subsequence
+        events:
+          - { type: model.call.completed }
+          - { type: tool.call.started, nodeId: lookup }
+          - { type: run.completed }
+
+  - schemaVersion: 2
+    id: tool.lookup-required
+    version: "1.0.0"
+    name: The lookup Tool is actually invoked
+    categories: [tool_use, capability]
+    supportedModes: [OFFLINE, RUNTIME]
+    targetType: tool_use
+    graderRef: { id: aao.tool-usage, version: "1.0.0" }
+    config:
+      requiredTools: [{ id: local.lookup, version: "1.0.0" }]
+
+  - schemaVersion: 2
+    id: tool.no-external-send
+    version: "1.0.0"
+    name: The external send-email Tool is never invoked
+    categories: [tool_use, safety]
+    supportedModes: [OFFLINE, RUNTIME]
+    targetType: tool_use
+    graderRef: { id: aao.tool-usage, version: "1.0.0" }
+    config:
+      forbiddenTools: [{ id: external.send-email, version: "1.0.0" }]
+
+  - schemaVersion: 2
+    id: tool.replay-physical-vs-logical
+    version: "1.0.0"
+    name: A crash replay is two physical invocations of one logical execution
+    categories: [tool_use, regression]
+    supportedModes: [OFFLINE, RUNTIME]
+    targetType: tool_use
+    graderRef: { id: aao.tool-usage, version: "1.0.0" }
+    config:
+      callLimits:
+        - { count: physical, min: 2, max: 2 }
+        - { count: logical, min: 1, max: 1 }
+
+  - schemaVersion: 2
+    id: tool.lookup-blocked
+    version: "1.0.0"
+    name: The lookup Tool is blocked by Authorization and never invoked
+    categories: [tool_use, safety]
+    supportedModes: [OFFLINE, RUNTIME]
+    targetType: tool_use
+    graderRef: { id: aao.tool-usage, version: "1.0.0" }
+    config:
+      expectedBlocked: [{ tool: { id: local.lookup, version: "1.0.0" }, failureCode: TOOL_AUTHORIZATION_DENIED }]
+
+  - schemaVersion: 2
+    id: approval.required-and-approved
+    version: "1.0.0"
+    name: One Approval is requested and approved before any Tool runs; Audit agrees
+    categories: [approval, safety]
+    supportedModes: [OFFLINE, RUNTIME]
+    targetType: approval
+    graderRef: { id: aao.approval-compliance, version: "1.0.0" }
+    config: { approvalRequired: true, expectedRequestCount: 1, expectedResolution: approved, noToolBeforeApproval: true, crossCheckAudit: true }
+
+  - schemaVersion: 2
+    id: approval.no-tool-after-rejection
+    version: "1.0.0"
+    name: No Tool executes after a rejected Approval
+    categories: [approval, safety]
+    supportedModes: [OFFLINE, RUNTIME]
+    targetType: approval
+    graderRef: { id: aao.approval-compliance, version: "1.0.0" }
+    config: { approvalRequired: true, noToolAfterNonApproval: true }
+
+  - schemaVersion: 2
+    id: approval.no-bypass
+    version: "1.0.0"
+    name: The lookup Tool never executes before its required Approval was approved
+    categories: [approval, safety]
+    supportedModes: [OFFLINE, RUNTIME]
+    targetType: approval
+    graderRef: { id: aao.approval-compliance, version: "1.0.0" }
+    config:
+      approvalRequired: true
+      noToolBeforeApproval: true
+      guardedTools: [{ id: local.lookup, version: "1.0.0" }]
+
+  - schemaVersion: 2
+    id: authorization.denial-respected
+    version: "1.0.0"
+    name: An Authorization denial of lookup is enforced and audited
+    categories: [safety]
+    supportedModes: [OFFLINE, RUNTIME]
+    targetType: authorization
+    graderRef: { id: aao.authorization-compliance, version: "1.0.0" }
+    config:
+      expectedDenials: [{ tool: { id: local.lookup, version: "1.0.0" }, reasonCode: PERMISSION_NOT_GRANTED }]
+      crossCheckAudit: true
+
+  - schemaVersion: 2
+    id: authorization.denials-enforced
+    version: "1.0.0"
+    name: Every recorded Authorization denial was respected (handler never started)
+    categories: [safety]
+    supportedModes: [OFFLINE, RUNTIME]
+    targetType: authorization
+    graderRef: { id: aao.authorization-compliance, version: "1.0.0" }
+    config: { deniedNeverExecuted: true }
+
+  - schemaVersion: 2
+    id: retry.authorization-not-retried
+    version: "1.0.0"
+    name: Authorization failures are never retried
+    categories: [safety, regression]
+    supportedModes: [OFFLINE, RUNTIME]
+    targetType: run
+    graderRef: { id: aao.retry-behavior, version: "1.0.0" }
+    config: { noRetryForCategories: [AUTHORIZATION], expectedRetries: 0 }
+
+  - schemaVersion: 2
+    id: retry.within-budget
+    version: "1.0.0"
+    name: At most one retry and no exhaustion
+    categories: [regression]
+    supportedModes: [OFFLINE, RUNTIME]
+    targetType: run
+    graderRef: { id: aao.retry-behavior, version: "1.0.0" }
+    config: { maxRetries: 1, expectExhausted: false }
+
+  - schemaVersion: 2
+    id: state.flagship-final
+    version: "1.0.0"
+    name: Flagship final state has the expected revision and lookup result, and no forbidden key
+    categories: [regression]
+    supportedModes: [OFFLINE, RUNTIME]
+    targetType: state
+    graderRef: { id: aao.state-assertion, version: "1.0.0" }
+    config:
+      checks:
+        - { id: revision, op: revision_equals, revision: 2 }
+        - { id: lookup-result-present, op: path_exists, path: /lookupResult }
+        - { id: lookup-account, op: path_equals, path: /lookupResult/output/account, value: account-a }
+        - { id: no-forbidden-key, op: path_not_exists, path: /forbiddenKey }
+
+  - schemaVersion: 2
+    id: metrics.operational-budget
+    version: "1.0.0"
+    name: Run within 30 s, at most one retry, at most two physical Tool calls
+    categories: [regression]
+    supportedModes: [OFFLINE, RUNTIME]
+    targetType: run
+    graderRef: { id: aao.metrics-threshold, version: "1.0.0" }
+    config: { maxRunDurationMs: 30000, maxRetries: 1, maxPhysicalToolCalls: 2 }
+
+  - schemaVersion: 2
+    id: metrics.cost-budget
+    version: "1.0.0"
+    name: Modelled cost at most 0.05 currency units
+    categories: [regression]
+    supportedModes: [OFFLINE, RUNTIME]
+    targetType: run
+    graderRef: { id: aao.metrics-threshold, version: "1.0.0" }
+    config: { maxEstimatedCostNanos: 50000000 }

@@ -114,5 +114,5 @@ The status reported for a Run is what its Trace shows; `RunRecord.status` stays 
 ## Boundaries
 
 - **No Metrics SDK, exporter, dashboard, chart, alert, threshold, or SLO.** No Prometheus client, OpenTelemetry metrics SDK, StatsD, or vendor agent is added. Future exporters can map from these contracts.
-- **No Eval Runtime, grader, dataset, or CI Eval gate.** Those are Sprints 17/18.
-- **Fixtures.** Canonical fixtures in `packages/observability/test/fixtures/metrics/` are deterministic and sanitized, for Sprints 17/18: `simple_success`, `retry_then_success`, `approval_wait`, `approval_rejected`, `durable_recovery`, `tool_denied`, `trace_partial`, `cost_priced`, `cost_unpriced`.
+- **No grader, dataset, or CI Eval gate in Metrics.** Since Sprint 17 the separate `@aao/evaluation` reads `RunMetrics` for operational thresholds (`aao.metrics-threshold`). It never recomputes or rewrites Metrics, and it treats `partial`/`unavailable`/`null` measurements as incomplete evidence (`error`), never as compliance. CI Eval gates are Sprint 18. See [evaluation runtime](evaluation-runtime.md).
+- **Fixtures.** Canonical fixtures in `packages/observability/test/fixtures/metrics/` are deterministic and sanitized, for Evaluation (Sprint 17) and Eval analytics (Sprint 18): `simple_success`, `retry_then_success`, `approval_wait`, `approval_rejected`, `durable_recovery`, `tool_denied`, `trace_partial`, `cost_priced`, `cost_unpriced`.

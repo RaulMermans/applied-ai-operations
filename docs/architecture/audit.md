@@ -112,4 +112,14 @@ File layout (local, single-host, single-writer; no database, SIEM, or audit vend
 
 Trace retention ≠ Audit retention: real deployments may need Audit kept longer. Sprint 16 chooses no global policy, runs no retention or deletion scheduler, and does not claim Audit is permanently retained. Future deletion obligations (privacy law) may conflict with Audit obligations; that is a later legal and product decision.
 
+## Evaluation reads Audit; it never writes it
+
+Since Sprint 17, the Approval- and Authorization-compliance graders in `@aao/evaluation` can cross-check Trace against an Audit stream:
+
+- They read the stream only after `validateAuditStream` verifies it. A broken chain is untrustworthy evidence (`error`).
+- Ordinary Eval outcomes are quality evidence, not accountability evidence, so they are never recorded in Audit, and there is no `eval.*` Audit event.
+- Future audited operator or release decisions about Eval results are a later concern.
+
+See [evaluation runtime](evaluation-runtime.md).
+
 Canonical sanitized fixtures in `packages/observability/test/fixtures/audit/`: `approval_approved`, `approval_denied_attempt`, `tool_access_allowed`, `tool_access_denied`, `cancellation_requested_applied`, `tampered_chain`.

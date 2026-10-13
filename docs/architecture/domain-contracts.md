@@ -93,8 +93,14 @@ The `external_side_effect` → human-approval-before-execution rule and the `des
 
 ## Evaluation / observability contracts
 
-- **EvalDefinition** (`evaluation.ts`) — `schemaVersion`, `id`, `version`, `name`, `description?`, `mode` (`OFFLINE` / `RUNTIME`), `targetType?` (`run`, `node`, `tool_use`, `artifact`, `trajectory`, `authorization`). GPA/trajectory evaluation is not hardcoded; it is expected to become one evaluator family under `trajectory`.
-- **EvalResult** (`evaluation.ts`) — `evalId`, `runId?`, `status` (`passed` / `failed` / `error`), `score?`, `reason?`, `evidenceRefs?`. A passing or failing result may exist with no `score` at all — not every evaluator produces one. When present, `score` is normalized to `[0, 1]`, where `1` fully meets an evaluator's criteria and `0` does not meet them at all; individual evaluators define the criteria themselves. No evaluator implementation, evaluation runtime, or CI regression gate exists yet.
+- **EvalDefinition** (`evaluation.ts`, schema version 2 since Sprint 17; the Sprint 2 version-1 placeholder was migrated, not duplicated) — `id`, `version`, `name`, `description?`, `categories?`, `supportedModes[]` (unique `OFFLINE` / `RUNTIME`), `targetType` (`run`, `node`, `tool_use`, `artifact`, `trajectory`, `authorization`, `approval`, `state`), `graderRef { id, version }` (an exact trusted grader), and `config` (JSON-safe, ≤ 16 KiB, no code-bearing keys). The target is *what* is evaluated; the grader is *how*. Trajectory evaluation is one grader family, not a built-in concept.
+- **EvalResult** (`evaluation.ts`, schema version 2) — `resultId` (deterministic), `evalRef`, `graderRef`, `datasetRef?` + `caseId?`, `mode`, `targetType`, `runId?`, `traceId?`, `evidenceFingerprint`, `status` (`passed` / `failed` / `error`), `score?`, `errorCode?` (exactly for `error`, from `EVAL_ERROR_CODES`), bounded `assertions[]` (`id`, `status`, `score?`, `reasonCode?`, `evidenceRefs`), and bounded `evidenceRefs[]`. `score`, when present, is normalized to `[0, 1]`; boolean checks need none. Results reference evidence (`trace://…`, `execution://…`) and never copy it.
+- **EvalDataset** (schema version 1), **EvalCase**, and **EvalDatasetRun** (`evaluation.ts`, Sprint 17):
+  - a dataset is versioned and holds ≤ 200 uniquely identified cases;
+  - each case is `evalRef` + `mode` + opaque `evidenceRef` + `expected?` verdict;
+  - a dataset run is the ordered results of one dataset execution.
+
+  The Evaluation Runtime that executes them is `@aao/evaluation` ([evaluation runtime](evaluation-runtime.md), ADR-022). It is non-authoritative, has no analytics or CI gate, and does not change Runtime behavior.
 - **TraceEvent** (`trace.ts`, schema version 2 since Sprint 15; the Sprint 2 version-1 placeholder was migrated, not duplicated) has these parts:
   - envelope: `eventId`, `traceId`, `runId`, `sequence`, `occurredAt`, `type`, `workflowId`, `workflowVersion`, `nodeId?`, `spanId`, `parentSpanId?`, `status?`, `payload`;
   - a closed dot-namespaced catalog (`TRACE_EVENT_TYPES`);

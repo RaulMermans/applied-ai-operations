@@ -1,0 +1,207 @@
+{
+  "origin": "recorded",
+  "runId": "run.eval.retry-denied",
+  "trace": [
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.1331518c68fe07c0eb2868038e9b97c9",
+      "traceId": "cdee47851e754d6848e3b0cc00c4a14a",
+      "runId": "run.eval.retry-denied",
+      "sequence": 0,
+      "occurredAt": "2026-10-08T12:00:00.000Z",
+      "type": "run.started",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "spanId": "0bc9ef3ba4311faa",
+      "status": "started",
+      "payload": {
+        "entryNodeId": "lookup",
+        "initialStateRevision": 0,
+        "nodeCount": 2,
+        "reliabilityPolicies": [
+          {
+            "maxAttempts": 3,
+            "nodeId": "lookup"
+          }
+        ],
+        "reliabilityPolicyFingerprint": "8e623c73002528598e0980b05f0ae2428dfcd9b6d45bab10931ff34a826c9d0d"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.8028b9209cdb6869eaef9994297ca2b9",
+      "traceId": "cdee47851e754d6848e3b0cc00c4a14a",
+      "runId": "run.eval.retry-denied",
+      "sequence": 1,
+      "occurredAt": "2026-10-08T12:00:01.000Z",
+      "type": "node.started",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "lookup",
+      "spanId": "493047e9ff2565ea",
+      "parentSpanId": "0bc9ef3ba4311faa",
+      "status": "started",
+      "payload": {
+        "kind": "tool",
+        "step": 1,
+        "attempt": 1,
+        "maxAttempts": 3,
+        "stateRevision": 0,
+        "recoveryReplay": false
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.4a9eae66233b3956e50be83ae1ae9d9b",
+      "traceId": "cdee47851e754d6848e3b0cc00c4a14a",
+      "runId": "run.eval.retry-denied",
+      "sequence": 2,
+      "occurredAt": "2026-10-08T12:00:02.000Z",
+      "type": "tool.call.blocked",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "lookup",
+      "spanId": "2dd0d82895a629ea",
+      "parentSpanId": "493047e9ff2565ea",
+      "status": "blocked",
+      "payload": {
+        "toolRef": {
+          "id": "local.lookup",
+          "version": "1.0.0"
+        },
+        "toolExecutionId": "tex.retry-denied.lookup",
+        "attempt": 1,
+        "code": "TOOL_AUTHORIZATION_DENIED",
+        "category": "AUTHORIZATION",
+        "permissionClasses": [
+          "read_only"
+        ],
+        "access": {
+          "decision": "deny",
+          "reasonCode": "PERMISSION_NOT_GRANTED"
+        }
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.3756ec3cf5d0594a91eef962f0835a25",
+      "traceId": "cdee47851e754d6848e3b0cc00c4a14a",
+      "runId": "run.eval.retry-denied",
+      "sequence": 3,
+      "occurredAt": "2026-10-08T12:00:03.000Z",
+      "type": "retry.scheduled",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "lookup",
+      "spanId": "493047e9ff2565ea",
+      "parentSpanId": "0bc9ef3ba4311faa",
+      "payload": {
+        "step": 1,
+        "failedAttempt": 1,
+        "nextAttempt": 2,
+        "maxAttempts": 3,
+        "category": "AUTHORIZATION",
+        "causeCode": "TOOL_AUTHORIZATION_DENIED",
+        "delayMs": 0
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.1ca46e5fc706bc976fe8532f2ac1b2c7",
+      "traceId": "cdee47851e754d6848e3b0cc00c4a14a",
+      "runId": "run.eval.retry-denied",
+      "sequence": 4,
+      "occurredAt": "2026-10-08T12:00:04.000Z",
+      "type": "node.started",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "lookup",
+      "spanId": "9f9bc5cc6a0879d2",
+      "parentSpanId": "0bc9ef3ba4311faa",
+      "status": "started",
+      "payload": {
+        "kind": "tool",
+        "step": 1,
+        "attempt": 2,
+        "maxAttempts": 3,
+        "stateRevision": 0,
+        "recoveryReplay": false
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.ceb0f8a177ae1582b55a6e99e12d550b",
+      "traceId": "cdee47851e754d6848e3b0cc00c4a14a",
+      "runId": "run.eval.retry-denied",
+      "sequence": 5,
+      "occurredAt": "2026-10-08T12:00:05.000Z",
+      "type": "tool.call.blocked",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "lookup",
+      "spanId": "34ba8475790c9e96",
+      "parentSpanId": "9f9bc5cc6a0879d2",
+      "status": "blocked",
+      "payload": {
+        "toolRef": {
+          "id": "local.lookup",
+          "version": "1.0.0"
+        },
+        "toolExecutionId": "tex.retry-denied.lookup",
+        "attempt": 2,
+        "code": "TOOL_AUTHORIZATION_DENIED",
+        "category": "AUTHORIZATION",
+        "permissionClasses": [
+          "read_only"
+        ],
+        "access": {
+          "decision": "deny",
+          "reasonCode": "PERMISSION_NOT_GRANTED"
+        }
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.c571691f8015f88e46cdf5ce17f9e032",
+      "traceId": "cdee47851e754d6848e3b0cc00c4a14a",
+      "runId": "run.eval.retry-denied",
+      "sequence": 6,
+      "occurredAt": "2026-10-08T12:00:06.000Z",
+      "type": "node.failed",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "lookup",
+      "spanId": "9f9bc5cc6a0879d2",
+      "parentSpanId": "0bc9ef3ba4311faa",
+      "status": "failed",
+      "payload": {
+        "kind": "tool",
+        "step": 1,
+        "attemptCount": 2,
+        "code": "NODE_EXECUTION_FAILED",
+        "category": "AUTHORIZATION",
+        "retryable": false
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.12996ddd78c555fe1ec48658af800c0a",
+      "traceId": "cdee47851e754d6848e3b0cc00c4a14a",
+      "runId": "run.eval.retry-denied",
+      "sequence": 7,
+      "occurredAt": "2026-10-08T12:00:07.000Z",
+      "type": "run.failed",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "spanId": "0bc9ef3ba4311faa",
+      "status": "failed",
+      "payload": {
+        "code": "NODE_EXECUTION_FAILED",
+        "category": "AUTHORIZATION",
+        "nodeId": "lookup",
+        "stateRevision": 0,
+        "steps": 1
+      }
+    }
+  ]
+}

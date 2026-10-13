@@ -1,0 +1,411 @@
+{
+  "origin": "recorded",
+  "runId": "run.eval.bypass",
+  "trace": [
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.87d37dc804de831667a61d55096dc5d2",
+      "traceId": "5273cc45add864955d852b6d71baf293",
+      "runId": "run.eval.bypass",
+      "sequence": 0,
+      "occurredAt": "2026-10-08T12:00:00.000Z",
+      "type": "run.started",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "spanId": "cd09bd16831e1315",
+      "status": "started",
+      "payload": {
+        "entryNodeId": "prepare",
+        "initialStateRevision": 0,
+        "nodeCount": 4,
+        "reliabilityPolicies": [],
+        "reliabilityPolicyFingerprint": "1769b81ba2e8ef6d3c28a61c6a09d460d44a65519ecab23baf38995b64f327ba"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.ac2fb711bce99440e175dc70e58157e5",
+      "traceId": "5273cc45add864955d852b6d71baf293",
+      "runId": "run.eval.bypass",
+      "sequence": 1,
+      "occurredAt": "2026-10-08T12:00:01.000Z",
+      "type": "node.started",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "prepare",
+      "spanId": "20afdb4bb11cc7ad",
+      "parentSpanId": "cd09bd16831e1315",
+      "status": "started",
+      "payload": {
+        "kind": "deterministic",
+        "step": 1,
+        "attempt": 1,
+        "maxAttempts": 1,
+        "stateRevision": 0,
+        "recoveryReplay": false
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.741ce3f917c36f5774ecbd9d0203d995",
+      "traceId": "5273cc45add864955d852b6d71baf293",
+      "runId": "run.eval.bypass",
+      "sequence": 2,
+      "occurredAt": "2026-10-08T12:00:02.000Z",
+      "type": "state.updated",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "prepare",
+      "spanId": "20afdb4bb11cc7ad",
+      "parentSpanId": "cd09bd16831e1315",
+      "payload": {
+        "step": 1,
+        "revisionBefore": 0,
+        "revisionAfter": 1,
+        "changedKeys": [
+          "proposal"
+        ]
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.edb39ac859e891b51652212a919e1857",
+      "traceId": "5273cc45add864955d852b6d71baf293",
+      "runId": "run.eval.bypass",
+      "sequence": 3,
+      "occurredAt": "2026-10-08T12:00:03.000Z",
+      "type": "node.completed",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "prepare",
+      "spanId": "20afdb4bb11cc7ad",
+      "parentSpanId": "cd09bd16831e1315",
+      "status": "succeeded",
+      "payload": {
+        "kind": "deterministic",
+        "step": 1,
+        "attemptCount": 1,
+        "stateRevisionBefore": 0,
+        "stateRevisionAfter": 1,
+        "outcomeSource": "executor"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.4e8a7a9cc22641886258231abf537da2",
+      "traceId": "5273cc45add864955d852b6d71baf293",
+      "runId": "run.eval.bypass",
+      "sequence": 4,
+      "occurredAt": "2026-10-08T12:00:04.000Z",
+      "type": "route.selected",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "spanId": "cd09bd16831e1315",
+      "payload": {
+        "sourceNodeId": "prepare",
+        "targetNodeId": "approval",
+        "routeType": "unconditional"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.bc1c7eb85b51e9f7d02f7099097e813c",
+      "traceId": "5273cc45add864955d852b6d71baf293",
+      "runId": "run.eval.bypass",
+      "sequence": 5,
+      "occurredAt": "2026-10-08T12:00:05.000Z",
+      "type": "node.started",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "approval",
+      "spanId": "25d7f5759187cb55",
+      "parentSpanId": "cd09bd16831e1315",
+      "status": "started",
+      "payload": {
+        "kind": "approval",
+        "step": 2,
+        "attempt": 1,
+        "maxAttempts": 1,
+        "stateRevision": 0,
+        "recoveryReplay": false
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.ae9dd84065c3bd5e6d37be09fb618d38",
+      "traceId": "5273cc45add864955d852b6d71baf293",
+      "runId": "run.eval.bypass",
+      "sequence": 6,
+      "occurredAt": "2026-10-08T12:00:06.000Z",
+      "type": "approval.requested",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "approval",
+      "spanId": "25d7f5759187cb55",
+      "parentSpanId": "cd09bd16831e1315",
+      "status": "waiting",
+      "payload": {
+        "approvalId": "approval.neg.bypass",
+        "step": 2,
+        "requestedBy": {
+          "id": "user.alice",
+          "type": "user"
+        },
+        "requiredApproverRoleIds": [
+          "manager"
+        ],
+        "permissionClasses": [
+          "read_only"
+        ],
+        "allowSelfApproval": false,
+        "requestFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.98ecfa9e355c9b6bc3310d400ecbfc0f",
+      "traceId": "5273cc45add864955d852b6d71baf293",
+      "runId": "run.eval.bypass",
+      "sequence": 7,
+      "occurredAt": "2026-10-08T12:00:07.000Z",
+      "type": "node.waiting",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "approval",
+      "spanId": "25d7f5759187cb55",
+      "parentSpanId": "cd09bd16831e1315",
+      "status": "waiting",
+      "payload": {
+        "kind": "approval",
+        "step": 2,
+        "waitKind": "approval",
+        "referenceId": "approval.neg.bypass"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.8cc825f559940500f54248814b5e6595",
+      "traceId": "5273cc45add864955d852b6d71baf293",
+      "runId": "run.eval.bypass",
+      "sequence": 8,
+      "occurredAt": "2026-10-08T12:00:08.000Z",
+      "type": "route.selected",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "spanId": "cd09bd16831e1315",
+      "payload": {
+        "sourceNodeId": "approval",
+        "targetNodeId": "lookup",
+        "routeType": "unconditional"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.9bf231fdec24bf9c8cc9c468a4335a55",
+      "traceId": "5273cc45add864955d852b6d71baf293",
+      "runId": "run.eval.bypass",
+      "sequence": 9,
+      "occurredAt": "2026-10-08T12:00:09.000Z",
+      "type": "node.started",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "lookup",
+      "spanId": "689a1ff64bb45532",
+      "parentSpanId": "cd09bd16831e1315",
+      "status": "started",
+      "payload": {
+        "kind": "tool",
+        "step": 3,
+        "attempt": 1,
+        "maxAttempts": 1,
+        "stateRevision": 0,
+        "recoveryReplay": false
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.56233f7ee273e6cc717059c576761d84",
+      "traceId": "5273cc45add864955d852b6d71baf293",
+      "runId": "run.eval.bypass",
+      "sequence": 10,
+      "occurredAt": "2026-10-08T12:00:10.000Z",
+      "type": "tool.call.started",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "lookup",
+      "spanId": "75c2cfd93c5cac8c",
+      "parentSpanId": "689a1ff64bb45532",
+      "status": "started",
+      "payload": {
+        "toolRef": {
+          "id": "local.lookup",
+          "version": "1.0.0"
+        },
+        "toolExecutionId": "tex.bypass.lookup",
+        "attempt": 1,
+        "permissionClasses": [
+          "read_only"
+        ],
+        "access": {
+          "decision": "allow",
+          "principalId": "user.alice",
+          "agentCeilingApplied": false
+        },
+        "recoveryReplay": false
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.6a26b479e66a8acc450c8ec8af7189bd",
+      "traceId": "5273cc45add864955d852b6d71baf293",
+      "runId": "run.eval.bypass",
+      "sequence": 11,
+      "occurredAt": "2026-10-08T12:00:11.000Z",
+      "type": "tool.call.completed",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "lookup",
+      "spanId": "75c2cfd93c5cac8c",
+      "parentSpanId": "689a1ff64bb45532",
+      "status": "succeeded",
+      "payload": {
+        "toolRef": {
+          "id": "local.lookup",
+          "version": "1.0.0"
+        },
+        "toolExecutionId": "tex.bypass.lookup",
+        "attempt": 1,
+        "permissionClasses": [
+          "read_only"
+        ],
+        "result": "success"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.85992224754792138ec5ff1013b46f81",
+      "traceId": "5273cc45add864955d852b6d71baf293",
+      "runId": "run.eval.bypass",
+      "sequence": 12,
+      "occurredAt": "2026-10-08T12:00:12.000Z",
+      "type": "state.updated",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "lookup",
+      "spanId": "689a1ff64bb45532",
+      "parentSpanId": "cd09bd16831e1315",
+      "payload": {
+        "step": 3,
+        "revisionBefore": 1,
+        "revisionAfter": 2,
+        "changedKeys": [
+          "lookupResult"
+        ]
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.a3ee19e1384c1a408f911ceee80cea20",
+      "traceId": "5273cc45add864955d852b6d71baf293",
+      "runId": "run.eval.bypass",
+      "sequence": 13,
+      "occurredAt": "2026-10-08T12:00:13.000Z",
+      "type": "node.completed",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "lookup",
+      "spanId": "689a1ff64bb45532",
+      "parentSpanId": "cd09bd16831e1315",
+      "status": "succeeded",
+      "payload": {
+        "kind": "tool",
+        "step": 3,
+        "attemptCount": 1,
+        "stateRevisionBefore": 1,
+        "stateRevisionAfter": 2,
+        "outcomeSource": "executor"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.f75553d901427734d59f1258ae93531d",
+      "traceId": "5273cc45add864955d852b6d71baf293",
+      "runId": "run.eval.bypass",
+      "sequence": 14,
+      "occurredAt": "2026-10-08T12:00:14.000Z",
+      "type": "route.selected",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "spanId": "cd09bd16831e1315",
+      "payload": {
+        "sourceNodeId": "lookup",
+        "targetNodeId": "final",
+        "routeType": "unconditional"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.36256d60fc0591345f874c6028c05585",
+      "traceId": "5273cc45add864955d852b6d71baf293",
+      "runId": "run.eval.bypass",
+      "sequence": 15,
+      "occurredAt": "2026-10-08T12:00:15.000Z",
+      "type": "node.started",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "final",
+      "spanId": "cf29ad105aab4a56",
+      "parentSpanId": "cd09bd16831e1315",
+      "status": "started",
+      "payload": {
+        "kind": "final_output",
+        "step": 4,
+        "attempt": 1,
+        "maxAttempts": 1,
+        "stateRevision": 0,
+        "recoveryReplay": false
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.9044a80904f710498ab1828f5718f6f5",
+      "traceId": "5273cc45add864955d852b6d71baf293",
+      "runId": "run.eval.bypass",
+      "sequence": 16,
+      "occurredAt": "2026-10-08T12:00:16.000Z",
+      "type": "node.completed",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "final",
+      "spanId": "cf29ad105aab4a56",
+      "parentSpanId": "cd09bd16831e1315",
+      "status": "succeeded",
+      "payload": {
+        "kind": "final_output",
+        "step": 4,
+        "attemptCount": 1,
+        "stateRevisionBefore": 2,
+        "stateRevisionAfter": 2,
+        "outcomeSource": "executor"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.ffa759a4b706b42db650d38789fc9461",
+      "traceId": "5273cc45add864955d852b6d71baf293",
+      "runId": "run.eval.bypass",
+      "sequence": 17,
+      "occurredAt": "2026-10-08T12:00:17.000Z",
+      "type": "run.completed",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "spanId": "cd09bd16831e1315",
+      "status": "succeeded",
+      "payload": {
+        "finalNodeId": "final",
+        "stateRevision": 2,
+        "steps": 4
+      }
+    }
+  ]
+}

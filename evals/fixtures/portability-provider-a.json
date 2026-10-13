@@ -1,0 +1,378 @@
+{
+  "origin": "recorded",
+  "runId": "run.portability.a",
+  "trace": [
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.5f4ee7ad724bc787a23b8791ccd742d5",
+      "traceId": "c06fc261fff428cd4cd9075438da9a34",
+      "runId": "run.portability.a",
+      "sequence": 0,
+      "occurredAt": "2026-10-08T12:00:00.000Z",
+      "type": "run.started",
+      "workflowId": "portability.native",
+      "workflowVersion": "1.0.0",
+      "spanId": "d89bcc49933cd03b",
+      "status": "started",
+      "payload": {
+        "entryNodeId": "summarize",
+        "initialStateRevision": 0,
+        "nodeCount": 3,
+        "reliabilityPolicies": [],
+        "reliabilityPolicyFingerprint": "1769b81ba2e8ef6d3c28a61c6a09d460d44a65519ecab23baf38995b64f327ba"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.e4b1bc2d14a8d57326ed96f9e43ab930",
+      "traceId": "c06fc261fff428cd4cd9075438da9a34",
+      "runId": "run.portability.a",
+      "sequence": 1,
+      "occurredAt": "2026-10-08T12:00:01.000Z",
+      "type": "node.started",
+      "workflowId": "portability.native",
+      "workflowVersion": "1.0.0",
+      "nodeId": "summarize",
+      "spanId": "2e45adfce6719ada",
+      "parentSpanId": "d89bcc49933cd03b",
+      "status": "started",
+      "payload": {
+        "kind": "model",
+        "step": 1,
+        "attempt": 1,
+        "maxAttempts": 1,
+        "stateRevision": 0,
+        "recoveryReplay": false
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.083dab2f6a53213e01bbdf48f430eb28",
+      "traceId": "c06fc261fff428cd4cd9075438da9a34",
+      "runId": "run.portability.a",
+      "sequence": 2,
+      "occurredAt": "2026-10-08T12:00:02.000Z",
+      "type": "model.call.started",
+      "workflowId": "portability.native",
+      "workflowVersion": "1.0.0",
+      "nodeId": "summarize",
+      "spanId": "8c54ed8871cf55d9",
+      "parentSpanId": "2e45adfce6719ada",
+      "status": "started",
+      "payload": {
+        "invocationId": "inv.portability.a",
+        "attempt": 1,
+        "modelPolicyRef": "policy.default",
+        "modelBindingId": "binding.ai-sdk",
+        "outputKind": "text",
+        "requiredCapabilityIds": [],
+        "modelIdentity": {
+          "provider": "provider-a",
+          "model": "model-a"
+        },
+        "recoveryReplay": false
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.33189147047179f5b14a2a805c005466",
+      "traceId": "c06fc261fff428cd4cd9075438da9a34",
+      "runId": "run.portability.a",
+      "sequence": 3,
+      "occurredAt": "2026-10-08T12:00:03.000Z",
+      "type": "model.call.completed",
+      "workflowId": "portability.native",
+      "workflowVersion": "1.0.0",
+      "nodeId": "summarize",
+      "spanId": "8c54ed8871cf55d9",
+      "parentSpanId": "2e45adfce6719ada",
+      "status": "succeeded",
+      "payload": {
+        "invocationId": "inv.portability.a",
+        "attempt": 1,
+        "modelBindingId": "binding.ai-sdk",
+        "outputKind": "text",
+        "finishReason": "stop",
+        "usage": {
+          "inputTokens": 1200,
+          "outputTokens": 300,
+          "totalTokens": 1500
+        },
+        "modelIdentity": {
+          "provider": "provider-a",
+          "model": "model-a"
+        }
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.712ac06af72c1f3ad2dcecb9d2230a11",
+      "traceId": "c06fc261fff428cd4cd9075438da9a34",
+      "runId": "run.portability.a",
+      "sequence": 4,
+      "occurredAt": "2026-10-08T12:00:04.000Z",
+      "type": "state.updated",
+      "workflowId": "portability.native",
+      "workflowVersion": "1.0.0",
+      "nodeId": "summarize",
+      "spanId": "2e45adfce6719ada",
+      "parentSpanId": "d89bcc49933cd03b",
+      "payload": {
+        "step": 1,
+        "revisionBefore": 0,
+        "revisionAfter": 1,
+        "changedKeys": [
+          "summary"
+        ]
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.0e6967e86499fbb4943fa7292132f8d3",
+      "traceId": "c06fc261fff428cd4cd9075438da9a34",
+      "runId": "run.portability.a",
+      "sequence": 5,
+      "occurredAt": "2026-10-08T12:00:05.000Z",
+      "type": "node.completed",
+      "workflowId": "portability.native",
+      "workflowVersion": "1.0.0",
+      "nodeId": "summarize",
+      "spanId": "2e45adfce6719ada",
+      "parentSpanId": "d89bcc49933cd03b",
+      "status": "succeeded",
+      "payload": {
+        "kind": "model",
+        "step": 1,
+        "attemptCount": 1,
+        "stateRevisionBefore": 0,
+        "stateRevisionAfter": 1,
+        "outcomeSource": "executor"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.4539c8e42aa717b003087a96a6f5336d",
+      "traceId": "c06fc261fff428cd4cd9075438da9a34",
+      "runId": "run.portability.a",
+      "sequence": 6,
+      "occurredAt": "2026-10-08T12:00:06.000Z",
+      "type": "route.selected",
+      "workflowId": "portability.native",
+      "workflowVersion": "1.0.0",
+      "spanId": "d89bcc49933cd03b",
+      "payload": {
+        "sourceNodeId": "summarize",
+        "targetNodeId": "lookup",
+        "routeType": "unconditional"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.c5a9466c7e787f98f20e776675cda87a",
+      "traceId": "c06fc261fff428cd4cd9075438da9a34",
+      "runId": "run.portability.a",
+      "sequence": 7,
+      "occurredAt": "2026-10-08T12:00:07.000Z",
+      "type": "node.started",
+      "workflowId": "portability.native",
+      "workflowVersion": "1.0.0",
+      "nodeId": "lookup",
+      "spanId": "8a26f49a74634c2e",
+      "parentSpanId": "d89bcc49933cd03b",
+      "status": "started",
+      "payload": {
+        "kind": "tool",
+        "step": 2,
+        "attempt": 1,
+        "maxAttempts": 1,
+        "stateRevision": 0,
+        "recoveryReplay": false
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.030abd86e1b53840c958897af0bfece5",
+      "traceId": "c06fc261fff428cd4cd9075438da9a34",
+      "runId": "run.portability.a",
+      "sequence": 8,
+      "occurredAt": "2026-10-08T12:00:08.000Z",
+      "type": "tool.call.started",
+      "workflowId": "portability.native",
+      "workflowVersion": "1.0.0",
+      "nodeId": "lookup",
+      "spanId": "9a2f772fa2d7b28f",
+      "parentSpanId": "8a26f49a74634c2e",
+      "status": "started",
+      "payload": {
+        "toolRef": {
+          "id": "local.lookup",
+          "version": "1.0.0"
+        },
+        "toolExecutionId": "tex.native.lookup",
+        "attempt": 1,
+        "permissionClasses": [
+          "read_only"
+        ],
+        "access": {
+          "decision": "allow",
+          "principalId": "user.alice",
+          "agentCeilingApplied": false
+        },
+        "recoveryReplay": false
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.bc1b64703156b973eb339ecc4da663cb",
+      "traceId": "c06fc261fff428cd4cd9075438da9a34",
+      "runId": "run.portability.a",
+      "sequence": 9,
+      "occurredAt": "2026-10-08T12:00:09.000Z",
+      "type": "tool.call.completed",
+      "workflowId": "portability.native",
+      "workflowVersion": "1.0.0",
+      "nodeId": "lookup",
+      "spanId": "9a2f772fa2d7b28f",
+      "parentSpanId": "8a26f49a74634c2e",
+      "status": "succeeded",
+      "payload": {
+        "toolRef": {
+          "id": "local.lookup",
+          "version": "1.0.0"
+        },
+        "toolExecutionId": "tex.native.lookup",
+        "attempt": 1,
+        "permissionClasses": [
+          "read_only"
+        ],
+        "result": "success"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.eb69bdaec00c81ddb2231cb5de659a01",
+      "traceId": "c06fc261fff428cd4cd9075438da9a34",
+      "runId": "run.portability.a",
+      "sequence": 10,
+      "occurredAt": "2026-10-08T12:00:10.000Z",
+      "type": "state.updated",
+      "workflowId": "portability.native",
+      "workflowVersion": "1.0.0",
+      "nodeId": "lookup",
+      "spanId": "8a26f49a74634c2e",
+      "parentSpanId": "d89bcc49933cd03b",
+      "payload": {
+        "step": 2,
+        "revisionBefore": 1,
+        "revisionAfter": 2,
+        "changedKeys": [
+          "lookupResult"
+        ]
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.eb67a16582f5641d7316ccd12bccb270",
+      "traceId": "c06fc261fff428cd4cd9075438da9a34",
+      "runId": "run.portability.a",
+      "sequence": 11,
+      "occurredAt": "2026-10-08T12:00:11.000Z",
+      "type": "node.completed",
+      "workflowId": "portability.native",
+      "workflowVersion": "1.0.0",
+      "nodeId": "lookup",
+      "spanId": "8a26f49a74634c2e",
+      "parentSpanId": "d89bcc49933cd03b",
+      "status": "succeeded",
+      "payload": {
+        "kind": "tool",
+        "step": 2,
+        "attemptCount": 1,
+        "stateRevisionBefore": 1,
+        "stateRevisionAfter": 2,
+        "outcomeSource": "executor"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.9faaaae9dc35e8605c8fe4cad757203e",
+      "traceId": "c06fc261fff428cd4cd9075438da9a34",
+      "runId": "run.portability.a",
+      "sequence": 12,
+      "occurredAt": "2026-10-08T12:00:12.000Z",
+      "type": "route.selected",
+      "workflowId": "portability.native",
+      "workflowVersion": "1.0.0",
+      "spanId": "d89bcc49933cd03b",
+      "payload": {
+        "sourceNodeId": "lookup",
+        "targetNodeId": "final",
+        "routeType": "unconditional"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.fa8062ddc00e17a68f4b541e75fdf432",
+      "traceId": "c06fc261fff428cd4cd9075438da9a34",
+      "runId": "run.portability.a",
+      "sequence": 13,
+      "occurredAt": "2026-10-08T12:00:13.000Z",
+      "type": "node.started",
+      "workflowId": "portability.native",
+      "workflowVersion": "1.0.0",
+      "nodeId": "final",
+      "spanId": "863ff4fccbd04817",
+      "parentSpanId": "d89bcc49933cd03b",
+      "status": "started",
+      "payload": {
+        "kind": "final_output",
+        "step": 3,
+        "attempt": 1,
+        "maxAttempts": 1,
+        "stateRevision": 0,
+        "recoveryReplay": false
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.99a24a89b3f4aa154ea1e54070fa3c0e",
+      "traceId": "c06fc261fff428cd4cd9075438da9a34",
+      "runId": "run.portability.a",
+      "sequence": 14,
+      "occurredAt": "2026-10-08T12:00:14.000Z",
+      "type": "node.completed",
+      "workflowId": "portability.native",
+      "workflowVersion": "1.0.0",
+      "nodeId": "final",
+      "spanId": "863ff4fccbd04817",
+      "parentSpanId": "d89bcc49933cd03b",
+      "status": "succeeded",
+      "payload": {
+        "kind": "final_output",
+        "step": 3,
+        "attemptCount": 1,
+        "stateRevisionBefore": 2,
+        "stateRevisionAfter": 2,
+        "outcomeSource": "executor"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.7d9029d243e5961b4452f66d1358dc8c",
+      "traceId": "c06fc261fff428cd4cd9075438da9a34",
+      "runId": "run.portability.a",
+      "sequence": 15,
+      "occurredAt": "2026-10-08T12:00:15.000Z",
+      "type": "run.completed",
+      "workflowId": "portability.native",
+      "workflowVersion": "1.0.0",
+      "spanId": "d89bcc49933cd03b",
+      "status": "succeeded",
+      "payload": {
+        "finalNodeId": "final",
+        "stateRevision": 2,
+        "steps": 3
+      }
+    }
+  ]
+}

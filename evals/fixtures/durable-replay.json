@@ -1,0 +1,553 @@
+{
+  "origin": "recorded",
+  "runId": "run.eval.replay",
+  "trace": [
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.473c18e10f4fd0765a8e819056055773",
+      "traceId": "4478980bb662ac6684fbf3fbc3eaedd6",
+      "runId": "run.eval.replay",
+      "sequence": 0,
+      "occurredAt": "2026-10-08T12:00:00.000Z",
+      "type": "run.started",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "spanId": "38526baca45f161b",
+      "status": "started",
+      "payload": {
+        "entryNodeId": "draft",
+        "initialStateRevision": 0,
+        "nodeCount": 2,
+        "reliabilityPolicies": [],
+        "reliabilityPolicyFingerprint": "1769b81ba2e8ef6d3c28a61c6a09d460d44a65519ecab23baf38995b64f327ba"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.936a1ebb9ff5e16ca1350054c04c24bf",
+      "traceId": "4478980bb662ac6684fbf3fbc3eaedd6",
+      "runId": "run.eval.replay",
+      "sequence": 1,
+      "occurredAt": "2026-10-08T12:00:01.000Z",
+      "type": "checkpoint.created",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "spanId": "38526baca45f161b",
+      "payload": {
+        "checkpointId": "checkpoint.000000",
+        "checkpointSequence": 0,
+        "runStatus": "RUNNING",
+        "stateRevision": 0,
+        "step": 0,
+        "planFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.669c2118fd8cc6616eceb482c300ddb7",
+      "traceId": "4478980bb662ac6684fbf3fbc3eaedd6",
+      "runId": "run.eval.replay",
+      "sequence": 2,
+      "occurredAt": "2026-10-08T12:00:02.000Z",
+      "type": "node.started",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "draft",
+      "spanId": "bf9576fc7324e021",
+      "parentSpanId": "38526baca45f161b",
+      "status": "started",
+      "payload": {
+        "kind": "tool",
+        "step": 1,
+        "attempt": 1,
+        "maxAttempts": 1,
+        "stateRevision": 0,
+        "recoveryReplay": false
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.7daed8eae47da8fa9befc55be4cf582a",
+      "traceId": "4478980bb662ac6684fbf3fbc3eaedd6",
+      "runId": "run.eval.replay",
+      "sequence": 3,
+      "occurredAt": "2026-10-08T12:00:03.000Z",
+      "type": "tool.call.started",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "draft",
+      "spanId": "0a75f32742cec942",
+      "parentSpanId": "bf9576fc7324e021",
+      "status": "started",
+      "payload": {
+        "toolRef": {
+          "id": "local.lookup",
+          "version": "1.0.0"
+        },
+        "toolExecutionId": "tex.replay.draft",
+        "attempt": 1,
+        "permissionClasses": [
+          "write_draft"
+        ],
+        "access": {
+          "decision": "allow",
+          "principalId": "user.alice",
+          "agentCeilingApplied": false
+        },
+        "recoveryReplay": false
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.a77cde078c375cb2ca626e4712364ddd",
+      "traceId": "4478980bb662ac6684fbf3fbc3eaedd6",
+      "runId": "run.eval.replay",
+      "sequence": 4,
+      "occurredAt": "2026-10-08T12:00:10.000Z",
+      "type": "failure.detected",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "spanId": "38526baca45f161b",
+      "payload": {
+        "source": "durability",
+        "code": "DURABILITY_IO_FAILED"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.33eb97557aaa1135a7a022cd192095bc",
+      "traceId": "4478980bb662ac6684fbf3fbc3eaedd6",
+      "runId": "run.eval.replay",
+      "sequence": 5,
+      "occurredAt": "2026-10-08T12:00:11.000Z",
+      "type": "recovery.started",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "spanId": "38526baca45f161b",
+      "payload": {
+        "checkpointId": "checkpoint.000000",
+        "checkpointSequence": 0,
+        "runStatus": "RUNNING",
+        "stateRevision": 0
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.b1b935160bd42aa870e0e7521646b2c2",
+      "traceId": "4478980bb662ac6684fbf3fbc3eaedd6",
+      "runId": "run.eval.replay",
+      "sequence": 6,
+      "occurredAt": "2026-10-08T12:00:12.000Z",
+      "type": "recovery.replayed",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "spanId": "38526baca45f161b",
+      "payload": {
+        "operationId": "op.s1.a1",
+        "step": 1,
+        "attempt": 1,
+        "recoveryReplayCount": 1
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.ca364f4e2f0c3969cf11cd0d76f24497",
+      "traceId": "4478980bb662ac6684fbf3fbc3eaedd6",
+      "runId": "run.eval.replay",
+      "sequence": 7,
+      "occurredAt": "2026-10-08T12:00:13.000Z",
+      "type": "node.started",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "draft",
+      "spanId": "bf9576fc7324e021",
+      "parentSpanId": "38526baca45f161b",
+      "status": "started",
+      "payload": {
+        "kind": "tool",
+        "step": 1,
+        "attempt": 1,
+        "maxAttempts": 1,
+        "stateRevision": 0,
+        "recoveryReplay": true
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.c8112dc53dab57a6b43b1d57f6755b83",
+      "traceId": "4478980bb662ac6684fbf3fbc3eaedd6",
+      "runId": "run.eval.replay",
+      "sequence": 8,
+      "occurredAt": "2026-10-08T12:00:14.000Z",
+      "type": "tool.call.started",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "draft",
+      "spanId": "0a75f32742cec942",
+      "parentSpanId": "bf9576fc7324e021",
+      "status": "started",
+      "payload": {
+        "toolRef": {
+          "id": "local.lookup",
+          "version": "1.0.0"
+        },
+        "toolExecutionId": "tex.replay.draft",
+        "attempt": 1,
+        "permissionClasses": [
+          "write_draft"
+        ],
+        "access": {
+          "decision": "allow",
+          "principalId": "user.alice",
+          "agentCeilingApplied": false
+        },
+        "recoveryReplay": true
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.50683f8c731a44d2653433781990a462",
+      "traceId": "4478980bb662ac6684fbf3fbc3eaedd6",
+      "runId": "run.eval.replay",
+      "sequence": 9,
+      "occurredAt": "2026-10-08T12:00:15.000Z",
+      "type": "tool.call.completed",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "draft",
+      "spanId": "0a75f32742cec942",
+      "parentSpanId": "bf9576fc7324e021",
+      "status": "succeeded",
+      "payload": {
+        "toolRef": {
+          "id": "local.lookup",
+          "version": "1.0.0"
+        },
+        "toolExecutionId": "tex.replay.draft",
+        "attempt": 1,
+        "permissionClasses": [
+          "write_draft"
+        ],
+        "result": "success"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.222ed6d4a64f1d966040a781f67ed22b",
+      "traceId": "4478980bb662ac6684fbf3fbc3eaedd6",
+      "runId": "run.eval.replay",
+      "sequence": 10,
+      "occurredAt": "2026-10-08T12:00:16.000Z",
+      "type": "state.updated",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "draft",
+      "spanId": "bf9576fc7324e021",
+      "parentSpanId": "38526baca45f161b",
+      "payload": {
+        "step": 1,
+        "revisionBefore": 0,
+        "revisionAfter": 1,
+        "changedKeys": [
+          "draft"
+        ]
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.0a9dcefe2f62b57e9bfe5460bf2586fe",
+      "traceId": "4478980bb662ac6684fbf3fbc3eaedd6",
+      "runId": "run.eval.replay",
+      "sequence": 11,
+      "occurredAt": "2026-10-08T12:00:17.000Z",
+      "type": "node.completed",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "draft",
+      "spanId": "bf9576fc7324e021",
+      "parentSpanId": "38526baca45f161b",
+      "status": "succeeded",
+      "payload": {
+        "kind": "tool",
+        "step": 1,
+        "attemptCount": 1,
+        "stateRevisionBefore": 0,
+        "stateRevisionAfter": 1,
+        "outcomeSource": "executor"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.6516828f92337d3cc5e74a24827d935f",
+      "traceId": "4478980bb662ac6684fbf3fbc3eaedd6",
+      "runId": "run.eval.replay",
+      "sequence": 12,
+      "occurredAt": "2026-10-08T12:00:18.000Z",
+      "type": "recovery.completed",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "spanId": "38526baca45f161b",
+      "payload": {
+        "fromCheckpointSequence": 0,
+        "toCheckpointSequence": 1
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.87be779bc08c42298ccbed5e07a0612d",
+      "traceId": "4478980bb662ac6684fbf3fbc3eaedd6",
+      "runId": "run.eval.replay",
+      "sequence": 13,
+      "occurredAt": "2026-10-08T12:00:19.000Z",
+      "type": "route.selected",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "spanId": "38526baca45f161b",
+      "payload": {
+        "sourceNodeId": "draft",
+        "targetNodeId": "final",
+        "routeType": "unconditional"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.a3835c76dadbeb061b3d028bc8681c73",
+      "traceId": "4478980bb662ac6684fbf3fbc3eaedd6",
+      "runId": "run.eval.replay",
+      "sequence": 14,
+      "occurredAt": "2026-10-08T12:00:20.000Z",
+      "type": "node.started",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "final",
+      "spanId": "95bff1c774fd28d3",
+      "parentSpanId": "38526baca45f161b",
+      "status": "started",
+      "payload": {
+        "kind": "final_output",
+        "step": 2,
+        "attempt": 1,
+        "maxAttempts": 1,
+        "stateRevision": 0,
+        "recoveryReplay": false
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.0c1224f289b47ce834dcbf5afa606142",
+      "traceId": "4478980bb662ac6684fbf3fbc3eaedd6",
+      "runId": "run.eval.replay",
+      "sequence": 15,
+      "occurredAt": "2026-10-08T12:00:21.000Z",
+      "type": "node.completed",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "final",
+      "spanId": "95bff1c774fd28d3",
+      "parentSpanId": "38526baca45f161b",
+      "status": "succeeded",
+      "payload": {
+        "kind": "final_output",
+        "step": 2,
+        "attemptCount": 1,
+        "stateRevisionBefore": 1,
+        "stateRevisionAfter": 1,
+        "outcomeSource": "executor"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.7389d81ff48555b70d5fe17cc9b6bcf9",
+      "traceId": "4478980bb662ac6684fbf3fbc3eaedd6",
+      "runId": "run.eval.replay",
+      "sequence": 16,
+      "occurredAt": "2026-10-08T12:00:22.000Z",
+      "type": "run.completed",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "spanId": "38526baca45f161b",
+      "status": "succeeded",
+      "payload": {
+        "finalNodeId": "final",
+        "stateRevision": 1,
+        "steps": 2
+      }
+    }
+  ],
+  "metrics": {
+    "schemaVersion": 1,
+    "runId": "run.eval.replay",
+    "traceId": "4478980bb662ac6684fbf3fbc3eaedd6",
+    "workflowId": "eval.synthetic",
+    "workflowVersion": "1.0.0",
+    "dimensions": {
+      "reliabilityPolicyFingerprint": "1769b81ba2e8ef6d3c28a61c6a09d460d44a65519ecab23baf38995b64f327ba"
+    },
+    "runStatus": "COMPLETED",
+    "traceQuality": {
+      "status": "complete",
+      "issues": []
+    },
+    "startedAt": "2026-10-08T12:00:00.000Z",
+    "endedAt": "2026-10-08T12:00:22.000Z",
+    "durationMs": 22000,
+    "approvalWaitDurationMs": 0,
+    "durationExcludingApprovalWaitMs": 22000,
+    "steps": 2,
+    "nodes": {
+      "executions": 2,
+      "attempts": 2,
+      "recoveryReplayAttempts": 1,
+      "completed": 2,
+      "failed": 0,
+      "waiting": 0,
+      "attemptDetails": [
+        {
+          "nodeId": "draft",
+          "kind": "tool",
+          "step": 1,
+          "attempt": 1,
+          "recoveryReplay": false,
+          "outcome": "open",
+          "startedAt": "2026-10-08T12:00:02.000Z",
+          "durationMs": null,
+          "waitDurationMs": null
+        },
+        {
+          "nodeId": "draft",
+          "kind": "tool",
+          "step": 1,
+          "attempt": 1,
+          "recoveryReplay": true,
+          "outcome": "completed",
+          "startedAt": "2026-10-08T12:00:13.000Z",
+          "durationMs": 4000,
+          "waitDurationMs": null
+        },
+        {
+          "nodeId": "final",
+          "kind": "final_output",
+          "step": 2,
+          "attempt": 1,
+          "recoveryReplay": false,
+          "outcome": "completed",
+          "startedAt": "2026-10-08T12:00:20.000Z",
+          "durationMs": 1000,
+          "waitDurationMs": null
+        }
+      ],
+      "byNode": [
+        {
+          "nodeId": "draft",
+          "kind": "tool",
+          "executions": 1,
+          "attempts": 1,
+          "completed": 1,
+          "failed": 0,
+          "waits": 0,
+          "attemptDurationMsTotal": null
+        },
+        {
+          "nodeId": "final",
+          "kind": "final_output",
+          "executions": 1,
+          "attempts": 1,
+          "completed": 1,
+          "failed": 0,
+          "waits": 0,
+          "attemptDurationMsTotal": 1000
+        }
+      ]
+    },
+    "retries": {
+      "scheduled": 0,
+      "exhausted": 0,
+      "nodesRetried": 0
+    },
+    "models": {
+      "callsStarted": 0,
+      "callsCompleted": 0,
+      "callsFailed": 0,
+      "byModel": []
+    },
+    "agents": {
+      "executions": 0,
+      "iterations": 0,
+      "completed": 0,
+      "failed": 0
+    },
+    "tools": {
+      "physicalInvocations": 2,
+      "logicalExecutions": 1,
+      "completed": 1,
+      "failed": 0,
+      "blocked": 0,
+      "byTool": [
+        {
+          "toolId": "local.lookup",
+          "toolVersion": "1.0.0",
+          "physicalInvocations": 2,
+          "logicalExecutions": 1,
+          "completed": 1,
+          "failed": 0,
+          "blocked": 0
+        }
+      ]
+    },
+    "approvals": {
+      "requested": 0,
+      "approved": 0,
+      "rejected": 0,
+      "expired": 0,
+      "cancelled": 0,
+      "pending": 0
+    },
+    "durability": {
+      "checkpointsCreated": 1,
+      "recoveryStarts": 1,
+      "recoveryReplays": 1,
+      "reusedOutcomes": 0,
+      "recoveryBlocks": 0,
+      "recoveryCompletions": 1
+    },
+    "cancellation": {
+      "requested": false,
+      "applied": false
+    },
+    "state": {
+      "updates": 1,
+      "finalStateRevision": 1
+    },
+    "tokenUsage": {
+      "status": "complete",
+      "modelCallsCompleted": 0,
+      "modelCallsFailed": 0,
+      "callsWithUsage": 0,
+      "callsWithoutUsage": 0,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "totalTokens": 0,
+      "knownInputTokens": 0,
+      "knownOutputTokens": 0,
+      "knownTotalTokens": 0
+    },
+    "cost": {
+      "status": "complete",
+      "currency": null,
+      "estimatedCostNanos": 0,
+      "knownEstimatedCostNanos": 0,
+      "pricedCalls": 0,
+      "unpricedCalls": 0,
+      "unpricedReasons": [],
+      "pricingProfiles": []
+    },
+    "failures": {
+      "failedAttempts": 0,
+      "uncategorizedAttempts": 0,
+      "byCategory": [],
+      "byCode": [],
+      "detectedEvents": 1,
+      "runFailure": null
+    }
+  }
+}

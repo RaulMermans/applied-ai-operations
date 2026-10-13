@@ -1,0 +1,115 @@
+{
+  "origin": "recorded",
+  "runId": "run.eval.flagship",
+  "execution": {
+    "run": {
+      "schemaVersion": 1,
+      "runId": "run.eval.flagship",
+      "workflowId": "eval.flagship",
+      "workflowVersion": "1.0.0",
+      "status": "COMPLETED",
+      "createdAt": "2026-10-08T12:00:00.000Z",
+      "updatedAt": "2026-10-08T12:00:12.000Z"
+    },
+    "state": {
+      "runId": "run.eval.flagship",
+      "revision": 2,
+      "values": {
+        "proposal": {
+          "action": "lookup",
+          "target": "account-a",
+          "note": "FIXTURE_APPROVAL_SUBJECT_password_hunter2"
+        },
+        "internal": {
+          "credential": "FIXTURE_STATE_SECRET_DO_NOT_PERSIST"
+        },
+        "lookupResult": {
+          "schemaVersion": 1,
+          "toolExecutionId": "tool.2f107e026060a390d7c81670e4f5fad525a149b1788bedbb56bf100f03611e87",
+          "toolRef": {
+            "id": "local.lookup",
+            "version": "1.0.0"
+          },
+          "output": {
+            "account": "account-a",
+            "apiKeyEcho": "FIXTURE_TOOL_OUTPUT_SECRET_api_key_0123"
+          }
+        }
+      }
+    },
+    "nodeStatusesById": {
+      "prepare": "SUCCEEDED",
+      "approval": "SUCCEEDED",
+      "lookup": "SUCCEEDED",
+      "final": "SUCCEEDED"
+    },
+    "step": 4,
+    "history": [
+      {
+        "nodeId": "prepare",
+        "kind": "deterministic",
+        "step": 1,
+        "status": "SUCCEEDED",
+        "stateRevisionBefore": 0,
+        "stateRevisionAfter": 1,
+        "attemptCount": 1
+      },
+      {
+        "nodeId": "approval",
+        "kind": "approval",
+        "step": 2,
+        "status": "SUCCEEDED",
+        "stateRevisionBefore": 1,
+        "stateRevisionAfter": 1,
+        "attemptCount": 1
+      },
+      {
+        "nodeId": "lookup",
+        "kind": "tool",
+        "step": 3,
+        "status": "SUCCEEDED",
+        "stateRevisionBefore": 1,
+        "stateRevisionAfter": 2,
+        "attemptCount": 2,
+        "attemptFailures": [
+          {
+            "attempt": 1,
+            "category": "TRANSIENT_DEPENDENCY",
+            "causeCode": "TOOL_EXECUTION_FAILED"
+          }
+        ]
+      },
+      {
+        "nodeId": "final",
+        "kind": "final_output",
+        "step": 4,
+        "status": "SUCCEEDED",
+        "output": {
+          "proposal": {
+            "action": "lookup",
+            "target": "account-a",
+            "note": "FIXTURE_APPROVAL_SUBJECT_password_hunter2"
+          },
+          "internal": {
+            "credential": "FIXTURE_STATE_SECRET_DO_NOT_PERSIST"
+          },
+          "lookupResult": {
+            "schemaVersion": 1,
+            "toolExecutionId": "tool.2f107e026060a390d7c81670e4f5fad525a149b1788bedbb56bf100f03611e87",
+            "toolRef": {
+              "id": "local.lookup",
+              "version": "1.0.0"
+            },
+            "output": {
+              "account": "account-a",
+              "apiKeyEcho": "FIXTURE_TOOL_OUTPUT_SECRET_api_key_0123"
+            }
+          }
+        },
+        "stateRevisionBefore": 2,
+        "stateRevisionAfter": 2,
+        "attemptCount": 1
+      }
+    ]
+  }
+}

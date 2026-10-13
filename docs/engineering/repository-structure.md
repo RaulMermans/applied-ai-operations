@@ -19,10 +19,12 @@ packages/
   approval/                @aao/approval — human approval engine, repository port, and node executor (Sprint 12; durable-capable Sprint 14)
   durability/              @aao/durability — durable checkpoints, operation ledger, crash recovery, file store, durable host (Sprint 14)
   observability/           @aao/observability — Trace Runtime (Sprint 15); Trace-derived Metrics and hash-chained Audit (Sprint 16)
+  evaluation/              @aao/evaluation — Evaluation Runtime: Evaluator Registry, deterministic graders, datasets, model-judge port (Sprint 17)
   mcp-connector/           @aao/mcp-connector — stdio sessions, discovery, explicit governed Tool bindings (Sprint 10)
   substrate-contracts/     research evidence, not production architecture
   substrate-spikes/        research evidence, not production architecture
 
+evals/                versioned Eval definitions, datasets, and canonical evidence fixtures (Sprint 17)
 experiments/          research notes accompanying the substrate spikes
 docs/                  architecture contract, ADRs, and engineering docs
 ```
@@ -124,3 +126,17 @@ The evidence layer: Trace (Sprint 15), Metrics and Audit (Sprint 16). It contain
 - compiled smokes in `smoke/` (Sprint 15 Trace) and `smoke/sprint16/` (Metrics + Audit).
 
 Its production dependencies are `@aao/contracts` and `zod` only, and no execution package depends on it. Approval, Tool Runtime, and Durability emit Audit only through the contracts `AuditPort`. See [ADR-020](../decisions/ADR-020-trace-runtime-and-observability-boundary.md), [ADR-021](../decisions/ADR-021-metrics-and-audit-boundaries.md), [trace runtime](../architecture/trace-runtime.md), [metrics](../architecture/metrics.md), and [audit](../architecture/audit.md).
+
+### `packages/evaluation`
+
+The Evaluation Runtime (Sprint 17). It contains:
+
+- `src/evidence.ts` — the `EvalEvidenceBundle` boundary, defensive deep-freeze, the evidence fingerprint, and opaque evidence references;
+- `src/registry.ts` — the constructible, version-exact Evaluator Registry;
+- `src/runner.ts` — `evaluate()`, deterministic result identity, and the defensive grader boundary;
+- `src/dataset.ts` — the YAML/JSON dataset and definition loaders, validation, the sequential `runEvalDataset`, and the static `EvidenceResolver`;
+- `src/graders/` — nine deterministic graders plus the optional `ModelJudgePort` grader;
+- tests for contracts, registry, graders, datasets, model judge, Runtime E2E, portability, privacy, non-authority, and dependency boundaries;
+- a compiled smoke in `smoke/`.
+
+Its production dependencies are `@aao/contracts`, `@aao/observability` (canonical validators only), `yaml`, and `zod`. No execution package depends on it, and it touches no filesystem or network. The committed definitions, datasets, and fixtures live in [`evals/`](../../evals/README.md). See [ADR-022](../decisions/ADR-022-evaluation-runtime-and-portable-verification.md) and [evaluation runtime](../architecture/evaluation-runtime.md).

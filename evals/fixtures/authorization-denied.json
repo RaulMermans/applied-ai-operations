@@ -1,0 +1,390 @@
+{
+  "origin": "recorded",
+  "runId": "run.eval.denied",
+  "trace": [
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.2bf8133e109cc4badc8e9f0a06494127",
+      "traceId": "c6a8cb5b273eb3b6acd8c392a7d20761",
+      "runId": "run.eval.denied",
+      "sequence": 0,
+      "occurredAt": "2026-10-08T12:00:00.000Z",
+      "type": "run.started",
+      "workflowId": "eval.tool",
+      "workflowVersion": "1.0.0",
+      "spanId": "6caca4eb70f74944",
+      "status": "started",
+      "payload": {
+        "entryNodeId": "lookup",
+        "initialStateRevision": 0,
+        "nodeCount": 2,
+        "reliabilityPolicies": [
+          {
+            "maxAttempts": 3,
+            "nodeId": "lookup"
+          }
+        ],
+        "reliabilityPolicyFingerprint": "8e623c73002528598e0980b05f0ae2428dfcd9b6d45bab10931ff34a826c9d0d"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.b26391e38c4ed9ff60dd935b8b078a4f",
+      "traceId": "c6a8cb5b273eb3b6acd8c392a7d20761",
+      "runId": "run.eval.denied",
+      "sequence": 1,
+      "occurredAt": "2026-10-08T12:00:01.000Z",
+      "type": "node.started",
+      "workflowId": "eval.tool",
+      "workflowVersion": "1.0.0",
+      "nodeId": "lookup",
+      "spanId": "d14f29e8f9729822",
+      "parentSpanId": "6caca4eb70f74944",
+      "status": "started",
+      "payload": {
+        "kind": "tool",
+        "step": 1,
+        "attempt": 1,
+        "maxAttempts": 3,
+        "stateRevision": 0,
+        "recoveryReplay": false
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.306b650604e6c49f88b72cd846b462e1",
+      "traceId": "c6a8cb5b273eb3b6acd8c392a7d20761",
+      "runId": "run.eval.denied",
+      "sequence": 2,
+      "occurredAt": "2026-10-08T12:00:02.000Z",
+      "type": "tool.call.blocked",
+      "workflowId": "eval.tool",
+      "workflowVersion": "1.0.0",
+      "nodeId": "lookup",
+      "spanId": "9919eb1e3a373e45",
+      "parentSpanId": "d14f29e8f9729822",
+      "status": "blocked",
+      "payload": {
+        "toolRef": {
+          "id": "local.lookup",
+          "version": "1.0.0"
+        },
+        "toolExecutionId": "tool.35a646e130c8cd8d060f681f880ed6088a14adb7198e3736b3ff0b5433928f74",
+        "attempt": 1,
+        "code": "TOOL_AUTHORIZATION_DENIED",
+        "category": "AUTHORIZATION",
+        "permissionClasses": [
+          "read_only"
+        ],
+        "access": {
+          "decision": "deny",
+          "reasonCode": "PERMISSION_NOT_GRANTED"
+        }
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.7fa6547fc8bc92b61d9c2c08400abb45",
+      "traceId": "c6a8cb5b273eb3b6acd8c392a7d20761",
+      "runId": "run.eval.denied",
+      "sequence": 3,
+      "occurredAt": "2026-10-08T12:00:03.000Z",
+      "type": "node.failed",
+      "workflowId": "eval.tool",
+      "workflowVersion": "1.0.0",
+      "nodeId": "lookup",
+      "spanId": "d14f29e8f9729822",
+      "parentSpanId": "6caca4eb70f74944",
+      "status": "failed",
+      "payload": {
+        "kind": "tool",
+        "step": 1,
+        "attemptCount": 1,
+        "code": "NODE_EXECUTION_FAILED",
+        "category": "AUTHORIZATION",
+        "retryable": false,
+        "executorFailure": {
+          "namespace": "tool",
+          "code": "TOOL_AUTHORIZATION_DENIED"
+        }
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.0052d36d595d7263b8010da0025a97ad",
+      "traceId": "c6a8cb5b273eb3b6acd8c392a7d20761",
+      "runId": "run.eval.denied",
+      "sequence": 4,
+      "occurredAt": "2026-10-08T12:00:04.000Z",
+      "type": "failure.detected",
+      "workflowId": "eval.tool",
+      "workflowVersion": "1.0.0",
+      "nodeId": "lookup",
+      "spanId": "6caca4eb70f74944",
+      "payload": {
+        "source": "runtime",
+        "code": "NODE_EXECUTION_FAILED",
+        "category": "AUTHORIZATION",
+        "step": 1,
+        "attempt": 1,
+        "executorFailure": {
+          "namespace": "tool",
+          "code": "TOOL_AUTHORIZATION_DENIED"
+        }
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.896fdaeface5ca95931554eabcdf72cc",
+      "traceId": "c6a8cb5b273eb3b6acd8c392a7d20761",
+      "runId": "run.eval.denied",
+      "sequence": 5,
+      "occurredAt": "2026-10-08T12:00:05.000Z",
+      "type": "run.failed",
+      "workflowId": "eval.tool",
+      "workflowVersion": "1.0.0",
+      "spanId": "6caca4eb70f74944",
+      "status": "failed",
+      "payload": {
+        "code": "NODE_EXECUTION_FAILED",
+        "category": "AUTHORIZATION",
+        "nodeId": "lookup",
+        "stateRevision": 0,
+        "steps": 1
+      }
+    }
+  ],
+  "execution": {
+    "run": {
+      "schemaVersion": 1,
+      "runId": "run.eval.denied",
+      "workflowId": "eval.tool",
+      "workflowVersion": "1.0.0",
+      "status": "FAILED",
+      "createdAt": "2026-10-08T12:00:00.000Z",
+      "updatedAt": "2026-10-08T12:00:05.000Z"
+    },
+    "state": {
+      "runId": "run.eval.denied",
+      "revision": 0,
+      "values": {
+        "proposal": {
+          "q": "x"
+        }
+      }
+    },
+    "nodeStatusesById": {
+      "lookup": "FAILED",
+      "final": "PENDING"
+    },
+    "step": 1,
+    "history": [
+      {
+        "nodeId": "lookup",
+        "kind": "tool",
+        "step": 1,
+        "status": "FAILED",
+        "stateRevisionBefore": 0,
+        "stateRevisionAfter": 0,
+        "attemptCount": 1,
+        "attemptFailures": [
+          {
+            "attempt": 1,
+            "category": "AUTHORIZATION",
+            "causeCode": "TOOL_AUTHORIZATION_DENIED"
+          }
+        ]
+      }
+    ]
+  },
+  "metrics": {
+    "schemaVersion": 1,
+    "runId": "run.eval.denied",
+    "traceId": "c6a8cb5b273eb3b6acd8c392a7d20761",
+    "workflowId": "eval.tool",
+    "workflowVersion": "1.0.0",
+    "dimensions": {
+      "reliabilityPolicyFingerprint": "8e623c73002528598e0980b05f0ae2428dfcd9b6d45bab10931ff34a826c9d0d"
+    },
+    "runStatus": "FAILED",
+    "traceQuality": {
+      "status": "complete",
+      "issues": []
+    },
+    "startedAt": "2026-10-08T12:00:00.000Z",
+    "endedAt": "2026-10-08T12:00:05.000Z",
+    "durationMs": 5000,
+    "approvalWaitDurationMs": 0,
+    "durationExcludingApprovalWaitMs": 5000,
+    "steps": 1,
+    "nodes": {
+      "executions": 1,
+      "attempts": 1,
+      "recoveryReplayAttempts": 0,
+      "completed": 0,
+      "failed": 1,
+      "waiting": 0,
+      "attemptDetails": [
+        {
+          "nodeId": "lookup",
+          "kind": "tool",
+          "step": 1,
+          "attempt": 1,
+          "recoveryReplay": false,
+          "outcome": "failed",
+          "startedAt": "2026-10-08T12:00:01.000Z",
+          "durationMs": 2000,
+          "waitDurationMs": null
+        }
+      ],
+      "byNode": [
+        {
+          "nodeId": "lookup",
+          "kind": "tool",
+          "executions": 1,
+          "attempts": 1,
+          "completed": 0,
+          "failed": 1,
+          "waits": 0,
+          "attemptDurationMsTotal": 2000
+        }
+      ]
+    },
+    "retries": {
+      "scheduled": 0,
+      "exhausted": 0,
+      "nodesRetried": 0
+    },
+    "models": {
+      "callsStarted": 0,
+      "callsCompleted": 0,
+      "callsFailed": 0,
+      "byModel": []
+    },
+    "agents": {
+      "executions": 0,
+      "iterations": 0,
+      "completed": 0,
+      "failed": 0
+    },
+    "tools": {
+      "physicalInvocations": 0,
+      "logicalExecutions": 0,
+      "completed": 0,
+      "failed": 0,
+      "blocked": 1,
+      "byTool": [
+        {
+          "toolId": "local.lookup",
+          "toolVersion": "1.0.0",
+          "physicalInvocations": 0,
+          "logicalExecutions": 0,
+          "completed": 0,
+          "failed": 0,
+          "blocked": 1
+        }
+      ]
+    },
+    "approvals": {
+      "requested": 0,
+      "approved": 0,
+      "rejected": 0,
+      "expired": 0,
+      "cancelled": 0,
+      "pending": 0
+    },
+    "durability": {
+      "checkpointsCreated": 0,
+      "recoveryStarts": 0,
+      "recoveryReplays": 0,
+      "reusedOutcomes": 0,
+      "recoveryBlocks": 0,
+      "recoveryCompletions": 0
+    },
+    "cancellation": {
+      "requested": false,
+      "applied": false
+    },
+    "state": {
+      "updates": 0,
+      "finalStateRevision": 0
+    },
+    "tokenUsage": {
+      "status": "complete",
+      "modelCallsCompleted": 0,
+      "modelCallsFailed": 0,
+      "callsWithUsage": 0,
+      "callsWithoutUsage": 0,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "totalTokens": 0,
+      "knownInputTokens": 0,
+      "knownOutputTokens": 0,
+      "knownTotalTokens": 0
+    },
+    "cost": {
+      "status": "complete",
+      "currency": null,
+      "estimatedCostNanos": 0,
+      "knownEstimatedCostNanos": 0,
+      "pricedCalls": 0,
+      "unpricedCalls": 0,
+      "unpricedReasons": [],
+      "pricingProfiles": []
+    },
+    "failures": {
+      "failedAttempts": 1,
+      "uncategorizedAttempts": 0,
+      "byCategory": [
+        {
+          "category": "AUTHORIZATION",
+          "count": 1
+        }
+      ],
+      "byCode": [
+        {
+          "code": "TOOL_AUTHORIZATION_DENIED",
+          "count": 1
+        }
+      ],
+      "detectedEvents": 1,
+      "runFailure": {
+        "code": "NODE_EXECUTION_FAILED",
+        "category": "AUTHORIZATION"
+      }
+    }
+  },
+  "audit": [
+    {
+      "schemaVersion": 1,
+      "eventId": "aud.baeb5afcd462552d9e9ad0772d032fb5",
+      "streamId": "run:run.eval.denied",
+      "sequence": 0,
+      "occurredAt": "2026-10-08T12:08:20.000Z",
+      "type": "tool.access.denied",
+      "runId": "run.eval.denied",
+      "actor": {
+        "id": "user.alice",
+        "type": "user"
+      },
+      "action": "tool.execute",
+      "target": {
+        "kind": "tool",
+        "toolId": "local.lookup",
+        "toolVersion": "1.0.0"
+      },
+      "outcome": "denied",
+      "payload": {
+        "toolExecutionId": "tool.35a646e130c8cd8d060f681f880ed6088a14adb7198e3736b3ff0b5433928f74",
+        "attempt": 1,
+        "nodeId": "lookup",
+        "permissionClasses": [
+          "read_only"
+        ],
+        "reasonCode": "PERMISSION_NOT_GRANTED"
+      },
+      "previousHash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "eventHash": "c820027f8217ab6ed8fcd813c47b1e48a1aa47573f8f94592b28a637a25d70a9"
+    }
+  ]
+}

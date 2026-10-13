@@ -1,0 +1,266 @@
+{
+  "origin": "recorded",
+  "runId": "run.eval.denied-executed",
+  "trace": [
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.879bfbb0c9083ce92df53aa578ad5c82",
+      "traceId": "74fbf0c65d904c8f99ea4ea2ccc938aa",
+      "runId": "run.eval.denied-executed",
+      "sequence": 0,
+      "occurredAt": "2026-10-08T12:00:00.000Z",
+      "type": "run.started",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "spanId": "b2828f539a229288",
+      "status": "started",
+      "payload": {
+        "entryNodeId": "lookup",
+        "initialStateRevision": 0,
+        "nodeCount": 2,
+        "reliabilityPolicies": [],
+        "reliabilityPolicyFingerprint": "1769b81ba2e8ef6d3c28a61c6a09d460d44a65519ecab23baf38995b64f327ba"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.0e3843dc2ada1943882b5bd83a468162",
+      "traceId": "74fbf0c65d904c8f99ea4ea2ccc938aa",
+      "runId": "run.eval.denied-executed",
+      "sequence": 1,
+      "occurredAt": "2026-10-08T12:00:01.000Z",
+      "type": "node.started",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "lookup",
+      "spanId": "79e08540413df5e1",
+      "parentSpanId": "b2828f539a229288",
+      "status": "started",
+      "payload": {
+        "kind": "tool",
+        "step": 1,
+        "attempt": 1,
+        "maxAttempts": 1,
+        "stateRevision": 0,
+        "recoveryReplay": false
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.b631ffde26fe7db66de30239fc0358aa",
+      "traceId": "74fbf0c65d904c8f99ea4ea2ccc938aa",
+      "runId": "run.eval.denied-executed",
+      "sequence": 2,
+      "occurredAt": "2026-10-08T12:00:02.000Z",
+      "type": "tool.call.blocked",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "lookup",
+      "spanId": "ed15976d267e61fd",
+      "parentSpanId": "79e08540413df5e1",
+      "status": "blocked",
+      "payload": {
+        "toolRef": {
+          "id": "local.lookup",
+          "version": "1.0.0"
+        },
+        "toolExecutionId": "tex.denied-executed.lookup",
+        "attempt": 1,
+        "code": "TOOL_AUTHORIZATION_DENIED",
+        "category": "AUTHORIZATION",
+        "permissionClasses": [
+          "read_only"
+        ],
+        "access": {
+          "decision": "deny",
+          "reasonCode": "PERMISSION_NOT_GRANTED"
+        }
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.082cdfeba7a80b3d4dd89bb533929ae0",
+      "traceId": "74fbf0c65d904c8f99ea4ea2ccc938aa",
+      "runId": "run.eval.denied-executed",
+      "sequence": 3,
+      "occurredAt": "2026-10-08T12:00:03.000Z",
+      "type": "tool.call.started",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "lookup",
+      "spanId": "ed15976d267e61fd",
+      "parentSpanId": "79e08540413df5e1",
+      "status": "started",
+      "payload": {
+        "toolRef": {
+          "id": "local.lookup",
+          "version": "1.0.0"
+        },
+        "toolExecutionId": "tex.denied-executed.lookup",
+        "attempt": 1,
+        "permissionClasses": [
+          "read_only"
+        ],
+        "access": {
+          "decision": "allow",
+          "principalId": "user.alice",
+          "agentCeilingApplied": false
+        },
+        "recoveryReplay": false
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.bb2d7d0b820ca06846ccf1aee2513dcd",
+      "traceId": "74fbf0c65d904c8f99ea4ea2ccc938aa",
+      "runId": "run.eval.denied-executed",
+      "sequence": 4,
+      "occurredAt": "2026-10-08T12:00:04.000Z",
+      "type": "tool.call.completed",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "lookup",
+      "spanId": "ed15976d267e61fd",
+      "parentSpanId": "79e08540413df5e1",
+      "status": "succeeded",
+      "payload": {
+        "toolRef": {
+          "id": "local.lookup",
+          "version": "1.0.0"
+        },
+        "toolExecutionId": "tex.denied-executed.lookup",
+        "attempt": 1,
+        "permissionClasses": [
+          "read_only"
+        ],
+        "result": "success"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.0d36febcfc7a641dc16cb062309558fb",
+      "traceId": "74fbf0c65d904c8f99ea4ea2ccc938aa",
+      "runId": "run.eval.denied-executed",
+      "sequence": 5,
+      "occurredAt": "2026-10-08T12:00:05.000Z",
+      "type": "state.updated",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "lookup",
+      "spanId": "79e08540413df5e1",
+      "parentSpanId": "b2828f539a229288",
+      "payload": {
+        "step": 1,
+        "revisionBefore": 0,
+        "revisionAfter": 1,
+        "changedKeys": [
+          "lookupResult"
+        ]
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.6a5515cd18f44fd4d114c176f61264c4",
+      "traceId": "74fbf0c65d904c8f99ea4ea2ccc938aa",
+      "runId": "run.eval.denied-executed",
+      "sequence": 6,
+      "occurredAt": "2026-10-08T12:00:06.000Z",
+      "type": "node.completed",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "lookup",
+      "spanId": "79e08540413df5e1",
+      "parentSpanId": "b2828f539a229288",
+      "status": "succeeded",
+      "payload": {
+        "kind": "tool",
+        "step": 1,
+        "attemptCount": 1,
+        "stateRevisionBefore": 0,
+        "stateRevisionAfter": 1,
+        "outcomeSource": "executor"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.55b74f4085c39f5f3d1cabbba4397838",
+      "traceId": "74fbf0c65d904c8f99ea4ea2ccc938aa",
+      "runId": "run.eval.denied-executed",
+      "sequence": 7,
+      "occurredAt": "2026-10-08T12:00:07.000Z",
+      "type": "route.selected",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "spanId": "b2828f539a229288",
+      "payload": {
+        "sourceNodeId": "lookup",
+        "targetNodeId": "final",
+        "routeType": "unconditional"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.d9125a93601c5337dd6e4059ba7f8bd1",
+      "traceId": "74fbf0c65d904c8f99ea4ea2ccc938aa",
+      "runId": "run.eval.denied-executed",
+      "sequence": 8,
+      "occurredAt": "2026-10-08T12:00:08.000Z",
+      "type": "node.started",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "final",
+      "spanId": "b4581921b9c877e2",
+      "parentSpanId": "b2828f539a229288",
+      "status": "started",
+      "payload": {
+        "kind": "final_output",
+        "step": 2,
+        "attempt": 1,
+        "maxAttempts": 1,
+        "stateRevision": 0,
+        "recoveryReplay": false
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.ccc83b707b51d2bce69d152817307e78",
+      "traceId": "74fbf0c65d904c8f99ea4ea2ccc938aa",
+      "runId": "run.eval.denied-executed",
+      "sequence": 9,
+      "occurredAt": "2026-10-08T12:00:09.000Z",
+      "type": "node.completed",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "final",
+      "spanId": "b4581921b9c877e2",
+      "parentSpanId": "b2828f539a229288",
+      "status": "succeeded",
+      "payload": {
+        "kind": "final_output",
+        "step": 2,
+        "attemptCount": 1,
+        "stateRevisionBefore": 1,
+        "stateRevisionAfter": 1,
+        "outcomeSource": "executor"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.a0c3189aaeb455b3cd2807e2d8925231",
+      "traceId": "74fbf0c65d904c8f99ea4ea2ccc938aa",
+      "runId": "run.eval.denied-executed",
+      "sequence": 10,
+      "occurredAt": "2026-10-08T12:00:10.000Z",
+      "type": "run.completed",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "spanId": "b2828f539a229288",
+      "status": "succeeded",
+      "payload": {
+        "finalNodeId": "final",
+        "stateRevision": 1,
+        "steps": 2
+      }
+    }
+  ]
+}

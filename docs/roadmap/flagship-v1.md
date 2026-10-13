@@ -55,6 +55,12 @@ Complete: Tool Registry, safe Tool execution, deterministic Authorization, and t
 | Sprint 15 — Trace Runtime | `@aao/observability` contains:<br>• the migrated `TraceEvent` v2 contract: a closed typed catalog and metadata-only strict payloads;<br>• an emit-only Runtime trace port and per-attempt `NodeTraceContext`;<br>• deterministic trace, span, and event identity that survives restart;<br>• contiguous per-Run sequence, idempotent append, and append-only storage;<br>• in-memory and local file Trace Stores;<br>• a non-throwing recorder with health reporting;<br>• Run, Node, routing, state, model, Agent, Tool (including blocked), retry, approval, checkpoint, recovery, and cancellation instrumentation;<br>• `validateTrace` and `compareTraceWithExecution`;<br>• canonical fixtures, a compiled restart smoke, and a documented OTel mapping.<br>Trace is never read for execution or recovery. No OTel SDK/exporter, metrics, audit, evals, or UI. | Complete (`SPRINT_15_TRACE_RUNTIME_COMPLETE`) — see [ADR-020](../decisions/ADR-020-trace-runtime-and-observability-boundary.md) |
 | Sprint 16 — Metrics & Audit | `@aao/observability` gains:<br>• `RunMetrics` and `AggregateMetrics` as deterministic projections of validated Trace, with no Metrics store;<br>• explicit completeness (`null` or partial, never zero);<br>• lifecycle latency that excludes checkpoint timing, with approval wait reported separately;<br>• explicit retry, failure, Tool (physical vs logical), model, Agent, approval, durability, and token metrics;<br>• modelled cost from exact-match `ModelPricingProfile`s in integer nano-units, with explicit coverage;<br>• nearest-rank percentiles and named denominators.<br>Audit is a separate `AuditEvent` contract recorded at authoritative source boundaries (Approval transition at the true `resolvedAt`, denied attempts, Tool Authorization decisions, attributed cancellation request and application) through an emit-only `AuditPort`, into an append-only, hash-chained (tamper-evident) in-memory or local file `AuditStore`. Audit failure never changes execution, and nothing reads Audit or Metrics as authority. No dashboards, alerts, exporters, Eval Runtime, or side-effect enablement. | Complete (`SPRINT_16_METRICS_AUDIT_COMPLETE`) — see [ADR-021](../decisions/ADR-021-metrics-and-audit-boundaries.md) |
 
+## Phase G — Verification
+
+| Sprint / outcome | Scope | Status |
+| --- | --- | --- |
+| Sprint 17 — Evaluation Runtime | `@aao/evaluation`, a separate non-authoritative layer outside the Runtime:<br>• the Sprint 2 Eval placeholders migrated (not duplicated) to `EvalDefinition` v2 (exact `graderRef`, `supportedModes[]`, `targetType`, JSON config) and `EvalResult` v2 (deterministic `resultId`, `evidenceFingerprint`, bounded assertions and evidence references, `passed` / `failed` / `error`), plus `EvalDataset` v1, `EvalCase`, and `EvalDatasetRun`;<br>• a constructible Evaluator Registry of trusted graders (exact id + version, grader-validated config, no code in Eval data);<br>• one `EvalEvidenceBundle` boundary (Trace, Runtime execution state, RunMetrics, Audit, explicit subject), deep-frozen and fingerprinted;<br>• OFFLINE (recorded evidence) and RUNTIME (a real Run, after the Runtime returned) with the same graders;<br>• nine deterministic graders (trace contract, run outcome, trajectory, Tool usage, Approval, Authorization, retry, state, Metrics thresholds);<br>• an optional, bounded, provider-independent model-judge port;<br>• missing evidence never passes, and `failed` ≠ `error`;<br>• portable verification over canonical AAO semantics;<br>• a 30-case versioned foundation dataset with real and recorder-validated fixtures.<br>No Eval store, analytics, CI gate, Runtime gating, adapter contract, or side-effect enablement. | Complete (`SPRINT_17_EVALUATION_RUNTIME_COMPLETE`) — see [ADR-022](../decisions/ADR-022-evaluation-runtime-and-portable-verification.md) |
+
 ## Forward roadmap
 
 | Sprint | Outcome | Status |
@@ -63,21 +69,40 @@ Complete: Tool Registry, safe Tool execution, deterministic Authorization, and t
 | 14 | Durable Execution — persistent Runs, checkpoints, recovery and resume after restart, durable approval state, durable retry accounting, idempotency / replay protection | Complete |
 | 15 | Trace Runtime — structured execution evidence, persistent local Trace Store, instrumentation, Trace-contract validation | Complete |
 | 16 | Metrics & Audit — trace-derived metrics, latency and token/cost aggregation (explicit pricing profiles), retry/failure rates, source-time audit events (approvals, denied attempts, Tool access, cancellation), hash-chained Audit Store; operator-override audit waits for operator overrides to exist | Complete |
-| 17 | Evaluation Runtime — Eval definitions and datasets, deterministic and trajectory graders, runtime/offline modes, `EvalResult`, trace assertions, approval/tool/state graders, bounded model judges only where needed | Next |
-| 18 | Eval Analytics / CI Gates | Planned |
+| 17 | Evaluation Runtime — versioned Eval definitions and datasets, deterministic and trajectory graders, OFFLINE/RUNTIME modes, `EvalResult` v2, Tool/Approval/Authorization/retry/state/Metrics graders, optional bounded model-judge port, portable verification | Complete |
+| 18 | Eval Analytics / CI Gates / Adapter Verification | Next |
 | 19 | Framework Surface | Planned |
-| 20 | Toolbox Foundation | Planned |
-| 21 | Company Research Proof | Planned |
-| 22 | Document Intelligence Proof | Planned |
-| 23 | Operational Request Proof | Planned |
-| 24 | Company Portability | Planned |
-| 25 | Capability Packs / Templates | Planned |
-| 26 | Control Center Foundation | Planned |
-| 27 | Guided Integration / Run Inspector UX | Planned |
-| 28 | Security / Integration Hardening | Planned |
-| 29 | Benchmark / Docs / Local V1 | Planned |
+| 20 | Adapter & Portability Contract | Planned |
+| 21 | Toolbox Foundation | Planned |
+| 22 | Company Research Proof | Planned |
+| 23 | Document Intelligence Proof | Planned |
+| 24 | Operational Request Proof | Planned |
+| 25 | Company Configuration & Portability | Planned |
+| 26 | Capability Packs / Templates | Planned |
+| 27 | Control Center Foundation | Planned |
+| 28 | Guided Integration / Run Inspector | Planned |
+| 29 | Security / Adapter Hardening | Planned |
+| 30 | Benchmark / Docs / Local V1 | Planned |
 
-The framework surface, generic Toolbox, Integration Fabric, capability packs, and Control Center will use the same governance boundary. This roadmap adds no implementation or deployment commitment for those future layers.
+Direction for the next portability-related sprints (documentation only; nothing here is implemented early):
+
+- **Sprint 18 — Eval Analytics / CI Gates / Adapter Verification** uses the Sprint 17 Evaluation Runtime for:
+  - Eval result history;
+  - dataset analytics;
+  - baseline and candidate comparisons;
+  - CI quality gates and regression gates;
+  - adapter verification. Each substrate (AAO native Runtime, MCP, Vercel AI SDK, LangGraph, local models) must map correctly into AAO semantics. Adapter-specific checks (MCP structured-output mapping, AI SDK usage mapping, LangGraph interruption mapping) prove the mapping; they never redefine AAO criteria.
+- **Sprint 20 — Adapter & Portability Contract** formalizes:
+  - `AdapterManifest`;
+  - capability declaration;
+  - a compatibility matrix;
+  - a conformance contract;
+  - AAO port interfaces.
+
+  It verifies one principle: *external substrates implement AAO interfaces; they do not define AAO semantics.*
+- **Toolbox (Sprint 21+) evaluators stay provider-neutral.** They assert the right *capability* was used (e.g. `crm.accounts.search`), not that a vendor SDK method was called, except in an explicit adapter-conformance eval.
+
+The framework surface, generic Toolbox, Integration Fabric, capability packs, and Control Center will use the same governance boundary and the same portable verification invariant (evaluation policies attach to AAO contracts and execution semantics, not to individual model, Tool, or orchestration frameworks). This roadmap adds no implementation or deployment commitment for those future layers.
 
 ## Stable milestones
 

@@ -78,7 +78,7 @@ The central risk is collapsing three different things — chronology, measuremen
 - The Reliability policy fingerprint is now a Metrics dimension. Durability plan compatibility is unchanged (the Sprint 14 debt stands, documented).
 - Deferred:
   - Evaluation Runtime: Sprint 17;
-  - Eval analytics and CI gates: Sprint 18;
-  - dashboards, Run Inspector, and Control Center: Sprints 26/27;
+  - Eval analytics, CI gates, and adapter verification: Sprint 18;
+  - dashboards, Run Inspector, and Control Center: Sprints 27/28 (renumbered in the Sprint 17 roadmap);
   - alerting, SLOs, Prometheus/OpenTelemetry exporters, SIEM integration, signed or distributed Audit, operator overrides, and retention policy.
 - External side effects remain unsupported. Having Audit does not unlock them; hardening, operator recovery, integration verification, security validation, and benchmark/eval proof come first.

@@ -1,0 +1,432 @@
+{
+  "origin": "recorded",
+  "runId": "run.eval.pending",
+  "trace": [
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.5efb70c539ffd8c0649198e6d69b7fe5",
+      "traceId": "a730cc7d4fb2bf94ae4f928d22a1a7a0",
+      "runId": "run.eval.pending",
+      "sequence": 0,
+      "occurredAt": "2026-10-08T12:00:00.000Z",
+      "type": "run.started",
+      "workflowId": "eval.flagship",
+      "workflowVersion": "1.0.0",
+      "spanId": "db3ffdb46529ae5e",
+      "status": "started",
+      "payload": {
+        "entryNodeId": "prepare",
+        "initialStateRevision": 0,
+        "nodeCount": 4,
+        "reliabilityPolicies": [
+          {
+            "maxAttempts": 3,
+            "nodeId": "lookup"
+          }
+        ],
+        "reliabilityPolicyFingerprint": "8e623c73002528598e0980b05f0ae2428dfcd9b6d45bab10931ff34a826c9d0d"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.11e8b8ccff0539ce97cd13a941e0cdf2",
+      "traceId": "a730cc7d4fb2bf94ae4f928d22a1a7a0",
+      "runId": "run.eval.pending",
+      "sequence": 1,
+      "occurredAt": "2026-10-08T12:00:01.000Z",
+      "type": "node.started",
+      "workflowId": "eval.flagship",
+      "workflowVersion": "1.0.0",
+      "nodeId": "prepare",
+      "spanId": "1fb9f2479d77bb4f",
+      "parentSpanId": "db3ffdb46529ae5e",
+      "status": "started",
+      "payload": {
+        "kind": "deterministic",
+        "step": 1,
+        "attempt": 1,
+        "maxAttempts": 1,
+        "stateRevision": 0,
+        "recoveryReplay": false
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.966e96d9cc5a557213216abd363ba4ea",
+      "traceId": "a730cc7d4fb2bf94ae4f928d22a1a7a0",
+      "runId": "run.eval.pending",
+      "sequence": 2,
+      "occurredAt": "2026-10-08T12:00:02.000Z",
+      "type": "state.updated",
+      "workflowId": "eval.flagship",
+      "workflowVersion": "1.0.0",
+      "nodeId": "prepare",
+      "spanId": "1fb9f2479d77bb4f",
+      "parentSpanId": "db3ffdb46529ae5e",
+      "payload": {
+        "step": 1,
+        "revisionBefore": 0,
+        "revisionAfter": 1,
+        "changedKeys": [
+          "internal",
+          "proposal"
+        ]
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.92e8135e4a0f00120a01011f6d5d0dd7",
+      "traceId": "a730cc7d4fb2bf94ae4f928d22a1a7a0",
+      "runId": "run.eval.pending",
+      "sequence": 3,
+      "occurredAt": "2026-10-08T12:00:03.000Z",
+      "type": "node.completed",
+      "workflowId": "eval.flagship",
+      "workflowVersion": "1.0.0",
+      "nodeId": "prepare",
+      "spanId": "1fb9f2479d77bb4f",
+      "parentSpanId": "db3ffdb46529ae5e",
+      "status": "succeeded",
+      "payload": {
+        "kind": "deterministic",
+        "step": 1,
+        "attemptCount": 1,
+        "stateRevisionBefore": 0,
+        "stateRevisionAfter": 1,
+        "outcomeSource": "executor"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.fa57273e6030b3144b075357ff7e0d71",
+      "traceId": "a730cc7d4fb2bf94ae4f928d22a1a7a0",
+      "runId": "run.eval.pending",
+      "sequence": 4,
+      "occurredAt": "2026-10-08T12:00:04.000Z",
+      "type": "route.selected",
+      "workflowId": "eval.flagship",
+      "workflowVersion": "1.0.0",
+      "spanId": "db3ffdb46529ae5e",
+      "payload": {
+        "sourceNodeId": "prepare",
+        "targetNodeId": "approval",
+        "routeType": "unconditional"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.e2b53b05b332cad150df5dd1867d8279",
+      "traceId": "a730cc7d4fb2bf94ae4f928d22a1a7a0",
+      "runId": "run.eval.pending",
+      "sequence": 5,
+      "occurredAt": "2026-10-08T12:00:05.000Z",
+      "type": "node.started",
+      "workflowId": "eval.flagship",
+      "workflowVersion": "1.0.0",
+      "nodeId": "approval",
+      "spanId": "7c7dbdb0015a9800",
+      "parentSpanId": "db3ffdb46529ae5e",
+      "status": "started",
+      "payload": {
+        "kind": "approval",
+        "step": 2,
+        "attempt": 1,
+        "maxAttempts": 1,
+        "stateRevision": 1,
+        "recoveryReplay": false
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.5bb0f33f16db937a3f0ea388ff1105af",
+      "traceId": "a730cc7d4fb2bf94ae4f928d22a1a7a0",
+      "runId": "run.eval.pending",
+      "sequence": 6,
+      "occurredAt": "2026-10-08T12:00:06.000Z",
+      "type": "approval.requested",
+      "workflowId": "eval.flagship",
+      "workflowVersion": "1.0.0",
+      "nodeId": "approval",
+      "spanId": "7c7dbdb0015a9800",
+      "parentSpanId": "db3ffdb46529ae5e",
+      "status": "waiting",
+      "payload": {
+        "approvalId": "approval:d7d7109552a70286b68504ee642538d24265bac6719a1a3772ce0a6bc9052cf1",
+        "step": 2,
+        "requestedBy": {
+          "id": "user.alice",
+          "type": "user"
+        },
+        "requiredApproverRoleIds": [
+          "manager"
+        ],
+        "permissionClasses": [
+          "read_only"
+        ],
+        "allowSelfApproval": false,
+        "requestFingerprint": "ad6a9d5a65832dc98a906d929c83ca57cbf59e4b71634a20bcf13e323c0f8ad2"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.2c84b8617709bf89b256c12ffb08d1b8",
+      "traceId": "a730cc7d4fb2bf94ae4f928d22a1a7a0",
+      "runId": "run.eval.pending",
+      "sequence": 7,
+      "occurredAt": "2026-10-08T12:00:07.000Z",
+      "type": "node.waiting",
+      "workflowId": "eval.flagship",
+      "workflowVersion": "1.0.0",
+      "nodeId": "approval",
+      "spanId": "7c7dbdb0015a9800",
+      "parentSpanId": "db3ffdb46529ae5e",
+      "status": "waiting",
+      "payload": {
+        "kind": "approval",
+        "step": 2,
+        "waitKind": "approval",
+        "referenceId": "approval:d7d7109552a70286b68504ee642538d24265bac6719a1a3772ce0a6bc9052cf1"
+      }
+    }
+  ],
+  "execution": {
+    "run": {
+      "schemaVersion": 1,
+      "runId": "run.eval.pending",
+      "workflowId": "eval.flagship",
+      "workflowVersion": "1.0.0",
+      "status": "WAITING_FOR_APPROVAL",
+      "createdAt": "2026-10-08T12:00:00.000Z",
+      "updatedAt": "2026-10-08T12:00:06.000Z",
+      "currentNodeId": "approval"
+    },
+    "state": {
+      "runId": "run.eval.pending",
+      "revision": 1,
+      "values": {
+        "proposal": {
+          "action": "lookup",
+          "target": "account-a",
+          "note": "FIXTURE_APPROVAL_SUBJECT_password_hunter2"
+        },
+        "internal": {
+          "credential": "FIXTURE_STATE_SECRET_DO_NOT_PERSIST"
+        }
+      }
+    },
+    "nodeStatusesById": {
+      "prepare": "SUCCEEDED",
+      "approval": "WAITING",
+      "lookup": "PENDING",
+      "final": "PENDING"
+    },
+    "step": 2,
+    "history": [
+      {
+        "nodeId": "prepare",
+        "kind": "deterministic",
+        "step": 1,
+        "status": "SUCCEEDED",
+        "stateRevisionBefore": 0,
+        "stateRevisionAfter": 1,
+        "attemptCount": 1
+      }
+    ],
+    "wait": {
+      "kind": "approval",
+      "referenceId": "approval:d7d7109552a70286b68504ee642538d24265bac6719a1a3772ce0a6bc9052cf1",
+      "requestFingerprint": "ad6a9d5a65832dc98a906d929c83ca57cbf59e4b71634a20bcf13e323c0f8ad2",
+      "nodeId": "approval"
+    }
+  },
+  "metrics": {
+    "schemaVersion": 1,
+    "runId": "run.eval.pending",
+    "traceId": "a730cc7d4fb2bf94ae4f928d22a1a7a0",
+    "workflowId": "eval.flagship",
+    "workflowVersion": "1.0.0",
+    "dimensions": {
+      "reliabilityPolicyFingerprint": "8e623c73002528598e0980b05f0ae2428dfcd9b6d45bab10931ff34a826c9d0d"
+    },
+    "runStatus": "WAITING_FOR_APPROVAL",
+    "traceQuality": {
+      "status": "complete",
+      "issues": []
+    },
+    "startedAt": "2026-10-08T12:00:00.000Z",
+    "endedAt": null,
+    "durationMs": null,
+    "approvalWaitDurationMs": null,
+    "durationExcludingApprovalWaitMs": null,
+    "steps": null,
+    "nodes": {
+      "executions": 2,
+      "attempts": 2,
+      "recoveryReplayAttempts": 0,
+      "completed": 1,
+      "failed": 0,
+      "waiting": 1,
+      "attemptDetails": [
+        {
+          "nodeId": "prepare",
+          "kind": "deterministic",
+          "step": 1,
+          "attempt": 1,
+          "recoveryReplay": false,
+          "outcome": "completed",
+          "startedAt": "2026-10-08T12:00:01.000Z",
+          "durationMs": 2000,
+          "waitDurationMs": null
+        },
+        {
+          "nodeId": "approval",
+          "kind": "approval",
+          "step": 2,
+          "attempt": 1,
+          "recoveryReplay": false,
+          "outcome": "waiting",
+          "startedAt": "2026-10-08T12:00:05.000Z",
+          "durationMs": 2000,
+          "waitDurationMs": null
+        }
+      ],
+      "byNode": [
+        {
+          "nodeId": "approval",
+          "kind": "approval",
+          "executions": 1,
+          "attempts": 1,
+          "completed": 0,
+          "failed": 0,
+          "waits": 1,
+          "attemptDurationMsTotal": 2000
+        },
+        {
+          "nodeId": "prepare",
+          "kind": "deterministic",
+          "executions": 1,
+          "attempts": 1,
+          "completed": 1,
+          "failed": 0,
+          "waits": 0,
+          "attemptDurationMsTotal": 2000
+        }
+      ]
+    },
+    "retries": {
+      "scheduled": 0,
+      "exhausted": 0,
+      "nodesRetried": 0
+    },
+    "models": {
+      "callsStarted": 0,
+      "callsCompleted": 0,
+      "callsFailed": 0,
+      "byModel": []
+    },
+    "agents": {
+      "executions": 0,
+      "iterations": 0,
+      "completed": 0,
+      "failed": 0
+    },
+    "tools": {
+      "physicalInvocations": 0,
+      "logicalExecutions": 0,
+      "completed": 0,
+      "failed": 0,
+      "blocked": 0,
+      "byTool": []
+    },
+    "approvals": {
+      "requested": 1,
+      "approved": 0,
+      "rejected": 0,
+      "expired": 0,
+      "cancelled": 0,
+      "pending": 1
+    },
+    "durability": {
+      "checkpointsCreated": 0,
+      "recoveryStarts": 0,
+      "recoveryReplays": 0,
+      "reusedOutcomes": 0,
+      "recoveryBlocks": 0,
+      "recoveryCompletions": 0
+    },
+    "cancellation": {
+      "requested": false,
+      "applied": false
+    },
+    "state": {
+      "updates": 1,
+      "finalStateRevision": 1
+    },
+    "tokenUsage": {
+      "status": "complete",
+      "modelCallsCompleted": 0,
+      "modelCallsFailed": 0,
+      "callsWithUsage": 0,
+      "callsWithoutUsage": 0,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "totalTokens": 0,
+      "knownInputTokens": 0,
+      "knownOutputTokens": 0,
+      "knownTotalTokens": 0
+    },
+    "cost": {
+      "status": "complete",
+      "currency": null,
+      "estimatedCostNanos": 0,
+      "knownEstimatedCostNanos": 0,
+      "pricedCalls": 0,
+      "unpricedCalls": 0,
+      "unpricedReasons": [],
+      "pricingProfiles": []
+    },
+    "failures": {
+      "failedAttempts": 0,
+      "uncategorizedAttempts": 0,
+      "byCategory": [],
+      "byCode": [],
+      "detectedEvents": 0,
+      "runFailure": null
+    }
+  },
+  "audit": [
+    {
+      "schemaVersion": 1,
+      "eventId": "aud.bfcb5bdca37fcbfccf1aa58a3af471c2",
+      "streamId": "run:run.eval.pending",
+      "sequence": 0,
+      "occurredAt": "2026-10-08T12:01:40.000Z",
+      "type": "approval.requested",
+      "runId": "run.eval.pending",
+      "actor": {
+        "id": "user.alice",
+        "type": "user"
+      },
+      "action": "approval.request",
+      "target": {
+        "kind": "approval",
+        "approvalId": "approval:d7d7109552a70286b68504ee642538d24265bac6719a1a3772ce0a6bc9052cf1"
+      },
+      "outcome": "requested",
+      "payload": {
+        "approvalId": "approval:d7d7109552a70286b68504ee642538d24265bac6719a1a3772ce0a6bc9052cf1",
+        "nodeId": "approval",
+        "requiredApproverRoleIds": [
+          "manager"
+        ],
+        "permissionClasses": [
+          "read_only"
+        ],
+        "allowSelfApproval": false,
+        "requestFingerprint": "ad6a9d5a65832dc98a906d929c83ca57cbf59e4b71634a20bcf13e323c0f8ad2"
+      },
+      "previousHash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "eventHash": "133d926c24c5df82a6da19ebecf45b398727274d84e569ff16992784d602c9d7"
+    }
+  ]
+}

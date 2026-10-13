@@ -129,7 +129,7 @@ The default is metadata-only, and there is no capture mode.
 
   It checks Node, Tool, model, and Agent pairing, attempt and retry coherence, approval references, checkpoint monotonicity, and recovery ordering. Only `approval.resolved` may follow a terminal event, for a host cancelling a pending approval after `run.cancelled`.
 - **`compareTraceWithExecution(events, execution)`** compares a trace with Runtime state. It checks the Node trajectory against history, attempts against `attemptCount`, the terminal event against `RunRecord.status`, waiting approvals, and the final state revision (`TRACE_STATE_MISMATCH`). It reports issues and never repairs anything.
-- **`reconstructRunTrace(store, runId)`** returns the ordered `TraceRun`, which a future Run Inspector and Eval Runtime can build on.
+- **`reconstructRunTrace(store, runId)`** returns the ordered `TraceRun`, which a future Run Inspector and the Sprint 17 Evaluation Runtime build on.
 
 Canonical fixtures in `packages/observability/test/fixtures/traces/` cover `successful_run`, `retry_then_success`, `approval_wait_then_resume`, `authorization_block`, `durable_recovery`, and `failed_run`. They are deterministic, validated, and sanitized.
 
@@ -159,6 +159,6 @@ The AAO Trace schema is designed for OTel-compatible mapping. **No OpenTelemetry
 - Not Artifact storage: a future `artifactRef` will point at large outputs.
 - Metrics and cost are deterministic projections of Trace ([metrics](metrics.md), Sprint 16).
 - Deferred work:
-  - Eval Runtime: Sprint 17;
-  - Run Inspector UI: Sprints 26/27;
+  - Eval Runtime: delivered in Sprint 17 as a separate consumer (`@aao/evaluation`, [evaluation runtime](evaluation-runtime.md)). It reads Trace through `validateTrace` and never appends to it: there are no `eval.*` events, and a terminal Run's Trace is never extended with Eval results;
+  - Run Inspector UI: Sprints 27/28;
   - OTel export: a future adapter.

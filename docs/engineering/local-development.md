@@ -125,6 +125,7 @@ node packages/tool-runtime/test/reliability-smoke.mjs    # SPRINT_13_RELIABILITY
 pnpm --filter @aao/durability smoke                      # SPRINT_14_DURABLE_EXECUTION_SMOKE_OK
 pnpm --filter @aao/observability smoke                   # SPRINT_15_TRACE_RUNTIME_SMOKE_OK
 pnpm --filter @aao/observability smoke:metrics-audit     # SPRINT_16_METRICS_AUDIT_SMOKE_OK
+pnpm --filter @aao/evaluation smoke                      # SPRINT_17_EVALUATION_RUNTIME_SMOKE_OK
 ```
 
 The durability smoke runs three separate Node processes over one temporary directory, which it deletes afterward:
@@ -147,3 +148,11 @@ The Metrics and Audit smoke runs two parts:
 2. **Two processes.** Process A reaches the durable wait. Process B approves, resumes, and verifies that Metrics are not double-counted across the restart and that the continued Audit stream is valid.
 
 Audit is opt-in, like Trace: a host constructs `createFileAuditStore({ root })` and `createAuditRecorder({ store })` and passes the recorder as `audit` to the Approval Engine, Tool Node, and durable host.
+
+The Evaluation Runtime smoke runs entirely from compiled `dist/` output in three parts:
+
+1. **Offline.** It loads `evals/definitions/runtime-foundation.v1.yaml` and `evals/datasets/runtime-foundation.v1.yaml`, maps `fixture://<name>` to `evals/fixtures/<name>.json` explicitly (the host, not the evaluator, reads files), and runs every deterministic grader. Each of the 30 cases must match its stated expectation, and a repeat run must be identical.
+2. **Model judge.** It runs a bounded fake model judge through the injected port: one call, a structured score, and no subject persisted. A throwing judge must yield `error`.
+3. **Runtime.** It runs a real compiled flagship Run (approval, retry-safe Tool, completion with Trace and Audit) and evaluates it in `RUNTIME` mode after the Runtime returned. It checks that execution evidence is unchanged.
+
+Eval fixtures regenerate deterministically under `pnpm test`; see [`evals/README.md`](../../evals/README.md).

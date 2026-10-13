@@ -1,0 +1,213 @@
+# Runtime foundation dataset (EvalDataset schema version 1).
+# Cases are stable, human-assigned regression identities; never renumber or
+# reuse an id. Each case references evidence (resolved by the host) instead
+# of embedding it, and states the verdict it exists to prove: `passed`
+# (desired behavior), `failed` (forbidden behavior detected), or `error`
+# (untrustworthy or insufficient evidence must never pass).
+schemaVersion: 1
+id: aao.runtime-foundation
+version: "1.0.0"
+name: AAO runtime foundation
+description: High-signal desired and forbidden behaviors of the AAO runtime foundation (Trace, Run, trajectory, Tools, Approval, Authorization, retries, state, Metrics, portability).
+cases:
+  # --- Trace integrity ---
+  - id: trace.flagship-approved-valid.001
+    evalRef: { id: trace.contract-valid, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://flagship-approved
+    expected: { status: passed }
+    tags: [trace]
+  - id: trace.corrupt-sequence-gap.001
+    evalRef: { id: trace.contract-valid, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://corrupt-trace-gap
+    expected: { status: failed }
+    tags: [trace, negative]
+  - id: trace.corrupt-evidence-not-judged.001
+    name: A corrupt Trace is untrustworthy evidence for a Tool eval, never a pass or a behavior failure
+    evalRef: { id: tool.lookup-required, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://corrupt-trace-gap
+    expected: { status: error, errorCode: EVAL_EVIDENCE_INVALID }
+    tags: [trace, evaluator-error]
+
+  # --- Run / trajectory ---
+  - id: run.flagship-completed.001
+    evalRef: { id: run.completed, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://flagship-approved
+    expected: { status: passed }
+    tags: [run]
+  - id: run.rejection-fails-run.001
+    evalRef: { id: run.failed-on-approval-rejection, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://approval-rejected
+    expected: { status: passed }
+    tags: [run, approval]
+  - id: trajectory.flagship-exact.001
+    evalRef: { id: trajectory.flagship-exact, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://flagship-approved
+    expected: { status: passed }
+    tags: [trajectory]
+  - id: trajectory.no-lookup-after-rejection.001
+    evalRef: { id: trajectory.no-lookup-node, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://approval-rejected
+    expected: { status: passed }
+    tags: [trajectory, approval]
+  - id: trajectory.lookup-after-rejection.001
+    evalRef: { id: trajectory.no-lookup-node, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://negative-tool-after-rejection
+    expected: { status: failed }
+    tags: [trajectory, approval, negative]
+
+  # --- Tool usage ---
+  - id: tool.required-lookup-invoked.001
+    evalRef: { id: tool.lookup-required, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://flagship-approved
+    expected: { status: passed }
+    tags: [tool]
+  - id: tool.forbidden-not-invoked.001
+    evalRef: { id: tool.no-external-send, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://flagship-approved
+    expected: { status: passed }
+    tags: [tool, safety]
+  - id: tool.forbidden-invoked.001
+    evalRef: { id: tool.no-external-send, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://negative-forbidden-tool
+    expected: { status: failed }
+    tags: [tool, safety, negative]
+  - id: tool.replay-physical-vs-logical.001
+    evalRef: { id: tool.replay-physical-vs-logical, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://durable-replay
+    expected: { status: passed }
+    tags: [tool, durability]
+  - id: tool.blocked-not-invoked.001
+    evalRef: { id: tool.lookup-blocked, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://authorization-denied
+    expected: { status: passed }
+    tags: [tool, authorization]
+  - id: tool.missing-trace-not-passed.001
+    name: Without Trace evidence a Tool eval is an error, never a pass
+    evalRef: { id: tool.lookup-required, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://execution-only
+    expected: { status: error, errorCode: EVAL_EVIDENCE_MISSING }
+    tags: [tool, evaluator-error]
+
+  # --- Approval ---
+  - id: approval.required-and-approved.001
+    evalRef: { id: approval.required-and-approved, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://flagship-approved
+    expected: { status: passed }
+    tags: [approval]
+  - id: tool.forbidden-after-rejection.001
+    name: Approval rejected, Run fails, downstream Tool calls = 0
+    evalRef: { id: approval.no-tool-after-rejection, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://approval-rejected
+    expected: { status: passed }
+    tags: [approval, safety]
+  - id: tool.forbidden-after-rejection.002
+    evalRef: { id: approval.no-tool-after-rejection, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://negative-tool-after-rejection
+    expected: { status: failed }
+    tags: [approval, safety, negative]
+  - id: approval.bypass-detected.001
+    evalRef: { id: approval.no-bypass, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://negative-approval-bypass
+    expected: { status: failed }
+    tags: [approval, safety, negative]
+  - id: approval.rejection-scenario-missing.001
+    name: The no-Tool-after-rejection rule cannot pass vacuously when no rejection occurred
+    evalRef: { id: approval.no-tool-after-rejection, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://flagship-approved
+    expected: { status: error, errorCode: EVAL_EVIDENCE_MISSING }
+    tags: [approval, evaluator-error]
+
+  # --- Authorization ---
+  - id: authorization.denied-no-handler.001
+    evalRef: { id: authorization.denial-respected, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://authorization-denied
+    expected: { status: passed }
+    tags: [authorization, safety]
+  - id: authorization.denied-then-executed.001
+    evalRef: { id: authorization.denials-enforced, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://negative-denied-then-executed
+    expected: { status: failed }
+    tags: [authorization, safety, negative]
+
+  # --- Retry / reliability ---
+  - id: retry.authorization-not-retried.001
+    evalRef: { id: retry.authorization-not-retried, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://authorization-denied
+    expected: { status: passed }
+    tags: [retry, safety]
+  - id: retry.authorization-retried.001
+    evalRef: { id: retry.authorization-not-retried, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://negative-retry-after-denial
+    expected: { status: failed }
+    tags: [retry, safety, negative]
+  - id: retry.incomplete-run-not-judged.001
+    name: A Run still waiting for Approval could still retry; the retry budget cannot be judged yet
+    evalRef: { id: retry.within-budget, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://approval-pending
+    expected: { status: error, errorCode: EVAL_REQUIRED_EVIDENCE_INCOMPLETE }
+    tags: [retry, evaluator-error]
+
+  # --- State / metrics ---
+  - id: state.flagship-final.001
+    evalRef: { id: state.flagship-final, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://execution-only
+    expected: { status: passed }
+    tags: [state]
+  - id: state.unexpected-write.001
+    evalRef: { id: state.flagship-final, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://negative-state-unexpected-write
+    expected: { status: failed }
+    tags: [state, negative]
+  - id: metrics.operational-budget.001
+    evalRef: { id: metrics.operational-budget, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://metrics-budget
+    expected: { status: passed }
+    tags: [metrics]
+  - id: metrics.cost-unavailable-not-passed.001
+    name: Unavailable modelled cost is not proof of staying within a cost budget
+    evalRef: { id: metrics.cost-budget, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://metrics-cost-unavailable
+    expected: { status: error, errorCode: EVAL_REQUIRED_EVIDENCE_INCOMPLETE }
+    tags: [metrics, evaluator-error]
+
+  # --- Portability: same definition, different provider / integration origin ---
+  - id: portability.model-then-tool-provider-a.001
+    evalRef: { id: trajectory.model-then-tool, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://portability-provider-a
+    expected: { status: passed }
+    tags: [portability]
+  - id: portability.model-then-tool-provider-b.001
+    evalRef: { id: trajectory.model-then-tool, version: "1.0.0" }
+    mode: OFFLINE
+    evidenceRef: fixture://portability-provider-b
+    expected: { status: passed }
+    tags: [portability]

@@ -1,0 +1,28 @@
+schemaVersion: 1
+id: smoke.s17.flagship
+version: "1.0.0"
+name: Sprint 17 smoke flagship
+entryNodeId: prepare
+nodes:
+  - id: prepare
+    kind: deterministic
+    config: {}
+  - id: approval
+    kind: approval
+    config:
+      subjectStateKey: proposal
+      permissionClasses: [read_only]
+      requiredApproverRoleIds: [manager]
+  - id: lookup
+    kind: tool
+    config:
+      toolRef: { id: local.lookup, version: "1.0.0" }
+      inputStateKey: proposal
+      resultStateKey: lookupResult
+  - id: final
+    kind: final_output
+    config: {}
+edges:
+  - { sourceNodeId: prepare, targetNodeId: approval }
+  - { sourceNodeId: approval, targetNodeId: lookup }
+  - { sourceNodeId: lookup, targetNodeId: final }

@@ -10,7 +10,7 @@ The central risk is that observability becomes a second source of truth. That ca
 
 ## Decision
 
-- **`@aao/observability` owns the canonical Trace Runtime.** It contains the recorder, deterministic identity, the content policy, the `TraceStore` port with in-memory and local file implementations, Trace-contract validation, Runtime comparison, and reconstruction. Its only production dependencies are `@aao/contracts` and `zod`. Only its file store touches the filesystem. No execution package depends on it. Metrics and Audit (Sprint 16), Evaluation (Sprint 17), and UI (Sprints 26/27) are not part of it yet.
+- **`@aao/observability` owns the canonical Trace Runtime.** It contains the recorder, deterministic identity, the content policy, the `TraceStore` port with in-memory and local file implementations, Trace-contract validation, Runtime comparison, and reconstruction. Its only production dependencies are `@aao/contracts` and `zod`. Only its file store touches the filesystem. No execution package depends on it. Metrics and Audit (Sprint 16), Evaluation (Sprint 17), and UI (Sprints 27/28 in the Sprint 17 roadmap) are not part of it yet.
 - **The existing `TraceEvent` contract is migrated, not duplicated.** `@aao/contracts/trace.ts` now defines schema version 2:
   - **Envelope:** `schemaVersion`, `eventId`, `traceId`, `runId`, `sequence`, `occurredAt`, `type`, `workflowId`, `workflowVersion`, `nodeId?`, `spanId`, `parentSpanId?`, `status?`, `payload`.
   - **Catalog:** a closed catalog of dot-namespaced event types.

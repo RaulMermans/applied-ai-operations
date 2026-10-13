@@ -41,3 +41,7 @@ The Approval Node emits `approval.requested` with the approval id, requester id/
 - `approval.resolution_denied` for a refused attempt by a well-formed principal: `APPROVAL_HUMAN_REQUIRED`, `APPROVAL_RESOLVER_NOT_ELIGIBLE`, `APPROVAL_SELF_APPROVAL_FORBIDDEN`, or `APPROVAL_ALREADY_RESOLVED`. The attempted resolver is the actor; nothing is fabricated for an unattributable attempt.
 
 No subject, reason text, or profile data is recorded. The engine never reads Audit: a forged Audit approval leaves the record pending. Audit failure never changes or rolls back a decision. See [audit](audit.md) and [ADR-021](../decisions/ADR-021-metrics-and-audit-boundaries.md).
+
+## Evaluation (Sprint 17)
+
+The `aao.approval-compliance` grader in `@aao/evaluation` judges recorded Approval evidence: whether an Approval was requested and how often, its resolution, no Tool before approval (bypass detection), and no Tool after rejection, optionally cross-checked against Audit. It never resolves, approves, or re-checks eligibility. A passing EvalResult, or a model judge that "recommends approval", leaves a pending Approval pending; continuation still requires an eligible human resolution. See [evaluation runtime](evaluation-runtime.md).

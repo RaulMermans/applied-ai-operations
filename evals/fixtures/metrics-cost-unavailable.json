@@ -1,0 +1,411 @@
+{
+  "origin": "recorded",
+  "runId": "run.eval.unpriced",
+  "trace": [
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.0c4b04dffe84853e6b8cabd7fd3ed91c",
+      "traceId": "ba2709b00f6ae230f193deff09ee7b14",
+      "runId": "run.eval.unpriced",
+      "sequence": 0,
+      "occurredAt": "2026-10-08T12:00:00.000Z",
+      "type": "run.started",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "spanId": "4d44c554574ceb9d",
+      "status": "started",
+      "payload": {
+        "entryNodeId": "summarize",
+        "initialStateRevision": 0,
+        "nodeCount": 2,
+        "reliabilityPolicies": [],
+        "reliabilityPolicyFingerprint": "1769b81ba2e8ef6d3c28a61c6a09d460d44a65519ecab23baf38995b64f327ba"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.c0a14fe7305bb39a61106dedeaf5fac3",
+      "traceId": "ba2709b00f6ae230f193deff09ee7b14",
+      "runId": "run.eval.unpriced",
+      "sequence": 1,
+      "occurredAt": "2026-10-08T12:00:01.000Z",
+      "type": "node.started",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "summarize",
+      "spanId": "9300237a0f30523c",
+      "parentSpanId": "4d44c554574ceb9d",
+      "status": "started",
+      "payload": {
+        "kind": "model",
+        "step": 1,
+        "attempt": 1,
+        "maxAttempts": 1,
+        "stateRevision": 0,
+        "recoveryReplay": false
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.4efb3bca3bcd466b409e6ab1c5f10175",
+      "traceId": "ba2709b00f6ae230f193deff09ee7b14",
+      "runId": "run.eval.unpriced",
+      "sequence": 2,
+      "occurredAt": "2026-10-08T12:00:02.000Z",
+      "type": "model.call.started",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "summarize",
+      "spanId": "7d3fe9e85922002e",
+      "parentSpanId": "9300237a0f30523c",
+      "status": "started",
+      "payload": {
+        "invocationId": "inv.unpriced",
+        "attempt": 1,
+        "modelPolicyRef": "policy.default",
+        "modelBindingId": "binding.default",
+        "outputKind": "text",
+        "requiredCapabilityIds": [],
+        "modelIdentity": {
+          "provider": "example",
+          "model": "example-model"
+        },
+        "recoveryReplay": false
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.c35cb06c19e3d64075c032e21c701a6e",
+      "traceId": "ba2709b00f6ae230f193deff09ee7b14",
+      "runId": "run.eval.unpriced",
+      "sequence": 3,
+      "occurredAt": "2026-10-08T12:00:03.000Z",
+      "type": "model.call.completed",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "summarize",
+      "spanId": "7d3fe9e85922002e",
+      "parentSpanId": "9300237a0f30523c",
+      "status": "succeeded",
+      "payload": {
+        "invocationId": "inv.unpriced",
+        "attempt": 1,
+        "modelBindingId": "binding.default",
+        "outputKind": "text",
+        "finishReason": "stop",
+        "usage": {
+          "inputTokens": 900,
+          "outputTokens": 100,
+          "totalTokens": 1000
+        },
+        "modelIdentity": {
+          "provider": "example",
+          "model": "example-model"
+        }
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.00dab5d904f03bc8d592879ebc232b41",
+      "traceId": "ba2709b00f6ae230f193deff09ee7b14",
+      "runId": "run.eval.unpriced",
+      "sequence": 4,
+      "occurredAt": "2026-10-08T12:00:04.000Z",
+      "type": "state.updated",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "summarize",
+      "spanId": "9300237a0f30523c",
+      "parentSpanId": "4d44c554574ceb9d",
+      "payload": {
+        "step": 1,
+        "revisionBefore": 0,
+        "revisionAfter": 1,
+        "changedKeys": [
+          "summary"
+        ]
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.9483cd75f9e2b32ee3d88bdd215627a8",
+      "traceId": "ba2709b00f6ae230f193deff09ee7b14",
+      "runId": "run.eval.unpriced",
+      "sequence": 5,
+      "occurredAt": "2026-10-08T12:00:05.000Z",
+      "type": "node.completed",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "summarize",
+      "spanId": "9300237a0f30523c",
+      "parentSpanId": "4d44c554574ceb9d",
+      "status": "succeeded",
+      "payload": {
+        "kind": "model",
+        "step": 1,
+        "attemptCount": 1,
+        "stateRevisionBefore": 0,
+        "stateRevisionAfter": 1,
+        "outcomeSource": "executor"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.ccb33cab3947ad871f45871eeb80feeb",
+      "traceId": "ba2709b00f6ae230f193deff09ee7b14",
+      "runId": "run.eval.unpriced",
+      "sequence": 6,
+      "occurredAt": "2026-10-08T12:00:06.000Z",
+      "type": "route.selected",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "spanId": "4d44c554574ceb9d",
+      "payload": {
+        "sourceNodeId": "summarize",
+        "targetNodeId": "final",
+        "routeType": "unconditional"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.ddcf9938b801b234e14e60458fa99455",
+      "traceId": "ba2709b00f6ae230f193deff09ee7b14",
+      "runId": "run.eval.unpriced",
+      "sequence": 7,
+      "occurredAt": "2026-10-08T12:00:07.000Z",
+      "type": "node.started",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "final",
+      "spanId": "e7eabd53417fe5ee",
+      "parentSpanId": "4d44c554574ceb9d",
+      "status": "started",
+      "payload": {
+        "kind": "final_output",
+        "step": 2,
+        "attempt": 1,
+        "maxAttempts": 1,
+        "stateRevision": 0,
+        "recoveryReplay": false
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.1fc818b94b64ef9094bd5283597c798c",
+      "traceId": "ba2709b00f6ae230f193deff09ee7b14",
+      "runId": "run.eval.unpriced",
+      "sequence": 8,
+      "occurredAt": "2026-10-08T12:00:08.000Z",
+      "type": "node.completed",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "nodeId": "final",
+      "spanId": "e7eabd53417fe5ee",
+      "parentSpanId": "4d44c554574ceb9d",
+      "status": "succeeded",
+      "payload": {
+        "kind": "final_output",
+        "step": 2,
+        "attemptCount": 1,
+        "stateRevisionBefore": 1,
+        "stateRevisionAfter": 1,
+        "outcomeSource": "executor"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "evt.198fff480126ab2710087cb0e3d28cb3",
+      "traceId": "ba2709b00f6ae230f193deff09ee7b14",
+      "runId": "run.eval.unpriced",
+      "sequence": 9,
+      "occurredAt": "2026-10-08T12:00:09.000Z",
+      "type": "run.completed",
+      "workflowId": "eval.synthetic",
+      "workflowVersion": "1.0.0",
+      "spanId": "4d44c554574ceb9d",
+      "status": "succeeded",
+      "payload": {
+        "finalNodeId": "final",
+        "stateRevision": 1,
+        "steps": 2
+      }
+    }
+  ],
+  "metrics": {
+    "schemaVersion": 1,
+    "runId": "run.eval.unpriced",
+    "traceId": "ba2709b00f6ae230f193deff09ee7b14",
+    "workflowId": "eval.synthetic",
+    "workflowVersion": "1.0.0",
+    "dimensions": {
+      "reliabilityPolicyFingerprint": "1769b81ba2e8ef6d3c28a61c6a09d460d44a65519ecab23baf38995b64f327ba"
+    },
+    "runStatus": "COMPLETED",
+    "traceQuality": {
+      "status": "complete",
+      "issues": []
+    },
+    "startedAt": "2026-10-08T12:00:00.000Z",
+    "endedAt": "2026-10-08T12:00:09.000Z",
+    "durationMs": 9000,
+    "approvalWaitDurationMs": 0,
+    "durationExcludingApprovalWaitMs": 9000,
+    "steps": 2,
+    "nodes": {
+      "executions": 2,
+      "attempts": 2,
+      "recoveryReplayAttempts": 0,
+      "completed": 2,
+      "failed": 0,
+      "waiting": 0,
+      "attemptDetails": [
+        {
+          "nodeId": "summarize",
+          "kind": "model",
+          "step": 1,
+          "attempt": 1,
+          "recoveryReplay": false,
+          "outcome": "completed",
+          "startedAt": "2026-10-08T12:00:01.000Z",
+          "durationMs": 4000,
+          "waitDurationMs": null
+        },
+        {
+          "nodeId": "final",
+          "kind": "final_output",
+          "step": 2,
+          "attempt": 1,
+          "recoveryReplay": false,
+          "outcome": "completed",
+          "startedAt": "2026-10-08T12:00:07.000Z",
+          "durationMs": 1000,
+          "waitDurationMs": null
+        }
+      ],
+      "byNode": [
+        {
+          "nodeId": "final",
+          "kind": "final_output",
+          "executions": 1,
+          "attempts": 1,
+          "completed": 1,
+          "failed": 0,
+          "waits": 0,
+          "attemptDurationMsTotal": 1000
+        },
+        {
+          "nodeId": "summarize",
+          "kind": "model",
+          "executions": 1,
+          "attempts": 1,
+          "completed": 1,
+          "failed": 0,
+          "waits": 0,
+          "attemptDurationMsTotal": 4000
+        }
+      ]
+    },
+    "retries": {
+      "scheduled": 0,
+      "exhausted": 0,
+      "nodesRetried": 0
+    },
+    "models": {
+      "callsStarted": 1,
+      "callsCompleted": 1,
+      "callsFailed": 0,
+      "byModel": [
+        {
+          "identity": {
+            "provider": "example",
+            "model": "example-model"
+          },
+          "callsStarted": 1,
+          "callsCompleted": 1,
+          "callsFailed": 0,
+          "callsWithoutUsage": 0,
+          "knownInputTokens": 900,
+          "knownOutputTokens": 100,
+          "knownTotalTokens": 1000,
+          "pricedCalls": 0,
+          "unpricedCalls": 1,
+          "knownEstimatedCostNanos": 0
+        }
+      ]
+    },
+    "agents": {
+      "executions": 0,
+      "iterations": 0,
+      "completed": 0,
+      "failed": 0
+    },
+    "tools": {
+      "physicalInvocations": 0,
+      "logicalExecutions": 0,
+      "completed": 0,
+      "failed": 0,
+      "blocked": 0,
+      "byTool": []
+    },
+    "approvals": {
+      "requested": 0,
+      "approved": 0,
+      "rejected": 0,
+      "expired": 0,
+      "cancelled": 0,
+      "pending": 0
+    },
+    "durability": {
+      "checkpointsCreated": 0,
+      "recoveryStarts": 0,
+      "recoveryReplays": 0,
+      "reusedOutcomes": 0,
+      "recoveryBlocks": 0,
+      "recoveryCompletions": 0
+    },
+    "cancellation": {
+      "requested": false,
+      "applied": false
+    },
+    "state": {
+      "updates": 1,
+      "finalStateRevision": 1
+    },
+    "tokenUsage": {
+      "status": "complete",
+      "modelCallsCompleted": 1,
+      "modelCallsFailed": 0,
+      "callsWithUsage": 1,
+      "callsWithoutUsage": 0,
+      "inputTokens": 900,
+      "outputTokens": 100,
+      "totalTokens": 1000,
+      "knownInputTokens": 900,
+      "knownOutputTokens": 100,
+      "knownTotalTokens": 1000
+    },
+    "cost": {
+      "status": "unavailable",
+      "currency": null,
+      "estimatedCostNanos": null,
+      "knownEstimatedCostNanos": 0,
+      "pricedCalls": 0,
+      "unpricedCalls": 1,
+      "unpricedReasons": [
+        {
+          "reason": "PRICING_PROFILE_NOT_FOUND",
+          "count": 1
+        }
+      ],
+      "pricingProfiles": []
+    },
+    "failures": {
+      "failedAttempts": 0,
+      "uncategorizedAttempts": 0,
+      "byCategory": [],
+      "byCode": [],
+      "detectedEvents": 0,
+      "runFailure": null
+    }
+  }
+}

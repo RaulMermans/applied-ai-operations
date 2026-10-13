@@ -162,3 +162,13 @@ The Tool Node maps these to `tool.call.blocked`, `tool.call.started`, `tool.call
 ## Audit (Sprint 16)
 
 `ToolNodeDependencies.audit` (or `executeTool({ audit })`) is an optional, emit-only Audit binding. `tool-audit.ts` records each Authorization decision as `tool.access.allowed` or `tool.access.denied`: access accountability for the attempt, correlated with Trace by `toolExecutionId` and attempt. Allowed means the invocation path may continue, not that the Tool succeeded. Tool input and output are never recorded. A failing Audit port changes nothing and causes no retry. The support gate is unchanged: `external_side_effect`, `destructive`, and `sensitive_data` remain unsupported even with Audit present. See [audit](audit.md).
+
+## Evaluation (Sprint 17)
+
+`@aao/evaluation` judges Tool behavior from the canonical Trace this package's observer feeds:
+
+- `tool.call.started` means the handler was invoked.
+- `tool.call.blocked` means the support gate, Authorization, or validation stopped the call, and handler calls = 0. It is never counted as an invocation.
+- Physical invocations (handler starts) and logical executions (distinct `toolExecutionId`s) stay distinct.
+
+Because Tool input is validated before the handler runs, a started call already implies schema-valid input. Semantic argument quality is not inferred from Trace, which never carries arguments. An EvalResult has no path to the support gate: `external_side_effect`, `destructive`, and `sensitive_data` remain unsupported whatever an evaluation concludes. See [evaluation runtime](evaluation-runtime.md).

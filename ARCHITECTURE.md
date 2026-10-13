@@ -202,6 +202,28 @@ SECURITY / ACCOUNTABILITY ACTION ──emit──► AuditPort ──► Audit r
 
 See [ADR-021](docs/decisions/ADR-021-metrics-and-audit-boundaries.md), [metrics](docs/architecture/metrics.md), and [audit](docs/architecture/audit.md).
 
+## Evaluation Runtime
+
+Sprint 17 adds `@aao/evaluation`, a separate layer that observes and judges AAO execution evidence. It never becomes execution authority:
+
+```text
+Trace · Runtime execution state · RunMetrics · Audit · (explicit subject)
+      ↓ host hands over after the Runtime returned (RUNTIME) or from recorded fixtures (OFFLINE)
+EvalEvidenceBundle (deep-frozen, fingerprinted) → EvalDefinition v2 → Evaluator Registry (exact grader id + version)
+      → deterministic grader (default) | bounded model judge (optional, injected port) → EvalResult v2
+```
+
+- **Non-authoritative.** No execution package depends on Evaluation, and the Runtime has no eval hook. Evaluation writes no Trace, Audit, or Metrics. An `EvalResult` cannot approve, authorize, change Run state, call a Tool, retry, recover, or enable a side effect.
+- **One contract family.** The Sprint 2 placeholders were migrated in `@aao/contracts`:
+  - `EvalDefinition` and `EvalResult` (both schema version 2);
+  - `EvalDataset` (schema version 1), `EvalCase`, and `EvalDatasetRun`.
+- **Trusted graders only.** Definitions select registered graders by exact id and version, and Eval data can never name code.
+- **Deterministic by default.** The nine deterministic graders cover the trace contract, Run outcome, trajectory, Tool usage (physical vs logical, blocked ≠ invoked), Approval, Authorization, retries, state assertions, and Metrics thresholds.
+- **Fail closed.** Missing, corrupt, or incomplete evidence never passes. `failed` (behavior violated) and `error` (no trustworthy judgment) stay distinct.
+- **Portable verification is a permanent invariant:** evaluation policies attach to AAO contracts and execution semantics, not to individual model, Tool, or orchestration frameworks. The evaluation core imports no framework, provider SDK, or MCP code.
+
+See [ADR-022](docs/decisions/ADR-022-evaluation-runtime-and-portable-verification.md), [evaluation runtime](docs/architecture/evaluation-runtime.md), and [`evals/`](evals/README.md).
+
 ## Canonical architecture documents
 
 - [Product contract](docs/product/product-contract.md) — product purpose, boundaries, V1 proof, and success criteria.
@@ -219,6 +241,7 @@ See [ADR-021](docs/decisions/ADR-021-metrics-and-audit-boundaries.md), [metrics]
 - [Trace runtime](docs/architecture/trace-runtime.md) — Trace Event V2, the emit-only trace port, recorder, Trace Stores, identity, content policy, validation, and the OpenTelemetry mapping.
 - [Metrics](docs/architecture/metrics.md) — Trace-derived RunMetrics and AggregateMetrics, completeness, latency, token usage, explicit pricing and cost coverage, denominators, and nearest-rank percentiles.
 - [Audit](docs/architecture/audit.md) — source-time accountability events, the emit-only Audit port, the hash-chained Audit Store, verification, failure isolation, and retention limits.
+- [Evaluation runtime](docs/architecture/evaluation-runtime.md) — non-authoritative OFFLINE/RUNTIME evaluation, Eval Definition/Result v2, datasets, the Evaluator Registry, deterministic graders, the bounded model-judge port, and portable verification.
 - [Governance](docs/architecture/governance.md) — host-attested actors, role bindings, deny policies, and resolved authority before Authorization.
 - [MCP connector](docs/architecture/mcp-connector.md) — isolated stdio sessions, bounded discovery, explicit Tool bindings, and normalized failures.
 - [System boundaries](docs/architecture/system-boundaries.md) — architectural layers and ownership.
@@ -244,7 +267,7 @@ Dependencies implement infrastructure; AAO defines product semantics.
 | Visualization truth | Yes | xyflow may visualize backend truth later |
 | Authorization | Yes | `@aao/authorization`, no external dependency (Sprint 9) |
 | Governance | Yes | `@aao/governance`, canonical contracts and deterministic validation (Sprint 11) |
-| Evaluation | Yes | Implementation deferred |
+| Evaluation | Yes | `@aao/evaluation`: trusted deterministic graders over canonical evidence, no eval framework or vendor (Sprint 17); optional model judge only through an injected port; analytics/CI gates deferred to Sprint 18 |
 | Trace model | Yes | `@aao/observability`: local Trace Stores, no external dependency (Sprint 15); OTel export deferred |
 | Metrics | Yes | `@aao/observability`: pure projections of Trace, no Metrics store or metrics SDK (Sprint 16); exporters deferred |
 | Audit | Yes | `@aao/observability`: local hash-chained Audit Store, no SIEM or audit vendor (Sprint 16) |
@@ -263,6 +286,7 @@ The source-of-truth hierarchy is: executable contracts and schemas once implemen
 - Keep framework-specific types behind adapter boundaries and prevent company-specific requirements from silently changing core semantics.
 - A correct-looking final response is not evidence of reliable execution; evaluate the workflow, tool use, authorization, state, traces, and artifact where applicable.
 - Do not enable side effects without authorization policy or durable side effects without an idempotency and recovery design.
+- Evaluation never gates execution, and Eval criteria never encode a framework or provider; external evidence is normalized into AAO semantics first.
 - Add no infrastructure without a demonstrated requirement.
 
 ## Local-first contract

@@ -40,4 +40,13 @@ Since Sprint 16, Metrics are deterministic projections of Trace. They cover late
 
 Evaluation owns workflow and schema evaluation, tool-use and trace assertions, authorization tests, regression cases, safety tests, and model/capability benchmarks. A final response does not establish correct execution.
 
+Since Sprint 17, `@aao/evaluation` is the Evaluation Runtime, a separate layer outside the Runtime and outside `@aao/observability`:
+
+- It judges canonical evidence (Trace, Runtime execution state, RunMetrics, Audit) with trusted, version-exact graders, in OFFLINE mode (recorded evidence) or RUNTIME mode (a real Run handed over after the Runtime returned).
+- Dependency direction is one-way. Evaluation depends on contracts and the observability validators; no execution package depends on Evaluation.
+- An EvalResult is never execution authority.
+- Eval criteria target AAO semantics, never a framework or provider (portable verification).
+
+See [evaluation runtime](evaluation-runtime.md) and [ADR-022](../decisions/ADR-022-evaluation-runtime-and-portable-verification.md).
+
 The [MCP connector](mcp-connector.md) owns protocol/session infrastructure. SDK objects and transport configuration never enter canonical contracts or workflow state. Discovery metadata cannot supply permissions, grants, capability assignments, or AAO state mutations; `executeTool` owns the governed invocation path.
