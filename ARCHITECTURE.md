@@ -22,6 +22,20 @@ flowchart TB
   model --> external
 ```
 
+## Framework surface
+
+`@aao/framework` (`packages/framework`, Sprint 19, [ADR-024](docs/decisions/ADR-024-public-framework-surface.md)) is the recommended developer entry point. It is a façade over AAO Core, not a second implementation:
+
+- **Definitions.** `define*` helpers validate the canonical contracts.
+- **Application host.** `createAAO` composes the existing Governance, Tool Runtime, Authorization, Approval Engine, and Runtime, with identity only from the host's `principalForRun`.
+- **CLI.** The canonical `aao` CLI owns workflow validation/compilation and the Eval commands.
+
+```text
+Developer → @aao/framework (definitions · app host · CLI) → AAO Core → Runtime / Governance / Evaluation
+```
+
+Dependencies run one way, `framework → core`, and Core never imports it. The root exports an explicit, snapshot-pinned allowlist with no vendor types. Framework errors cover preparation only, and Runtime failures stay canonical. Framework V1 executes `tool`, `approval`, and `final_output` nodes, and adapter contracts remain Sprint 20. See [framework surface](docs/architecture/framework-surface.md).
+
 ## Canonical domain contracts
 
 Company configuration supplies actors, roles, bindings, and deny policies to `@aao/governance`. Its deterministic resolver turns host-attested identity into effective authority. Existing `@aao/authorization` checks requested permissions and the Agent ceiling; `@aao/tool-runtime` enforces runtime support and executes supported Tools. See [governance](docs/architecture/governance.md) and [ADR-016](docs/decisions/ADR-016-actor-role-policy-governance.md). Approval is a separate, process-local gate after Governance and Authorization (ADR-017); it never grants authority. Approver eligibility is trusted identity plus required-role membership, not possession of the action's permissions.
@@ -256,6 +270,7 @@ See [ADR-023](docs/decisions/ADR-023-eval-analytics-ci-gates-and-adapter-verific
 - [Evaluation runtime](docs/architecture/evaluation-runtime.md) — non-authoritative OFFLINE/RUNTIME evaluation, Eval Definition/Result v2, datasets, the Evaluator Registry, deterministic graders, the bounded model-judge port, and portable verification.
 - [Eval analytics & CI gates](docs/architecture/eval-analytics-ci.md) — comparison identity, case expectation verdicts, suite reports, baselines, comparison, and the deterministic offline gate.
 - [Adapter verification](docs/architecture/adapter-verification.md) — substrate drivers, canonical scenarios, truthful partial support, semantic portability.
+- [Framework surface](docs/architecture/framework-surface.md) — the public `@aao/framework` façade, application host, identity ownership, and Sprint 20 handoff; with the developer [quickstart](docs/framework/quickstart.md) and [CLI](docs/framework/cli.md).
 - [Governance](docs/architecture/governance.md) — host-attested actors, role bindings, deny policies, and resolved authority before Authorization.
 - [MCP connector](docs/architecture/mcp-connector.md) — isolated stdio sessions, bounded discovery, explicit Tool bindings, and normalized failures.
 - [System boundaries](docs/architecture/system-boundaries.md) — architectural layers and ownership.
@@ -281,7 +296,8 @@ Dependencies implement infrastructure; AAO defines product semantics.
 | Visualization truth | Yes | xyflow may visualize backend truth later |
 | Authorization | Yes | `@aao/authorization`, no external dependency (Sprint 9) |
 | Governance | Yes | `@aao/governance`, canonical contracts and deterministic validation (Sprint 11) |
-| Evaluation | Yes | `@aao/evaluation`: trusted deterministic graders over canonical evidence, no eval framework or vendor (Sprint 17); optional model judge only through an injected port; analytics/CI gates deferred to Sprint 18 |
+| Evaluation | Yes | `@aao/evaluation`: trusted deterministic graders over canonical evidence, no eval framework or vendor (Sprint 17); optional model judge only through an injected port; analytics, CI gates, and adapter verification (Sprint 18); report integrity (Sprint 19) |
+| Developer surface | Yes | `@aao/framework`: an explicit façade and the `aao` CLI over AAO Core, no framework SDK (Sprint 19) |
 | Trace model | Yes | `@aao/observability`: local Trace Stores, no external dependency (Sprint 15); OTel export deferred |
 | Metrics | Yes | `@aao/observability`: pure projections of Trace, no Metrics store or metrics SDK (Sprint 16); exporters deferred |
 | Audit | Yes | `@aao/observability`: local hash-chained Audit Store, no SIEM or audit vendor (Sprint 16) |

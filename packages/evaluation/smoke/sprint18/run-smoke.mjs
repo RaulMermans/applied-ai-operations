@@ -1,6 +1,8 @@
 // Sprint 18 compiled smoke: Eval analytics, CI gates, and adapter verification.
 // Run after `pnpm build`; uses only dist/ (every @aao/* import resolves to
-// compiled output; the CLI host and substrate drivers are plain ESM).
+// compiled output; the substrate drivers are plain ESM). Since Sprint 19 the
+// Eval CI host is the canonical `aao` CLI, so this smoke drives its compiled
+// output in @aao/framework (smoke-only; no Core source imports Framework).
 //
 //  1. Sprint 17 closure: the multi-Approval regression through the real
 //     aao.approval-compliance 2.0.0 grader — Approval A approved, Approval B
@@ -16,10 +18,13 @@ import process from 'node:process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createEvaluatorRegistry, deterministicGraders, evaluate, evidenceFingerprint, parseEvalDefinitions } from '@aao/evaluation';
-import { renderGateOutcome } from '../../cli/eval-ci.mjs';
-import { runAdapterConformance } from '../../cli/eval-adapters.mjs';
-import { loadFoundationInputs, repositoryRoot, runGatePipeline } from '../../cli/host.mjs';
-import { installNetworkGuard } from '../../cli/network-guard.mjs';
+import { URL, fileURLToPath } from 'node:url';
+import { renderGateOutcome } from '../../../framework/dist/cli/eval/ci.js';
+import { runAdapterConformance } from '../../../framework/dist/cli/eval/adapters.js';
+import { loadFoundationInputs, runGatePipeline } from '../../../framework/dist/cli/eval/host.js';
+import { installNetworkGuard } from '../../../framework/dist/cli/eval/network-guard.js';
+
+const repositoryRoot = fileURLToPath(new URL('../../../../', import.meta.url));
 
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
 const guard = installNetworkGuard();
@@ -38,7 +43,7 @@ const guardApproved = await evaluate({ definition: guarded, mode: 'OFFLINE', evi
 assert(guardApproved.status === 'passed', 'the guard approval did not authorize its Tool');
 
 // --- 2. Deterministic suite → baseline comparison → foundation-ci gate. ---
-const inputs = loadFoundationInputs();
+const inputs = loadFoundationInputs(repositoryRoot);
 const outcome = await runGatePipeline(inputs);
 assert(outcome.ok, `gate error: ${JSON.stringify(outcome.error)}`);
 const { suite, decision } = outcome;
@@ -46,7 +51,7 @@ assert(suite.summary.expectationsMatched === suite.summary.casesTotal, 'not ever
 assert(suite.summary.rawStatuses.failed > 0 && suite.summary.rawStatuses.error > 0, 'negative and deliberate-error cases are missing');
 assert(decision.passed && decision.comparisonSummary.regressions === 0 && decision.hardFailures.length === 0, `gate did not pass: ${JSON.stringify(decision.hardFailures)}`);
 assert(renderGateOutcome(outcome, { format: 'text' }).exitCode === 0, 'PASS did not exit 0');
-const repeat = await runGatePipeline(loadFoundationInputs());
+const repeat = await runGatePipeline(loadFoundationInputs(repositoryRoot));
 assert(JSON.stringify(repeat) === JSON.stringify(outcome), 'gate is not deterministic');
 
 // --- 3. Fixture mutation is refused; a critical regression hard-fails. ---
@@ -64,7 +69,7 @@ assert(regressed.ok && !regressed.decision.passed && regressed.decision.hardFail
 assert(renderGateOutcome(regressed, { format: 'text' }).exitCode === 1, 'hard failure did not exit 1');
 
 // --- 4. Adapter conformance subset. ---
-const conformance = await runAdapterConformance();
+const conformance = await runAdapterConformance({ root: repositoryRoot });
 assert(conformance.ok && conformance.passed, 'adapter conformance failed');
 const supported = Object.fromEntries(conformance.reports.map((report) => [report.adapter.id, `${report.passed}/${report.supported}${report.unsupported ? ` +${report.unsupported} unsupported` : ''}${report.notApplicable ? ` +${report.notApplicable} n/a` : ''}`]));
 assert(conformance.portability.every((entry) => entry.consistent && entry.cases.length > 0), 'semantic verdicts diverged across substrates');

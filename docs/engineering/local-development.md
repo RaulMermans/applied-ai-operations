@@ -89,17 +89,18 @@ Runs each package's own `tsc -p tsconfig.build.json` in dependency order (`pnpm 
 pnpm check
 ```
 
-Runs `typecheck → lint → build → test → eval:ci → eval:adapters`, the same sequence CI runs (see [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)). This ordering verifies the actually-shipped build (compiled apps and packages resolving each other through `dist/`, as they do outside of tests — see "Compiled smoke verification" below), in addition to the tests already having run correctly on their own (see "Tests" above).
+Runs `typecheck → lint → build → test → aao eval ci → aao eval adapters` (the last two call the just-built CLI directly, `node packages/framework/dist/cli/main.js`), the same sequence CI runs (see [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)). This ordering verifies the actually-shipped build (compiled apps and packages resolving each other through `dist/`, as they do outside of tests — see "Compiled smoke verification" below), in addition to the tests already having run correctly on their own (see "Tests" above).
 
 ## Eval quality gate and adapter verification
 
-After `pnpm build`, the deterministic Eval commands run on compiled output. They are offline: no API keys, providers, or network, and a guard fails the command on any connection attempt.
+The deterministic Eval commands are the canonical `aao` CLI ([CLI](../framework/cli.md)); the `pnpm eval:*` scripts are aliases. No prior `pnpm build` is needed: each alias first builds `@aao/framework` and its dependency closure, then runs the compiled CLI, so it never executes stale `dist/`. They are offline: no API keys, providers, or network, and a guard fails the command on any connection attempt.
 
 ```sh
 pnpm eval:ci                       # foundation gate: PASS/WARN exit 0, hard failure or gate error exit 1
 pnpm eval:ci -- --format json      # machine-readable decision (no ANSI)
 pnpm eval:adapters                 # adapter conformance: native Tool, MCP, native model, Vercel AI SDK
 pnpm eval:baseline:propose -- --id runtime-foundation --version <v>   # prints a proposal; writes nothing
+pnpm aao workflow validate <file>  # canonical workflow validation (also: workflow compile)
 ```
 
 See [eval analytics & CI](../architecture/eval-analytics-ci.md), [adapter verification](../architecture/adapter-verification.md), and [`evals/baselines/README.md`](../../evals/baselines/README.md) for the baseline review workflow. CI never writes a baseline.
@@ -128,7 +129,7 @@ wait $W_PID 2>/dev/null
 
 Both processes log structured JSON lines (`started`, `shutting_down`, `stopped`) to stdout and exit `0` after a clean shutdown, with no process left behind.
 
-Built-package acceptance smokes for the MCP, Tool, Approval, Reliability, Durability, Trace, Metrics/Audit, Evaluation, and Eval analytics/CI layers use only `dist/` output:
+Built-package acceptance smokes for the MCP, Tool, Approval, Reliability, Durability, Trace, Metrics/Audit, Evaluation, Eval analytics/CI, and Framework layers use only `dist/` output:
 
 ```sh
 node packages/mcp-connector/test/smoke.mjs               # SPRINT_10_MCP_CONNECTOR_SMOKE_OK
@@ -140,6 +141,8 @@ pnpm --filter @aao/observability smoke                   # SPRINT_15_TRACE_RUNTI
 pnpm --filter @aao/observability smoke:metrics-audit     # SPRINT_16_METRICS_AUDIT_SMOKE_OK
 pnpm --filter @aao/evaluation smoke                      # SPRINT_17_EVALUATION_RUNTIME_SMOKE_OK
 pnpm --filter @aao/evaluation smoke:sprint18             # SPRINT_18_EVAL_ANALYTICS_CI_ADAPTER_VERIFICATION_SMOKE_OK
+pnpm --filter @aao/framework smoke                       # SPRINT_19_FRAMEWORK_SURFACE_SMOKE_OK
+pnpm --filter @aao/framework smoke:no-build              # SPRINT_19_NO_BUILD_EVAL_ALIASES_OK (deletes the framework closure's dist/, then runs pnpm eval:ci / eval:adapters)
 ```
 
 The durability smoke runs three separate Node processes over one temporary directory, which it deletes afterward:

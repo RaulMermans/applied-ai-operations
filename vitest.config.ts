@@ -20,6 +20,7 @@ function workspaceSourceAlias(packageName: string, relativeEntry: string) {
 export default defineConfig({
   resolve: {
     alias: [
+      workspaceSourceAlias("@aao/framework", "./packages/framework/src/index.ts"),
       workspaceSourceAlias("@aao/mcp-connector", "./packages/mcp-connector/src/index.ts"),
       workspaceSourceAlias("@aao/authorization", "./packages/authorization/src/index.ts"),
       workspaceSourceAlias("@aao/approval", "./packages/approval/src/index.ts"),

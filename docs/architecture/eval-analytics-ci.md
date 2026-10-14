@@ -1,6 +1,6 @@
 # Eval Analytics and CI Gates
 
-Sprint 18 ([ADR-023](../decisions/ADR-023-eval-analytics-ci-gates-and-adapter-verification.md)) turns the [Evaluation Runtime](evaluation-runtime.md) into a deterministic quality-control system. Analytics, baselines, and gates live inside `@aao/evaluation` (`src/analytics/`, `src/gates/`). Contracts live in `@aao/contracts` (`eval-analytics.ts`), and the read-only filesystem host lives in `packages/evaluation/cli/`.
+Sprint 18 ([ADR-023](../decisions/ADR-023-eval-analytics-ci-gates-and-adapter-verification.md)) turns the [Evaluation Runtime](evaluation-runtime.md) into a deterministic quality-control system. Analytics, baselines, and gates live inside `@aao/evaluation` (`src/analytics/`, `src/gates/`). Contracts live in `@aao/contracts` (`eval-analytics.ts`), and the read-only filesystem host is the canonical `aao` CLI in `@aao/framework` (`packages/framework/src/cli/eval/`, since Sprint 19; Sprint 18's plain-ESM `packages/evaluation/cli/` was migrated there and deleted).
 
 ```text
 Dataset (EvalDataset v2, pinned OFFLINE fixtures)
@@ -146,11 +146,11 @@ A *gate error* means no trustworthy comparison happened. It is returned instead 
 
 | Command | Does |
 | --- | --- |
-| `pnpm eval:ci [-- --format json] [--verbose] [--git-sha <sha>]` | Full gate pipeline. Exit 0 = PASS or WARN; 1 = hard failure or gate error |
-| `pnpm eval:adapters [-- --format json]` | [Adapter verification](adapter-verification.md) |
-| `pnpm eval:baseline:propose -- --id <id> --version <v>` | Print a baseline *proposal*; writes nothing |
+| `aao eval ci [--format json] [--verbose] [--git-sha <sha>]` (alias `pnpm eval:ci`) | Full gate pipeline. Exit 0 = PASS or WARN; 1 = hard failure or gate error |
+| `aao eval adapters [--format json]` (alias `pnpm eval:adapters`) | [Adapter verification](adapter-verification.md) |
+| `aao eval baseline propose --id <id> --version <v>` (alias `pnpm eval:baseline:propose`) | Print a baseline *proposal*; writes nothing |
 
-All three run after `pnpm build`, because they use compiled output. They are offline: a guard refuses `fetch`, socket connections, and DNS lookups, and exits 1 if any is attempted. `pnpm check` and GitHub CI run `eval:ci` and `eval:adapters` after the tests. The model judge is never part of these commands.
+Since Sprint 19 these are the canonical TypeScript `aao` CLI ([CLI](../framework/cli.md)). The `pnpm eval:*` aliases build `@aao/framework` and its dependency closure first, so no prior `pnpm build` is needed and stale `dist/` is never run. Output is byte-identical to the Sprint 18 commands. They are offline: a guard refuses `fetch`, socket connections, and DNS lookups, and exits 1 if any is attempted. `pnpm check` and GitHub CI run `eval:ci` and `eval:adapters` after the tests. The model judge is never part of these commands.
 
 Default text output:
 

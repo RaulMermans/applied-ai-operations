@@ -9,7 +9,8 @@ import { createEvaluatorRegistry, createStaticEvidenceResolver, deterministicGra
  * this *host* code maps `fixture://<name>` to `evals/fixtures/<name>.json`
  * explicitly and hands the evaluator an in-memory resolver.
  */
-export const evalsRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "evals");
+export const repositoryRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+export const evalsRoot = join(repositoryRoot, "evals");
 
 export function loadDefinitions(file = "runtime-foundation.v1.yaml"): EvalDefinition[] {
   const parsed = parseEvalDefinitions(readFileSync(join(evalsRoot, "definitions", file), "utf8"), "yaml");

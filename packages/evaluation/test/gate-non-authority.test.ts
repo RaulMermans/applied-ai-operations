@@ -7,9 +7,9 @@ import { continueApprovedWorkflow } from "@aao/approval";
 import { createGovernanceRegistry, resolveAuthority } from "@aao/governance";
 import { SUPPORTED_TOOL_PERMISSION_CLASSES, checkToolPermissionSupport, createToolRegistry, executeTool } from "@aao/tool-runtime";
 import { buildEvalSuiteReport, createStaticEvidenceResolver, evalBaselineFingerprint, evaluateEvalGate, proposeEvalBaseline, runEvalDataset } from "../src/index.js";
-import { loadFoundationInputs, runGatePipeline } from "../cli/host.mjs";
+import { loadFoundationInputs, runGatePipeline } from "../../framework/src/cli/eval/host.js";
 import { realFlagship } from "./support/fixture-builders.js";
-import { loadDefinitions, registry } from "./support/evals.js";
+import { loadDefinitions, registry, repositoryRoot } from "./support/evals.js";
 import { alice } from "./support/world.js";
 
 /**
@@ -61,7 +61,7 @@ describe("Runtime independence", () => {
     const before = await snapshot();
     const decision = await gateLiveRun(run.bundle, "run.gate.independence");
     expect(decision).toMatchObject({ passed: true, outcome: "PASS" });
-    const foundation = await runGatePipeline(loadFoundationInputs());
+    const foundation = await runGatePipeline(loadFoundationInputs(repositoryRoot));
     expect(foundation.ok && foundation.decision.passed).toBe(true);
     expect(await snapshot()).toBe(before);
   });
@@ -72,7 +72,7 @@ describe("a gate PASS carries no authority", () => {
     const run = await realFlagship("none", "live_run", "run.gate.pending");
     const approvalId = run.execution.wait!.referenceId;
     const before = JSON.stringify({ execution: run.execution, approval: run.world.approvals.getApproval(approvalId), calls: run.world.calls });
-    const foundation = await runGatePipeline(loadFoundationInputs());
+    const foundation = await runGatePipeline(loadFoundationInputs(repositoryRoot));
     expect(foundation.ok && foundation.decision.outcome).toBe("PASS");
     expect(run.world.approvals.getApproval(approvalId)?.status).toBe("pending");
     expect(JSON.stringify({ execution: run.execution, approval: run.world.approvals.getApproval(approvalId), calls: run.world.calls })).toBe(before);
@@ -82,7 +82,7 @@ describe("a gate PASS carries no authority", () => {
   });
 
   it("cannot enable unsupported Tool classes: with every eval and the gate passing, external_side_effect, destructive, and sensitive_data stay unsupported and handlers stay uncalled", async () => {
-    const foundation = await runGatePipeline(loadFoundationInputs());
+    const foundation = await runGatePipeline(loadFoundationInputs(repositoryRoot));
     expect(foundation.ok && foundation.decision.passed).toBe(true);
     expect([...SUPPORTED_TOOL_PERMISSION_CLASSES]).toEqual(["read_only", "write_draft"]);
     for (const permissionClass of ["external_side_effect", "destructive", "sensitive_data"] as const) {

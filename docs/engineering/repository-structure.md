@@ -8,6 +8,7 @@ apps/
   worker/             AAO Worker — a local, separate process boundary
 
 packages/
+  framework/               @aao/framework — public developer surface: define* helpers, createAAO host, the aao CLI (Sprint 19)
   config/                  @aao/config — deterministic runtime configuration
   contracts/               @aao/contracts — canonical domain contracts (Sprint 2)
   workflow-dsl/            @aao/workflow-dsl — workflow authoring, validation, and compiler (Sprint 3)
@@ -26,8 +27,30 @@ packages/
 
 evals/                versioned Eval definitions, datasets, evidence fixtures (Sprint 17), approved baselines and gate policies (Sprint 18)
 experiments/          research notes accompanying the substrate spikes
-docs/                  architecture contract, ADRs, and engineering docs
+docs/                  architecture contract, ADRs, engineering docs, and framework (developer) docs
 ```
+
+## `packages/framework` — `@aao/framework`
+
+The recommended consumer entry point (Sprint 19, [ADR-024](../decisions/ADR-024-public-framework-surface.md), [framework surface](../architecture/framework-surface.md)). It contains:
+
+- `src/index.ts` — the explicit public root. It has no `export *`, and an exact snapshot test pins every value and type it exports.
+- `src/definitions.ts` — the `define*` helpers. Each one validates a canonical `@aao/contracts` schema (or a canonical registration) and returns a deep-frozen copy.
+- `src/app.ts` — `createAAO`. It composes a Governance registry, a Tool Registry, the Approval Engine, and a Node Registry with the canonical Tool, Approval, and `final_output` executors. The host's `principalForRun` is the only identity source.
+- `src/cli/` — the canonical `aao` CLI, in TypeScript, compiled to `dist/cli/main.js` (the package `bin`). It has the workflow `validate`/`compile` commands and the Eval host (`eval/host.ts`, `ci.ts`, `adapters.ts`, `baseline.ts`, `network-guard.ts`). This is the only code that reads `evals/` from disk. It loads the test-owned adapter drivers by relative path from the sibling substrate packages' `conformance/` directories.
+- `test/` — framework tests:
+  - definitions, application host and security, Framework/lower-level equivalence, public API snapshot and boundaries, CLI, packaging, and executable quickstart examples;
+  - `test/consumer/`, a fixture that imports only `@aao/framework`.
+- `smoke/run-smoke.mjs` — compiled smoke. It compiles the consumer against `dist/` declarations, runs the compiled CLI, and inspects `pnpm pack` contents (`SPRINT_19_FRAMEWORK_SURFACE_SMOKE_OK`). `smoke/no-build.mjs` deletes the framework closure's `dist/` and proves `pnpm eval:ci` / `pnpm eval:adapters` still pass.
+
+**Why Core never imports it.** The framework is a façade over Core: Core is the authority, and the façade only composes it. If a Core package imported the framework, a convenience layer could shape Core semantics, and dependencies would become circular. Ownership therefore runs one way, `@aao/framework → Core`, and a static test fails if any `packages/*/src`, substrate `conformance/` driver, app, or manifest references `@aao/framework`.
+
+Production dependencies are `@aao/*` only:
+
+- `@aao/approval`, `@aao/authorization`, `@aao/contracts`, `@aao/governance`, `@aao/runtime`, `@aao/tool-runtime`, and `@aao/workflow-dsl` for the root;
+- `@aao/evaluation`, `@aao/observability`, `@aao/mcp-connector`, and `@aao/model-runtime` for the CLI's Eval and adapter-verification commands.
+
+The root's import graph never reaches the CLI or the last four packages. The framework imports no vendor or framework SDK, and its package `exports` has only `"."`, typed from `dist/`. It is `private` and unpublished; its `files` allowlist ships compiled `.js`/`.d.ts` and the README only.
 
 ## `apps/control-plane` — `@aao/control-plane`
 
@@ -108,7 +131,7 @@ Narrative research notes (durability, graph runtime, integrations, MCP, model la
 
 ## Build and typecheck shape
 
-Every runnable package (`packages/config`, `packages/contracts`, `packages/workflow-dsl`, `packages/runtime`, `packages/model-runtime`, `packages/agent-runtime`, `packages/tool-runtime`, `packages/authorization`, `packages/governance`, `packages/approval`, `packages/mcp-connector`, `packages/durability`, `packages/observability`, `packages/evaluation`, `apps/control-plane`, `apps/worker`) and the retained research packages each have their own `tsconfig.json` (typecheck, includes `src` and `test`) and `tsconfig.build.json` (build, excludes `test`, emits to that package's own `dist/`), both extending the shared [`tsconfig.base.json`](../../tsconfig.base.json) at the repository root. Each package builds independently; `pnpm build` runs every package's build script in dependency order (`pnpm -r`), so `@aao/config` compiles before the apps that depend on it. No `dist/` output is committed. See [local-development.md](local-development.md) for the day-to-day commands.
+Every runnable package (`packages/framework`, `packages/config`, `packages/contracts`, `packages/workflow-dsl`, `packages/runtime`, `packages/model-runtime`, `packages/agent-runtime`, `packages/tool-runtime`, `packages/authorization`, `packages/governance`, `packages/approval`, `packages/mcp-connector`, `packages/durability`, `packages/observability`, `packages/evaluation`, `apps/control-plane`, `apps/worker`) and the retained research packages each have their own `tsconfig.json` (typecheck, includes `src` and `test`) and `tsconfig.build.json` (build, excludes `test`, emits to that package's own `dist/`), both extending the shared [`tsconfig.base.json`](../../tsconfig.base.json) at the repository root. Each package builds independently; `pnpm build` runs every package's build script in dependency order (`pnpm -r`), so `@aao/config` compiles before the apps that depend on it. No `dist/` output is committed. See [local-development.md](local-development.md) for the day-to-day commands.
 
 ### `packages/observability`
 
@@ -136,10 +159,10 @@ The Evaluation Runtime (Sprint 17) with analytics, CI gates, and adapter verific
 - `src/runner.ts` — `evaluate()`, deterministic result identity, and the defensive grader boundary;
 - `src/dataset.ts` — the YAML/JSON dataset and definition loaders, validation, the sequential `runEvalDataset`, and the static `EvidenceResolver`;
 - `src/graders/` — ten deterministic graders (Approval compliance at 2.0.0, `aao.model-call` added in Sprint 18) plus the optional `ModelJudgePort` grader;
-- `src/analytics/` — comparison keys and semantic verdict fingerprints, case expectation verdicts, suite reports, baselines, comparison, regression findings, and multi-run analytics (pure);
+- `src/analytics/` — comparison keys and semantic verdict fingerprints, case expectation verdicts, suite reports, baselines, comparison, regression findings, multi-run analytics, and (Sprint 19) suite report / baseline integrity validation (pure);
 - `src/gates/` — strict gate-policy parsing, the deterministic `evaluateEvalGate`, and report formatting;
 - `src/conformance/` — canonical adapter verification scenarios, `verifyAdapter`, and semantic portability comparison;
-- `cli/` — the read-only host for `pnpm eval:ci`, `eval:adapters`, and `eval:baseline:propose` (plain ESM over `dist/`, with a network guard). It is the only code that reads `evals/` from disk;
+- (Sprint 18's plain-ESM `cli/` host was migrated into the canonical `aao` CLI in `@aao/framework` in Sprint 19 and deleted; `pnpm eval:*` are aliases to it. Its Sprint 18 regression tests now drive that host.)
 - tests for contracts, registry, graders, datasets, model judge, Runtime E2E, portability, privacy, non-authority, dependency boundaries, analytics, gate E2E, and adapter conformance;
 - compiled smokes in `smoke/` (Sprint 17) and `smoke/sprint18/`.
 

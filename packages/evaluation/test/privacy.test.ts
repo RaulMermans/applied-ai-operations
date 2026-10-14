@@ -3,9 +3,9 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { EvalResult } from "@aao/contracts";
 import { buildEvalSuiteReport, createEvaluatorRegistry, createModelJudgeGrader, createStaticEvidenceResolver, deterministicGraders, evaluate, proposeEvalBaseline, runEvalDataset } from "../src/index.js";
-import { loadFoundationInputs, runGatePipeline } from "../cli/host.mjs";
+import { loadFoundationInputs, runGatePipeline } from "../../framework/src/cli/eval/host.js";
 import { realAuthorizationDenied, realFlagship } from "./support/fixture-builders.js";
-import { evalsRoot, fixtureResolver, loadDataset, loadDefinitions, loadFixture, registry } from "./support/evals.js";
+import { evalsRoot, fixtureResolver, loadDataset, loadDefinitions, loadFixture, registry, repositoryRoot } from "./support/evals.js";
 import { def } from "./support/inline.js";
 import { APPROVAL_SUBJECT_SECRET, STATE_SECRET, TOOL_OUTPUT_SECRET } from "./support/world.js";
 
@@ -85,7 +85,7 @@ describe("privacy: serialized EvalResults contain no evidence content", () => {
 
 describe("privacy: Sprint 18 reports, baselines, and gate decisions add no evidence content", () => {
   it("SuiteReport, ComparisonReport, GateDecision, the committed Baseline, and a live-Run suite contain only identifiers, codes, counts, scores, and fingerprints", async () => {
-    const inputs = loadFoundationInputs();
+    const inputs = loadFoundationInputs(repositoryRoot);
     const outcome = await runGatePipeline(inputs);
     if (!outcome.ok) throw new Error(JSON.stringify(outcome.error));
     // Live Runs whose state, Tool output, and Approval subject carry seeded secrets.

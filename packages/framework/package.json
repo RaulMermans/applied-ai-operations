@@ -1,0 +1,46 @@
+{
+  "name": "@aao/framework",
+  "private": true,
+  "version": "0.0.0",
+  "description": "The Applied AI Operations developer surface: define governed workflows, run them through AAO Core, and the aao CLI.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "aao": "./dist/cli/main.js"
+  },
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20.20.0 <21.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "smoke": "node smoke/run-smoke.mjs",
+    "smoke:no-build": "node smoke/no-build.mjs"
+  },
+  "dependencies": {
+    "@aao/approval": "workspace:*",
+    "@aao/authorization": "workspace:*",
+    "@aao/contracts": "workspace:*",
+    "@aao/evaluation": "workspace:*",
+    "@aao/governance": "workspace:*",
+    "@aao/mcp-connector": "workspace:*",
+    "@aao/model-runtime": "workspace:*",
+    "@aao/observability": "workspace:*",
+    "@aao/runtime": "workspace:*",
+    "@aao/tool-runtime": "workspace:*",
+    "@aao/workflow-dsl": "workspace:*"
+  }
+}

@@ -5,11 +5,13 @@ import { describe, expect, it } from "vitest";
 import { EvalGateDecisionSchema, type EvalBaseline, type EvalSuiteReport } from "@aao/contracts";
 import { createEvaluatorRegistry, createStaticEvidenceResolver, deterministicGraders, evalBaselineFingerprint, evaluateEvalGate, evidenceFingerprint, parseEvalGatePolicy, runEvalDataset, zodConfig, type EvalEvidenceBundle, type EvalGrader } from "../src/index.js";
 import { z } from "zod";
-import { proposeBaseline } from "../cli/eval-baseline-propose.mjs";
-import { renderGateOutcome, runEvalCi } from "../cli/eval-ci.mjs";
-import { loadFoundationInputs, repositoryRoot, runGatePipeline, type FoundationInputs } from "../cli/host.mjs";
-import { installNetworkGuard } from "../cli/network-guard.mjs";
-import { evalsRoot, loadFixture } from "./support/evals.js";
+// The Eval CI host is the canonical `aao` CLI in @aao/framework since Sprint 19 (ADR-024); these Sprint 18 regressions run against it.
+import { proposeBaseline } from "../../framework/src/cli/eval/baseline.js";
+import { renderGateOutcome, runEvalCi } from "../../framework/src/cli/eval/ci.js";
+import { loadFoundationInputs, runGatePipeline, type FoundationInputs } from "../../framework/src/cli/eval/host.js";
+import { installNetworkGuard } from "../../framework/src/cli/eval/network-guard.js";
+import { runCli } from "../../framework/src/cli/run.js";
+import { evalsRoot, loadFixture, repositoryRoot } from "./support/evals.js";
 
 /**
  * Sprint 18 gate E2E: the real host pipeline (pinned fixtures → dataset →
@@ -18,7 +20,7 @@ import { evalsRoot, loadFixture } from "./support/evals.js";
  * deliberate candidate changes. Every candidate change here is in memory;
  * nothing under evals/ is ever written.
  */
-const inputs = () => loadFoundationInputs();
+const inputs = () => loadFoundationInputs(repositoryRoot);
 
 /** A candidate whose case now resolves to different evidence, re-pinned the way a regenerated fixture would be. */
 function repoint(base: FoundationInputs, caseId: string, evidence: EvalEvidenceBundle): FoundationInputs {
@@ -227,7 +229,7 @@ describe("gate policy and baseline integrity", () => {
 
   it("the committed baseline is exactly what the current deterministic suite proposes, and proposing writes nothing", async () => {
     const before = hashTree(evalsRoot);
-    const proposal = await proposeBaseline({ argv: ["--", "--id", "runtime-foundation", "--version", "1.0.0"] });
+    const proposal = await proposeBaseline({ root: repositoryRoot, id: "runtime-foundation", version: "1.0.0" });
     expect(proposal.exitCode).toBe(0);
     const parsed = JSON.parse(proposal.output) as { kind: string; notice: string; unmatchedCases: string[]; baselineRef: { fingerprint: string }; baseline: EvalBaseline };
     expect(parsed.kind).toBe("aao.eval-baseline-proposal");
@@ -236,34 +238,36 @@ describe("gate policy and baseline integrity", () => {
     expect(parsed.baseline).toEqual(inputs().baseline);
     expect(parsed.baselineRef.fingerprint).toBe(inputs().policy.baselineRef.fingerprint);
     expect(hashTree(evalsRoot)).toBe(before);
-    expect((await proposeBaseline({ argv: ["--id", "x"] })).exitCode).toBe(1);
+    expect((await runCli(["eval", "baseline", "propose", "--", "--id", "x"], { cwd: repositoryRoot })).exitCode).toBe(1);
   });
 
   it("CI reads the baseline and never writes it: no file under evals/ changes, and the CLI host has no write path", async () => {
     const before = hashTree(evalsRoot);
-    expect((await runEvalCi()).exitCode).toBe(0);
+    expect((await runEvalCi({ root: repositoryRoot })).exitCode).toBe(0);
     expect(hashTree(evalsRoot)).toBe(before);
-    const cliDir = join(repositoryRoot, "packages", "evaluation", "cli");
-    for (const file of readdirSync(cliDir).filter((name) => name.endsWith(".mjs"))) expect(readFileSync(join(cliDir, file), "utf8"), file).not.toMatch(/writeFile|appendFile|renameSync|unlink|mkdirSync|rmSync|createWriteStream|--accept-all|acceptAll/);
+    const cliDir = join(repositoryRoot, "packages", "framework", "src", "cli");
+    const files = readdirSync(cliDir, { recursive: true, encoding: "utf8" }).filter((name) => name.endsWith(".ts"));
+    expect(files.length).toBeGreaterThan(5);
+    for (const file of files) expect(readFileSync(join(cliDir, file), "utf8"), file).not.toMatch(/writeFile|appendFile|renameSync|unlink|mkdirSync|rmSync|createWriteStream|--accept-all|acceptAll/);
   });
 });
 
 describe("CLI output, exit semantics, determinism, offline", () => {
   it("text output is compact; JSON output is machine-readable with no ANSI", async () => {
-    const text = await runEvalCi();
+    const text = await runEvalCi({ root: repositoryRoot });
     expect(text.output.split("\n").length).toBeLessThan(20);
     expect(text.output).not.toContain("evr.");
-    const json = await runEvalCi({ argv: ["--", "--format", "json"] });
+    const json = await runEvalCi({ root: repositoryRoot, format: "json" });
     expect(json.exitCode).toBe(0);
     expect(json.output).not.toContain("\u001b[");
     const parsed = JSON.parse(json.output) as Record<string, unknown>;
     expect(parsed).toMatchObject({ gate: { passed: true, outcome: "PASS" }, dataset: { id: "aao.runtime-foundation", version: "2.0.0" }, baseline: { id: "runtime-foundation", version: "1.0.0" }, cases: { total: 35, matched: 35 }, regressions: 0, criticalFailures: [], warnings: [], hardFailures: [] });
-    expect((await runEvalCi({ argv: ["--format", "yaml"] })).exitCode).toBe(1);
-    expect((await runEvalCi({ argv: ["--unknown"] })).output).toContain("GATE ERROR");
+    expect(await runCli(["eval", "ci", "--format", "yaml"], { cwd: repositoryRoot })).toMatchObject({ exitCode: 1, stdout: "", stderr: expect.stringContaining("AAO_CLI_INVALID_OPTION") });
+    expect(await runCli(["eval", "ci", "--unknown"], { cwd: repositoryRoot })).toMatchObject({ exitCode: 1, stdout: "", stderr: expect.stringContaining("AAO_CLI_UNKNOWN_OPTION") });
   });
 
   it("is deterministic: identical bytes and deep-equal decisions across runs; release metadata never changes the verdict", async () => {
-    const [a, b] = [await runEvalCi({ argv: ["--format", "json"] }), await runEvalCi({ argv: ["--format", "json"] })];
+    const [a, b] = [await runEvalCi({ root: repositoryRoot, format: "json" }), await runEvalCi({ root: repositoryRoot, format: "json" })];
     expect(a.output).toBe(b.output);
     const [x, y] = [await runGatePipeline(inputs()), await runGatePipeline(inputs())];
     expect(x).toEqual(y);
@@ -276,7 +280,7 @@ describe("CLI output, exit semantics, determinism, offline", () => {
   it("needs no network or credentials: the guard records zero connection attempts, and the gate excludes the model judge", async () => {
     const guard = installNetworkGuard();
     try {
-      expect((await runEvalCi()).exitCode).toBe(0);
+      expect((await runEvalCi({ root: repositoryRoot })).exitCode).toBe(0);
       expect(guard.attempts()).toEqual([]);
       await expect(Promise.resolve().then(() => fetch("https://example.invalid"))).rejects.toThrow("AAO_EVAL_NETWORK_FORBIDDEN");
       expect(guard.attempts()).toEqual(["fetch"]);

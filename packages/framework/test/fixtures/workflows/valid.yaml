@@ -1,0 +1,24 @@
+schemaVersion: 1
+id: cli.approved-update
+version: "1.0.0"
+name: Approved update
+entryNodeId: approve
+nodes:
+  - id: approve
+    kind: approval
+    config:
+      subjectStateKey: proposal
+      permissionClasses: [write_draft]
+      requiredApproverRoleIds: [manager]
+  - id: draft
+    kind: tool
+    config:
+      toolRef: { id: crm.draft-update, version: "1.0.0" }
+      inputStateKey: proposal
+      resultStateKey: draft
+  - id: final
+    kind: final_output
+    config: {}
+edges:
+  - { sourceNodeId: approve, targetNodeId: draft }
+  - { sourceNodeId: draft, targetNodeId: final }

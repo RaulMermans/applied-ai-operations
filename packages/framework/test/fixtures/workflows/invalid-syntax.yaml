@@ -1,0 +1,4 @@
+schemaVersion: 1
+id: cli.bad-yaml
+nodes: [unclosed
+  secretish: sk-live-DO-NOT-ECHO

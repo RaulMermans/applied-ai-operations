@@ -11,10 +11,11 @@ import {
   type AdapterConformanceReport,
   type AdapterVerificationDriver,
 } from "../src/index.js";
-import { renderConformance, runAdapterConformance } from "../cli/eval-adapters.mjs";
-import { installNetworkGuard } from "../cli/network-guard.mjs";
+// The adapter verification host is the canonical `aao eval adapters` command in @aao/framework since Sprint 19 (ADR-024).
+import { renderConformance, runAdapterConformance } from "../../framework/src/cli/eval/adapters.js";
+import { installNetworkGuard } from "../../framework/src/cli/eval/network-guard.js";
 import { mcpDriver, nativeToolDriver, vercelAiDriver } from "./support/drivers.js";
-import { loadConformanceDataset, loadConformanceDefinitions, registry } from "./support/evals.js";
+import { loadConformanceDataset, loadConformanceDefinitions, registry, repositoryRoot } from "./support/evals.js";
 
 /**
  * Sprint 18 adapter verification: each substrate's own test driver
@@ -38,7 +39,7 @@ type Trace = Array<{ type: string; payload: Record<string, unknown> }>;
 const SUBPROCESS_BUDGET_MS = 30_000;
 let conformance: Awaited<ReturnType<typeof runAdapterConformance>>;
 beforeAll(async () => {
-  conformance = await runAdapterConformance();
+  conformance = await runAdapterConformance({ root: repositoryRoot });
 }, SUBPROCESS_BUDGET_MS);
 const reports = () => {
   if (!conformance.ok) throw new Error(JSON.stringify(conformance.error));
@@ -194,7 +195,7 @@ describe("conformance reports are private, deterministic, and offline", () => {
   it("a second run produces deep-equal conformance reports, with no network access", async () => {
     const guard = installNetworkGuard();
     try {
-      expect(await runAdapterConformance()).toEqual(conformance);
+      expect(await runAdapterConformance({ root: repositoryRoot })).toEqual(conformance);
       expect(guard.attempts()).toEqual([]);
     } finally {
       guard.uninstall();

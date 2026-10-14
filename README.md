@@ -8,10 +8,33 @@ AAO is a layer, not an operating system, chatbot, agent marketplace, no-code wor
 
 ## Current status
 
-Sprint 0 architecture contract complete. Sprint 1 engineering foundation complete (`SPRINT_01_ENGINEERING_FOUNDATION_COMPLETE`). Sprint 2 canonical domain contracts complete (`SPRINT_02_CANONICAL_DOMAIN_CONTRACTS_COMPLETE`). Sprint 3 workflow DSL and compiler complete (`SPRINT_03_WORKFLOW_DSL_COMPILER_COMPLETE`). Sprint 4 Node Registry and Runtime V1 complete (`SPRINT_04_RUNTIME_V1_COMPLETE`). Sprint 5 managed runtime state and lifecycle complete (`SPRINT_05_MANAGED_RUNTIME_STATE_COMPLETE`). Sprint 6 model abstraction and capability routing complete (`SPRINT_06_MODEL_RUNTIME_COMPLETE`). Sprint 7 bounded Agent Runtime complete (`SPRINT_07_BOUNDED_AGENT_RUNTIME_COMPLETE`). Sprint 8 Tool Registry and safe Tool execution boundary complete (`SPRINT_08_TOOL_RUNTIME_COMPLETE`). Sprint 9 authorization and permission enforcement boundary complete (`SPRINT_09_AUTHORIZATION_BOUNDARY_COMPLETE`). Sprint 10 MCP integration boundary and governed Tool adapter sessions complete (`SPRINT_10_MCP_INTEGRATION_BOUNDARY_COMPLETE`). Sprint 11 Actor, Role & Policy Governance complete (`SPRINT_11_GOVERNANCE_MODEL_COMPLETE`). Sprint 12 Approval Engine complete (`SPRINT_12_APPROVAL_ENGINE_COMPLETE`). Sprint 13 Reliability Runtime complete (`SPRINT_13_RELIABILITY_RUNTIME_COMPLETE`). Sprint 14 Durable Execution complete (`SPRINT_14_DURABLE_EXECUTION_COMPLETE`). Sprint 15 Trace Runtime complete (`SPRINT_15_TRACE_RUNTIME_COMPLETE`). Sprint 16 Metrics & Audit complete (`SPRINT_16_METRICS_AUDIT_COMPLETE`). Sprint 17 Evaluation Runtime complete (`SPRINT_17_EVALUATION_RUNTIME_COMPLETE`). Sprint 18 Eval Analytics / CI Gates / Adapter Verification complete (`SPRINT_18_EVAL_ANALYTICS_CI_ADAPTER_VERIFICATION_COMPLETE`). Sprint 19 Framework Surface is next.
+Sprint 0 architecture contract complete. Sprint 1 engineering foundation complete (`SPRINT_01_ENGINEERING_FOUNDATION_COMPLETE`). Sprint 2 canonical domain contracts complete (`SPRINT_02_CANONICAL_DOMAIN_CONTRACTS_COMPLETE`). Sprint 3 workflow DSL and compiler complete (`SPRINT_03_WORKFLOW_DSL_COMPILER_COMPLETE`). Sprint 4 Node Registry and Runtime V1 complete (`SPRINT_04_RUNTIME_V1_COMPLETE`). Sprint 5 managed runtime state and lifecycle complete (`SPRINT_05_MANAGED_RUNTIME_STATE_COMPLETE`). Sprint 6 model abstraction and capability routing complete (`SPRINT_06_MODEL_RUNTIME_COMPLETE`). Sprint 7 bounded Agent Runtime complete (`SPRINT_07_BOUNDED_AGENT_RUNTIME_COMPLETE`). Sprint 8 Tool Registry and safe Tool execution boundary complete (`SPRINT_08_TOOL_RUNTIME_COMPLETE`). Sprint 9 authorization and permission enforcement boundary complete (`SPRINT_09_AUTHORIZATION_BOUNDARY_COMPLETE`). Sprint 10 MCP integration boundary and governed Tool adapter sessions complete (`SPRINT_10_MCP_INTEGRATION_BOUNDARY_COMPLETE`). Sprint 11 Actor, Role & Policy Governance complete (`SPRINT_11_GOVERNANCE_MODEL_COMPLETE`). Sprint 12 Approval Engine complete (`SPRINT_12_APPROVAL_ENGINE_COMPLETE`). Sprint 13 Reliability Runtime complete (`SPRINT_13_RELIABILITY_RUNTIME_COMPLETE`). Sprint 14 Durable Execution complete (`SPRINT_14_DURABLE_EXECUTION_COMPLETE`). Sprint 15 Trace Runtime complete (`SPRINT_15_TRACE_RUNTIME_COMPLETE`). Sprint 16 Metrics & Audit complete (`SPRINT_16_METRICS_AUDIT_COMPLETE`). Sprint 17 Evaluation Runtime complete (`SPRINT_17_EVALUATION_RUNTIME_COMPLETE`). Sprint 18 Eval Analytics / CI Gates / Adapter Verification complete (`SPRINT_18_EVAL_ANALYTICS_CI_ADAPTER_VERIFICATION_COMPLETE`). Sprint 19 Framework Surface complete (`SPRINT_19_FRAMEWORK_SURFACE_COMPLETE`). Sprint 20 Adapter & Portability Contract is next.
 
-Available:
+## Start here: `@aao/framework`
 
+AAO provides a public TypeScript framework surface for defining and running governed workflows with canonical AAO contracts. It covers Tool execution, Governance, Approval, and deterministic workflow compilation, and comes with a unified CLI for workflow validation and evaluation gates.
+
+```ts
+import { createAAO, defineGovernance, defineTool, defineWorkflow } from "@aao/framework";
+
+const app = createAAO({ governance: defineGovernance(config), principalForRun: ({ runId }) => sessionUser(runId), tools: [defineTool(searchAccounts)] });
+const lookup = app.prepareWorkflow(defineWorkflow(workflow));
+const result = await lookup.execute({ runId: "run-001", initialState: { runId: "run-001", revision: 0, values: { request } } });
+```
+
+- **One import, real execution.** The `define*` helpers validate the canonical contracts. `createAAO` composes the existing Runtime, Tool Runtime, Governance, Authorization, and Approval Engine. Results are the Runtime's own `WorkflowExecutionResult`. The framework is a façade, not a second implementation, and no Core package depends on it.
+- **Identity comes from your host.** `principalForRun` is the only principal source; workflow state, Tool input, and model output can never set it.
+- **The `aao` CLI.** It provides `aao workflow validate|compile` and `aao eval ci|adapters|baseline propose`. `pnpm eval:*` are aliases, and none needs a prior `pnpm build`.
+- **Truthful scope.**
+  - The framework executes `tool`, `approval`, and `final_output` nodes. Model and agent execution through it waits for the Sprint 20 adapter contract; until then use `@aao/model-runtime` / `@aao/agent-runtime` directly.
+  - There is no stable adapter API, no LangGraph support, and no Toolbox.
+  - The package is local and unpublished.
+
+Read the [quickstart](docs/framework/quickstart.md) (including the Approval flow), the [CLI](docs/framework/cli.md), the [framework surface](docs/architecture/framework-surface.md), and [ADR-024](docs/decisions/ADR-024-public-framework-surface.md). The package-by-package internals below remain available for advanced use.
+
+## Available
+
+- the public framework surface (`packages/framework`, `@aao/framework`, Sprint 19): `define*` helpers, the `createAAO` application host, and the `aao` CLI — see above
 - deterministic Actor, Role, and Policy governance (`packages/governance`, `@aao/governance`): trusted host identity is resolved through explicit role bindings and deny policies into effective permission classes before the existing Authorization and Tool execution path — see [ADR-016](docs/decisions/ADR-016-actor-role-policy-governance.md) and [governance](docs/architecture/governance.md)
 - a local Control Plane (`apps/control-plane`, Fastify, `/health/live` and `/health/ready`)
 - a local Worker (`apps/worker`, a separate process with a `CREATED → RUNNING → STOPPED` lifecycle)
@@ -42,15 +65,16 @@ Available:
   - Expectations are judged per case, so negative and deliberate-error cases count as successes.
   - Offline fixtures are fingerprint-pinned.
   - An approved, human-reviewed baseline (`evals/baselines/`) is compared under a strict, versioned gate policy. Approval, Authorization, safety, and Trace regressions always hard-fail; operational movement warns.
-  - `pnpm eval:ci` and `pnpm eval:adapters` run offline in CI and never write a baseline.
+  - `pnpm eval:ci` and `pnpm eval:adapters` (aliases of `aao eval ci` / `aao eval adapters` since Sprint 19) run offline in CI and never write a baseline. Since Sprint 19 every public analytics path also rejects self-inconsistent suite reports.
   - Adapter verification judges canonical evidence from the native Tool, MCP connector, native model, and Vercel AI SDK paths with the same Eval definitions. Partial support is reported truthfully.
   - None of this is Runtime authority, and there is no public Adapter contract yet (Sprint 20). See [ADR-023](docs/decisions/ADR-023-eval-analytics-ci-gates-and-adapter-verification.md), [eval analytics & CI](docs/architecture/eval-analytics-ci.md), and [adapter verification](docs/architecture/adapter-verification.md).
 - a generic safe executor-failure protocol: a node failure stays `NODE_EXECUTION_FAILED` but carries bounded, machine-readable `executorFailure: { namespace, code }` causality (e.g. `model` / `MODEL_ROUTE_NOT_FOUND`)
 - an independent build per package/app, run from compiled JavaScript
 - CI mirroring local verification (`typecheck → lint → build → test → eval:ci → eval:adapters`)
 
-Not yet implemented:
+## Not yet implemented
 
+- a public, stable adapter contract (Sprint 20), model/agent execution through `@aao/framework`, a durable framework host, and npm publication of any package
 - Agent capabilities beyond bounded reasoning. Agents have NO tool use, NO external actions, NO MCP, NO delegation, NO long-term memory, NO Agent-internal checkpoints (a crashed `agent` node is replayed whole), NO automatic retries, and NO Reflexion — they are bounded reasoning components, not autonomous workers
 - evaluator node execution
 - Tools requiring `external_side_effect`, `destructive`, or `sensitive_data` (refused by the Tool Runtime), ordinary retries of `write_draft` or side-effecting Tools, rollback, and compensation (crash replay of a `write_draft` Tool requires its explicit `execution_id` idempotency declaration)
@@ -67,6 +91,8 @@ Not yet implemented:
 - LangGraph support and portable Skill execution
 - semantic grading of Tool arguments (Trace deliberately excludes them; schema validity is enforced by the Tool Runtime)
 - Control Center UI
+
+## What runs today
 
 AAO can now take a declarative workflow through workflow compilation → managed deterministic execution → provider-neutral model execution → bounded multi-iteration Agent execution → authorized, schema-validated Tool execution: `model` nodes (one validated invocation each), `agent` nodes (a deterministic controller over at most `maxIterations` structured model decisions, applied as one Runtime-managed state patch), and `tool` nodes (one authorized, validated call to a registered, trusted, `read_only`/`write_draft` Tool). It still executes only unconditional workflows, and only node kinds whose executors the caller registers explicitly; approval nodes can wait and continue with a registered executor; evaluator nodes remain unsupported and fail preflight. No live model provider is configured — model validation uses deterministic `ai/test` models offline; MCP tests use a real local SDK stdio server. Runtime snapshots are in-memory unless a host opts into `@aao/durability`, which persists them as durable checkpoints.
 
@@ -95,7 +121,8 @@ The Sprint 0A evidence remains authoritative for infrastructure selection: LangG
 pnpm install --frozen-lockfile
 pnpm dev:control-plane   # local Control Plane, http://127.0.0.1:4000
 pnpm dev:worker          # local Worker process
-pnpm check               # typecheck -> lint -> build -> test
+pnpm check               # typecheck -> lint -> build -> test -> eval gate -> adapter verification
+pnpm aao --help          # the aao CLI (builds what it needs first)
 ```
 
 See [docs/engineering/local-development.md](docs/engineering/local-development.md) for the full command reference, configuration, and compiled-build smoke verification.

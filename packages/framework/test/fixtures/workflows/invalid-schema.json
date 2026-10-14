@@ -1,0 +1,1 @@
+{ "schemaVersion": 1, "id": "cli.bad-schema", "version": "1.0.0", "name": "Bad", "entryNodeId": "a", "nodes": [{ "id": "a", "kind": "teleport", "config": {} }], "edges": [] }

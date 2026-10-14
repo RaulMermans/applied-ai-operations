@@ -14,10 +14,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "build": "pnpm -r --if-present run build",
-    "eval:ci": "node packages/evaluation/cli/eval-ci.mjs",
-    "eval:adapters": "node packages/evaluation/cli/eval-adapters.mjs",
-    "eval:baseline:propose": "node packages/evaluation/cli/eval-baseline-propose.mjs",
-    "check": "pnpm run typecheck && pnpm run lint && pnpm run build && pnpm run test && pnpm run eval:ci && pnpm run eval:adapters"
+    "build:framework": "pnpm --silent --filter \"@aao/framework...\" run build 1>&2",
+    "aao": "pnpm run --silent build:framework && node packages/framework/dist/cli/main.js",
+    "eval:ci": "pnpm run --silent build:framework && node packages/framework/dist/cli/main.js eval ci",
+    "eval:adapters": "pnpm run --silent build:framework && node packages/framework/dist/cli/main.js eval adapters",
+    "eval:baseline:propose": "pnpm run --silent build:framework && node packages/framework/dist/cli/main.js eval baseline propose",
+    "check": "pnpm run typecheck && pnpm run lint && pnpm run build && pnpm run test && node packages/framework/dist/cli/main.js eval ci && node packages/framework/dist/cli/main.js eval adapters"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -8,7 +8,9 @@ on:
 # CI is verification only: it typechecks, lints, builds, and tests the
 # repository, then runs the deterministic Eval quality gate and adapter
 # conformance (Sprint 18, ADR-023), in that order, matching the canonical
-# "pnpm check" sequence. There is no path filter: every push and pull
+# "pnpm check" sequence. Since Sprint 19 (ADR-024) the Eval commands are the
+# canonical `aao` CLI in @aao/framework; `pnpm eval:*` are aliases that build
+# the framework closure first. There is no path filter: every push and pull
 # request runs the gate, because any package, eval asset, or workflow
 # change can affect behavior.
 # "pnpm test" alone is also valid on a clean checkout (see
@@ -61,3 +63,9 @@ jobs:
 
       - name: Sprint 18 compiled smoke
         run: pnpm --filter @aao/evaluation smoke:sprint18
+
+      - name: Sprint 19 framework surface smoke (compiled consumer, CLI, pack contents — never published)
+        run: pnpm --filter @aao/framework smoke
+
+      - name: Eval aliases without a prior build (deletes the framework closure's dist/)
+        run: pnpm --filter @aao/framework smoke:no-build

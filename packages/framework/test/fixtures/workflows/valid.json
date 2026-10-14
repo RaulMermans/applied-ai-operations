@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "cli.direct-draft",
+  "version": "2.1.0",
+  "name": "Direct draft",
+  "entryNodeId": "draft",
+  "nodes": [
+    { "id": "draft", "kind": "tool", "config": { "toolRef": { "id": "crm.draft-update", "version": "1.0.0" }, "inputStateKey": "proposal", "resultStateKey": "draft" } },
+    { "id": "final", "kind": "final_output", "config": {} }
+  ],
+  "edges": [{ "sourceNodeId": "draft", "targetNodeId": "final" }]
+}

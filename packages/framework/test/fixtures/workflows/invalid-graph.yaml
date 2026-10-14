@@ -1,0 +1,12 @@
+schemaVersion: 1
+id: cli.broken-graph
+version: "1.0.0"
+name: Broken graph
+entryNodeId: start
+nodes:
+  - { id: start, kind: tool, config: {} }
+  - { id: start, kind: final_output, config: {} }
+  - { id: orphan, kind: final_output, config: {} }
+  - { id: final, kind: final_output, config: {} }
+edges:
+  - { sourceNodeId: start, targetNodeId: final }

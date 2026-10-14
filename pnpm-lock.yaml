@@ -175,6 +175,42 @@ importers:
         specifier: workspace:*
         version: link:../workflow-dsl
 
+  packages/framework:
+    dependencies:
+      '@aao/approval':
+        specifier: workspace:*
+        version: link:../approval
+      '@aao/authorization':
+        specifier: workspace:*
+        version: link:../authorization
+      '@aao/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@aao/evaluation':
+        specifier: workspace:*
+        version: link:../evaluation
+      '@aao/governance':
+        specifier: workspace:*
+        version: link:../governance
+      '@aao/mcp-connector':
+        specifier: workspace:*
+        version: link:../mcp-connector
+      '@aao/model-runtime':
+        specifier: workspace:*
+        version: link:../model-runtime
+      '@aao/observability':
+        specifier: workspace:*
+        version: link:../observability
+      '@aao/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      '@aao/tool-runtime':
+        specifier: workspace:*
+        version: link:../tool-runtime
+      '@aao/workflow-dsl':
+        specifier: workspace:*
+        version: link:../workflow-dsl
+
   packages/governance:
     dependencies:
       '@aao/contracts':
