@@ -10,6 +10,7 @@ import {
   type EvalComparisonReport,
   type EvalSuiteCase,
 } from "@aao/contracts";
+import { validateEvalSuiteReportIntegrity } from "./integrity.js";
 import { regressionFindings } from "./regression.js";
 
 type IncompatibleField = NonNullable<EvalComparisonEntry["incompatibleFields"]>[number];
@@ -43,7 +44,7 @@ function classify(baseline: EvalSuiteCase, candidate: EvalSuiteCase): EvalCompar
   return "UNCHANGED_MISMATCH";
 }
 
-export type CompareEvalSuitesResult = { ok: true; report: EvalComparisonReport } | { ok: false; code: "EVAL_BASELINE_INVALID" | "EVAL_BASELINE_INCOMPATIBLE"; detail: string };
+export type CompareEvalSuitesResult = { ok: true; report: EvalComparisonReport } | { ok: false; code: "EVAL_BASELINE_INVALID" | "EVAL_BASELINE_INCOMPATIBLE" | "EVAL_SUITE_REPORT_INCONSISTENT"; detail: string };
 
 /**
  * Compare a candidate suite with an approved baseline, one classification
@@ -64,6 +65,8 @@ export function compareEvalSuites(params: { baseline: unknown; candidate: unknow
   if (!baseline.success) return { ok: false, code: "EVAL_BASELINE_INVALID", detail: "baseline does not satisfy EvalBaseline schema version 1" };
   const candidate = EvalSuiteReportSchema.safeParse(params.candidate);
   if (!candidate.success) return { ok: false, code: "EVAL_BASELINE_INCOMPATIBLE", detail: "candidate is not a valid EvalSuiteReport" };
+  const integrity = validateEvalSuiteReportIntegrity(candidate.data);
+  if (!integrity.ok) return { ok: false, code: "EVAL_SUITE_REPORT_INCONSISTENT", detail: `candidate report is self-inconsistent: ${integrity.issues.join("; ")}` };
   if (baseline.data.datasetRef.id !== candidate.data.datasetRef.id) return { ok: false, code: "EVAL_BASELINE_INCOMPATIBLE", detail: "baseline and candidate gate different datasets" };
   const compatible = params.compatibleBaselineDatasetVersions ?? [];
   const candidates = new Map(candidate.data.cases.map((entry) => [entry.caseId, entry]));

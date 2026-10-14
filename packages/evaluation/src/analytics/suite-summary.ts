@@ -19,7 +19,7 @@ import { caseExpectationVerdict } from "./expectation.js";
 import { buildEvalComparisonIdentity, comparisonKeyOf, semanticVerdictFingerprint, sha256Canonical, verdictSummary } from "./fingerprints.js";
 
 export class EvalAnalyticsInputError extends Error {
-  constructor(readonly code: "EVAL_DATASET_INVALID" | "EVAL_INVALID_DEFINITION" | "EVAL_GATE_INCOMPLETE_EVIDENCE", readonly detail: string) {
+  constructor(readonly code: "EVAL_DATASET_INVALID" | "EVAL_INVALID_DEFINITION" | "EVAL_GATE_INCOMPLETE_EVIDENCE" | "EVAL_SUITE_REPORT_INCONSISTENT", readonly detail: string) {
     super(`${code}: ${detail}`);
     this.name = "EvalAnalyticsInputError";
   }
@@ -77,6 +77,30 @@ export function summarizeSuiteCases(cases: readonly EvalSuiteCase[]): EvalSuiteS
   };
 }
 
+/** Per-category expectation counts in canonical category order. Shared by suite reports and their integrity check. */
+export function categoryBreakdownOf(cases: readonly EvalSuiteCase[]): EvalSuiteReport["categoryBreakdown"] {
+  const breakdown = new Map<EvalCategory, { total: number; matched: number; mismatched: number; errors: number }>();
+  for (const entry of cases) {
+    for (const category of entry.categories) {
+      const bucket = breakdown.get(category) ?? { total: 0, matched: 0, mismatched: 0, errors: 0 };
+      bucket.total += 1;
+      if (entry.expectation === "MATCHED") bucket.matched += 1;
+      else if (entry.expectation === "MISMATCHED") bucket.mismatched += 1;
+      else bucket.errors += 1;
+      breakdown.set(category, bucket);
+    }
+  }
+  return byCategoryOrder(breakdown.keys()).map((category) => ({ category, ...breakdown.get(category)! }));
+}
+
+/** Unmatched cases in a canonical critical category. Shared by suite reports and their integrity check. */
+export function criticalFindingsOf(cases: readonly EvalSuiteCase[]): EvalSuiteReport["criticalFindings"] {
+  return cases.filter((entry) => entry.expectation !== "MATCHED" && isCritical(entry.categories)).map((entry) => ({ caseId: entry.caseId, comparisonKey: entry.comparisonKey, categories: entry.categories, expectation: entry.expectation }));
+}
+
+/** Canonical category order, deduplicated. */
+export const canonicalCategoryOrder = (categories: Iterable<EvalCategory>): EvalCategory[] => byCategoryOrder(categories);
+
 /** Covers comparison keys, expectation verdicts, and semantic verdicts in case order — nothing execution-specific. */
 export function suiteSemanticFingerprint(datasetRef: { id: string; version: string }, cases: readonly EvalSuiteCase[]): string {
   return sha256Canonical({ domain: "aao.eval-suite.v1", datasetRef, cases: cases.map((entry) => ({ caseId: entry.caseId, comparisonKey: entry.comparisonKey, expectation: entry.expectation, semanticVerdictFingerprint: entry.semanticVerdictFingerprint })) });
@@ -122,25 +146,14 @@ export function buildEvalSuiteReport(params: { dataset: unknown; definitions: re
     };
   });
 
-  const breakdown = new Map<EvalCategory, { total: number; matched: number; mismatched: number; errors: number }>();
-  for (const entry of cases) {
-    for (const category of entry.categories) {
-      const bucket = breakdown.get(category) ?? { total: 0, matched: 0, mismatched: 0, errors: 0 };
-      bucket.total += 1;
-      if (entry.expectation === "MATCHED") bucket.matched += 1;
-      else if (entry.expectation === "MISMATCHED") bucket.mismatched += 1;
-      else bucket.errors += 1;
-      breakdown.set(category, bucket);
-    }
-  }
   const datasetRef = { id: dataset.data.id, version: dataset.data.version };
   const report = {
     schemaVersion: 1 as const,
     datasetRef,
     cases,
     summary: summarizeSuiteCases(cases),
-    categoryBreakdown: byCategoryOrder(breakdown.keys()).map((category) => ({ category, ...breakdown.get(category)! })),
-    criticalFindings: cases.filter((entry) => entry.expectation !== "MATCHED" && isCritical(entry.categories)).map((entry) => ({ caseId: entry.caseId, comparisonKey: entry.comparisonKey, categories: entry.categories, expectation: entry.expectation })),
+    categoryBreakdown: categoryBreakdownOf(cases),
+    criticalFindings: criticalFindingsOf(cases),
     ...(params.operational !== undefined ? { operational: operationalSummaryFromAggregate(params.operational) } : {}),
     semanticFingerprint: suiteSemanticFingerprint(datasetRef, cases),
     ...(params.metadata !== undefined ? { metadata: EvalReportMetadataSchema.parse(params.metadata) } : {}),

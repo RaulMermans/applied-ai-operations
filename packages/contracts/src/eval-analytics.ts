@@ -71,6 +71,8 @@ export const EVAL_GATE_DIAGNOSTIC_CODES = [
   "EVAL_GATE_UNEXPECTED_ERROR",
   "EVAL_GATE_INCOMPLETE_EVIDENCE",
   "EVAL_GATE_METRIC_REGRESSION",
+  /** A suite report or baseline whose derived fields (counts, verdicts, breakdown, findings, fingerprints) disagree with its own case data. */
+  "EVAL_SUITE_REPORT_INCONSISTENT",
 ] as const;
 export const EvalGateDiagnosticCodeSchema = z.enum(EVAL_GATE_DIAGNOSTIC_CODES);
 export type EvalGateDiagnosticCode = z.infer<typeof EvalGateDiagnosticCodeSchema>;

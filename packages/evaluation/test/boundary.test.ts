@@ -72,7 +72,7 @@ describe("Evaluation is not inside the Runtime and never becomes execution autho
   it("Sprint 18 adds pure analytics, a deterministic gate, and a verification harness — no store, database, dashboard, auto-promotion, Reflexion loop, Memory, or Skill runtime", () => {
     const names = sourceFiles("evaluation").map((file) => file.split("/evaluation/src/")[1]).sort();
     expect(names).toEqual([
-      "analytics/baseline.ts", "analytics/comparison.ts", "analytics/expectation.ts", "analytics/fingerprints.ts", "analytics/multi-run.ts", "analytics/regression.ts", "analytics/suite-summary.ts",
+      "analytics/baseline.ts", "analytics/comparison.ts", "analytics/expectation.ts", "analytics/fingerprints.ts", "analytics/integrity.ts", "analytics/multi-run.ts", "analytics/regression.ts", "analytics/suite-summary.ts",
       "conformance/adapter-verification.ts", "conformance/scenarios.ts",
       "dataset.ts", "evidence.ts",
       "gates/evaluate-gate.ts", "gates/format-report.ts", "gates/policy.ts",

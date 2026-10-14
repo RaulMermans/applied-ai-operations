@@ -1,4 +1,5 @@
 import { EVAL_ANALYTICS_LIMITS, EvalAnalyticsSchema, EvalSuiteReportSchema, type EvalAnalytics, type EvalSuiteReport } from "@aao/contracts";
+import { validateEvalSuiteReportIntegrity } from "./integrity.js";
 import { EvalAnalyticsInputError } from "./suite-summary.js";
 
 /**
@@ -14,6 +15,7 @@ export function analyzeEvalSuites(reports: readonly unknown[]): EvalAnalytics {
   const suites: EvalSuiteReport[] = reports.map((report) => {
     const parsed = EvalSuiteReportSchema.safeParse(report);
     if (!parsed.success) throw new EvalAnalyticsInputError("EVAL_DATASET_INVALID", "suite report");
+    if (!validateEvalSuiteReportIntegrity(parsed.data).ok) throw new EvalAnalyticsInputError("EVAL_SUITE_REPORT_INCONSISTENT", "suite report is self-inconsistent");
     return parsed.data;
   });
   const datasetRef = suites[0]!.datasetRef;

@@ -77,6 +77,7 @@ export {
 export { EvalComparisonIdentityError, UNSPECIFIED_REASON_CODE, buildEvalComparisonIdentity, buildEvalComparisonKey, comparisonKeyOf, semanticVerdictFingerprint, verdictSummary } from "./analytics/fingerprints.js";
 export { caseExpectationVerdict } from "./analytics/expectation.js";
 export { EvalAnalyticsInputError, buildEvalSuiteReport, isCritical, operationalSummaryFromAggregate, suiteSemanticFingerprint, summarizeSuiteCases } from "./analytics/suite-summary.js";
+export { validateEvalBaselineIntegrity, validateEvalSuiteReportIntegrity, type EvalReportIntegrityResult } from "./analytics/integrity.js";
 export { evalBaselineFingerprint, proposeEvalBaseline } from "./analytics/baseline.js";
 export { compareEvalSuites, type CompareEvalSuitesResult } from "./analytics/comparison.js";
 export { regressionFindings } from "./analytics/regression.js";

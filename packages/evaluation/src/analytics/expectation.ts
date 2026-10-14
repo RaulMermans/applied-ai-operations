@@ -1,4 +1,4 @@
-import type { CaseExpectationVerdict, EvalExpectedVerdict, EvalResult } from "@aao/contracts";
+import type { CaseExpectationVerdict, EvalExpectedVerdict, EvalResult, EvalVerdictSummary } from "@aao/contracts";
 import { verdictSummary } from "./fingerprints.js";
 
 /**
@@ -17,8 +17,13 @@ import { verdictSummary } from "./fingerprints.js";
  *   exactly that error. Unexpected error codes never match.
  */
 export function caseExpectationVerdict(expected: EvalExpectedVerdict, result: EvalResult): CaseExpectationVerdict {
-  if (result.status === "error") return expected.status === "error" && expected.errorCode === result.errorCode ? "MATCHED" : "ERROR";
-  if (expected.status !== result.status) return "MISMATCHED";
-  if (result.status === "failed") return (expected.reasonCodes ?? []).join("\n") === verdictSummary(result).reasonCodes.join("\n") ? "MATCHED" : "MISMATCHED";
+  return expectationOfVerdict(expected, verdictSummary(result));
+}
+
+/** The same rule over an already-normalized verdict summary, so a suite report's verdicts can be recomputed from its own case data. */
+export function expectationOfVerdict(expected: EvalExpectedVerdict, actual: EvalVerdictSummary): CaseExpectationVerdict {
+  if (actual.status === "error") return expected.status === "error" && expected.errorCode === actual.errorCode ? "MATCHED" : "ERROR";
+  if (expected.status !== actual.status) return "MISMATCHED";
+  if (actual.status === "failed") return (expected.reasonCodes ?? []).join("\n") === actual.reasonCodes.join("\n") ? "MATCHED" : "MISMATCHED";
   return "MATCHED";
 }

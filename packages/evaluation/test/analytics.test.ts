@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EvalSuiteReportSchema, type EvalResult } from "@aao/contracts";
+import { EvalSuiteReportSchema, type EvalResult, type EvalSuiteReport } from "@aao/contracts";
 import {
   analyzeEvalSuites,
   buildEvalComparisonKey,
@@ -10,10 +10,23 @@ import {
   proposeEvalBaseline,
   runEvalDataset,
   semanticVerdictFingerprint,
+  suiteSemanticFingerprint,
+  summarizeSuiteCases,
 } from "../src/index.js";
+import { categoryBreakdownOf, criticalFindingsOf } from "../src/analytics/suite-summary.js";
 import { definition, fixtureResolver, loadDataset, loadDefinitions, loadFixture, registry } from "./support/evals.js";
 
 const datasetRef = { id: "aao.runtime-foundation", version: "2.0.0" };
+
+/**
+ * Re-derives every dependent field after a test edits identities or scores,
+ * exactly as a legitimate report builder would. Without it the edited report
+ * is self-inconsistent and is (correctly) rejected by the integrity check.
+ */
+function reseal(suite: EvalSuiteReport): EvalSuiteReport {
+  const cases = suite.cases.map((entry) => ({ ...entry, comparisonKey: buildEvalComparisonKey(entry.identity) }));
+  return { ...suite, cases, summary: summarizeSuiteCases(cases), categoryBreakdown: categoryBreakdownOf(cases), criticalFindings: criticalFindingsOf(cases), semanticFingerprint: suiteSemanticFingerprint(suite.datasetRef, cases) };
+}
 
 async function foundationSuite() {
   const dataset = loadDataset();
@@ -164,26 +177,26 @@ describe("baseline comparison classifies every logical case once", () => {
   it("a changed Eval, grader, or dataset version is INCOMPATIBLE — never a regression — unless a dataset version is explicitly declared compatible", async () => {
     const { suite } = await foundationSuite();
     const baseline = baselineOf(suite);
-    const bumpEval = { ...suite, cases: suite.cases.map((entry) => (entry.caseId === "tool.required-lookup-invoked.001" ? { ...entry, identity: { ...entry.identity, evalRef: { ...entry.identity.evalRef, version: "1.1.0" } } } : entry)) };
+    const bumpEval = reseal({ ...suite, cases: suite.cases.map((entry) => (entry.caseId === "tool.required-lookup-invoked.001" ? { ...entry, identity: { ...entry.identity, evalRef: { ...entry.identity.evalRef, version: "1.1.0" } } } : entry)) });
     const evalChange = compareEvalSuites({ baseline, candidate: bumpEval });
     expect(evalChange.ok && evalChange.report.summary).toMatchObject({ incompatible: 1, regressions: 0, unchangedMatch: 34 });
     expect(evalChange.ok && evalChange.report.entries.find((entry) => entry.classification === "INCOMPATIBLE")).toMatchObject({ caseId: "tool.required-lookup-invoked.001", incompatibleFields: ["evalRef.version"] });
     const nextDataset = { ...datasetRef, version: "2.1.0" };
-    const datasetBump = { ...suite, datasetRef: nextDataset, cases: suite.cases.map((entry) => ({ ...entry, identity: { ...entry.identity, datasetRef: nextDataset } })) };
+    const datasetBump = reseal({ ...suite, datasetRef: nextDataset, cases: suite.cases.map((entry) => ({ ...entry, identity: { ...entry.identity, datasetRef: nextDataset } })) });
     const silent = compareEvalSuites({ baseline, candidate: datasetBump });
     expect(silent.ok && silent.report.summary).toMatchObject({ incompatible: 35, regressions: 0 });
     const declared = compareEvalSuites({ baseline, candidate: datasetBump, compatibleBaselineDatasetVersions: ["2.0.0"] });
     expect(declared.ok && declared.report.summary).toMatchObject({ unchangedMatch: 35, incompatible: 0 });
-    expect(compareEvalSuites({ baseline, candidate: { ...datasetBump, datasetRef: { id: "other.dataset", version: "1.0.0" } } })).toMatchObject({ ok: false });
+    expect(compareEvalSuites({ baseline, candidate: reseal({ ...datasetBump, datasetRef: { id: "other.dataset", version: "1.0.0" }, cases: datasetBump.cases.map((entry) => ({ ...entry, identity: { ...entry.identity, datasetRef: { id: "other.dataset", version: "1.0.0" } } })) }) })).toMatchObject({ ok: false, code: "EVAL_BASELINE_INCOMPATIBLE" });
   });
 
   it("scores are compared only for comparable cases", async () => {
     const { suite } = await foundationSuite();
-    const scored = (score: number) => ({ ...suite, cases: suite.cases.map((entry, index) => (index === 0 ? { ...entry, actual: { ...entry.actual, score } } : entry)) });
+    const scored = (score: number) => reseal({ ...suite, cases: suite.cases.map((entry, index) => (index === 0 ? { ...entry, actual: { ...entry.actual, score } } : entry)) });
     const compared = compareEvalSuites({ baseline: baselineOf(scored(0.9)), candidate: scored(0.6) });
     expect(compared.ok && compared.report.entries[0]!.scoreDelta).toBe(-0.3);
-    const incompatible = scored(0.6);
-    incompatible.cases[0] = { ...incompatible.cases[0]!, identity: { ...incompatible.cases[0]!.identity, graderRef: { ...incompatible.cases[0]!.identity.graderRef, version: "2.0.0" } } };
+    const rescored = scored(0.6);
+    const incompatible = reseal({ ...rescored, cases: rescored.cases.map((entry, index) => (index === 0 ? { ...entry, identity: { ...entry.identity, graderRef: { ...entry.identity.graderRef, version: "2.0.0" } } } : entry)) });
     const notCompared = compareEvalSuites({ baseline: baselineOf(scored(0.9)), candidate: incompatible });
     expect(notCompared.ok && notCompared.report.entries[0]).toMatchObject({ classification: "INCOMPATIBLE" });
     expect(notCompared.ok && notCompared.report.entries[0]!.scoreDelta).toBeUndefined();
@@ -201,7 +214,7 @@ describe("multi-run analytics", () => {
     expect(analytics.caseStabilityRate).toBeCloseTo(34 / 35);
     expect(analytics.cases.find((entry) => entry.caseId === "approval.bypass-detected.001")).toMatchObject({ observed: 3, matched: 2, mismatched: 1, stable: false, regressions: 1 });
     expect(analyzeEvalSuites([suite])).toMatchObject({ regressionFrequency: null, caseStabilityRate: 1 });
-    expect(() => analyzeEvalSuites([suite, { ...suite, datasetRef: { ...datasetRef, version: "3.0.0" }, cases: suite.cases.map((entry) => ({ ...entry, identity: { ...entry.identity, datasetRef: { ...datasetRef, version: "3.0.0" } } })) }])).toThrow("EVAL_DATASET_INVALID");
+    expect(() => analyzeEvalSuites([suite, reseal({ ...suite, datasetRef: { ...datasetRef, version: "3.0.0" }, cases: suite.cases.map((entry) => ({ ...entry, identity: { ...entry.identity, datasetRef: { ...datasetRef, version: "3.0.0" } } })) })])).toThrow("EVAL_DATASET_INVALID");
     expect(() => analyzeEvalSuites([])).toThrow();
   });
 });

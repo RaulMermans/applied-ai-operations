@@ -1,5 +1,6 @@
 import { EvalBaselineSchema, EvalSuiteReportSchema, entityVersionSchema, identifierSchema, type EvalBaseline } from "@aao/contracts";
 import { sha256Canonical } from "./fingerprints.js";
+import { validateEvalSuiteReportIntegrity } from "./integrity.js";
 import { EvalAnalyticsInputError } from "./suite-summary.js";
 
 /**
@@ -22,6 +23,8 @@ export function evalBaselineFingerprint(baseline: EvalBaseline): string {
 export function proposeEvalBaseline(params: { suite: unknown; id: string; version: string; description?: string }): EvalBaseline {
   const suite = EvalSuiteReportSchema.safeParse(params.suite);
   if (!suite.success) throw new EvalAnalyticsInputError("EVAL_DATASET_INVALID", "suite report");
+  // A proposal never launders a self-attested summary into an approved baseline.
+  if (!validateEvalSuiteReportIntegrity(suite.data).ok) throw new EvalAnalyticsInputError("EVAL_SUITE_REPORT_INCONSISTENT", "suite report is self-inconsistent");
   if (!identifierSchema.safeParse(params.id).success || !entityVersionSchema.safeParse(params.version).success) throw new EvalAnalyticsInputError("EVAL_DATASET_INVALID", "baseline identity");
   return EvalBaselineSchema.parse({
     schemaVersion: 1,

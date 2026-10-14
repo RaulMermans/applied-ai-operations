@@ -61,6 +61,12 @@ Failed reason codes are the sorted, unique reason codes of the failed assertions
 
 A measurement is `{ status: "complete", value }`, `{ status: "partial" }`, or `{ status: "unavailable" }`; it is never a guessed number. Latency percentiles cover terminal Runs. A Run still waiting has no duration (it is ineligible, not missing), but a terminal Run without a duration makes latency `partial`.
 
+### Report integrity (Sprint 19)
+
+A schema-valid report could still *self-attest*: claim `summary.expectationsMatched: 35` while its cases say otherwise. `validateEvalSuiteReportIntegrity(report)` recomputes, from the report's own case data, every comparison key, canonical category order, and case expectation verdict (`expectationOfVerdict`, the same rule `caseExpectationVerdict` uses), plus the summary counts and match rate, the category breakdown, the critical findings, and the suite semantic fingerprint. Any disagreement is `EVAL_SUITE_REPORT_INCONSISTENT` with at most 20 bounded issues. Per-case semantic verdict fingerprints cover assertion-level detail a report does not carry, so they are not re-derivable; `operational` is advisory and is not re-derived either. `validateEvalBaselineIntegrity` applies the same checks to a baseline's case expectations, `suiteSummary`, and `generatedFrom` fingerprint.
+
+Every public path that accepts a caller-supplied report enforces it: `evaluateEvalGate` (candidate → gate error `EVAL_SUITE_REPORT_INCONSISTENT`; a self-inconsistent baseline → `EVAL_BASELINE_INVALID` even when re-pinned), `compareEvalSuites`, `proposeEvalBaseline` (a proposal never launders a forged summary into a baseline), and `analyzeEvalSuites`. The check is proof-layer only: it never grants, approves, executes, or changes Runtime or Governance state. No `@aao/framework` API accepts a caller-supplied report.
+
 `analyzeEvalSuites(reports[])` aggregates compatible reports (same dataset version) into case stability, regression frequency, error frequency, and mean score. There is no store and no time series.
 
 ## Comparison
@@ -133,7 +139,8 @@ A *gate error* means no trustworthy comparison happened. It is returned instead 
 - `EVAL_BASELINE_INVALID` (an invalid baseline, or content that does not match the policy pin);
 - `EVAL_BASELINE_INCOMPATIBLE` (not the policy's dataset, and no compatibility rule applies);
 - `EVAL_FIXTURE_FINGERPRINT_MISMATCH` (refused in preflight, before evaluation);
-- `EVAL_GATE_INCOMPLETE_EVIDENCE` (pipeline inputs unusable).
+- `EVAL_GATE_INCOMPLETE_EVIDENCE` (pipeline inputs unusable);
+- `EVAL_SUITE_REPORT_INCONSISTENT` (the candidate report's derived fields disagree with its own cases).
 
 ## Commands
 

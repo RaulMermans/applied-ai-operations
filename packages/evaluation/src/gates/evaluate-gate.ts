@@ -16,9 +16,10 @@ import {
 } from "@aao/contracts";
 import { evalBaselineFingerprint } from "../analytics/baseline.js";
 import { compareEvalSuites } from "../analytics/comparison.js";
+import { validateEvalBaselineIntegrity, validateEvalSuiteReportIntegrity } from "../analytics/integrity.js";
 
 export interface EvalGateError {
-  code: "EVAL_GATE_POLICY_INVALID" | "EVAL_BASELINE_INVALID" | "EVAL_BASELINE_INCOMPATIBLE" | "EVAL_GATE_INCOMPLETE_EVIDENCE";
+  code: "EVAL_GATE_POLICY_INVALID" | "EVAL_BASELINE_INVALID" | "EVAL_BASELINE_INCOMPATIBLE" | "EVAL_GATE_INCOMPLETE_EVIDENCE" | "EVAL_SUITE_REPORT_INCONSISTENT";
   detail: string;
 }
 
@@ -73,8 +74,13 @@ export function evaluateEvalGate(params: { policy: unknown; baseline: unknown; c
   const baseline: EvalBaseline = baselineParsed.data;
   if (baseline.id !== policy.baselineRef.id || baseline.version !== policy.baselineRef.version) return fail("EVAL_BASELINE_INVALID", `policy pins baseline ${policy.baselineRef.id}@${policy.baselineRef.version}, got ${baseline.id}@${baseline.version}`);
   if (evalBaselineFingerprint(baseline) !== policy.baselineRef.fingerprint) return fail("EVAL_BASELINE_INVALID", "baseline content does not match the fingerprint pinned by the policy (baselines are immutable within a version)");
+  const baselineIntegrity = validateEvalBaselineIntegrity(baseline);
+  if (!baselineIntegrity.ok) return fail("EVAL_BASELINE_INVALID", `baseline is self-inconsistent: ${baselineIntegrity.issues.join("; ")}`);
   const candidateParsed = EvalSuiteReportSchema.safeParse(params.candidate);
   if (!candidateParsed.success) return fail("EVAL_GATE_INCOMPLETE_EVIDENCE", "candidate is not a valid EvalSuiteReport");
+  // A schema-valid report can still self-attest counts its cases contradict: recompute before trusting any summary.
+  const candidateIntegrity = validateEvalSuiteReportIntegrity(candidateParsed.data);
+  if (!candidateIntegrity.ok) return fail("EVAL_SUITE_REPORT_INCONSISTENT", `candidate report is self-inconsistent: ${candidateIntegrity.issues.join("; ")}`);
   const candidate = candidateParsed.data;
   if (candidate.datasetRef.id !== policy.datasetRef.id || candidate.datasetRef.version !== policy.datasetRef.version) return fail("EVAL_BASELINE_INCOMPATIBLE", `policy gates ${policy.datasetRef.id}@${policy.datasetRef.version}, candidate ran ${candidate.datasetRef.id}@${candidate.datasetRef.version}`);
   const compatible = policy.comparison?.compatibleBaselineDatasetVersions ?? [];
