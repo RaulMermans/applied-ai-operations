@@ -60,8 +60,14 @@ export type EvalMode = z.infer<typeof EvalModeSchema>;
 export const EvalTargetTypeSchema = z.enum(["run", "node", "tool_use", "artifact", "trajectory", "authorization", "approval", "state"]);
 export type EvalTargetType = z.infer<typeof EvalTargetTypeSchema>;
 
-/** Descriptive classification for selection and reporting. Categories are not graders and never change grading. */
-export const EvalCategorySchema = z.enum(["capability", "regression", "tool_use", "safety", "output_quality", "model_benchmark", "trace_contract", "approval", "trajectory"]);
+/**
+ * Descriptive classification for selection and reporting. Categories are
+ * not graders and never change grading. Since Sprint 18 they do select gate
+ * severity (`approval`, `authorization`, `safety`, and `trace_contract` are
+ * always critical; ADR-023), so a category change is reviewed like gate
+ * policy. `authorization` was added in Sprint 18.
+ */
+export const EvalCategorySchema = z.enum(["capability", "regression", "tool_use", "safety", "output_quality", "model_benchmark", "trace_contract", "approval", "trajectory", "authorization"]);
 export type EvalCategory = z.infer<typeof EvalCategorySchema>;
 
 // --- References ----------------------------------------------------------------------
@@ -175,6 +181,8 @@ export const EVAL_ERROR_CODES = [
   "EVAL_MODEL_JUDGE_ERROR",
   "EVAL_DATASET_INVALID",
   "EVAL_CASE_ERROR",
+  /** Sprint 18: an OFFLINE case's resolved evidence does not match the fingerprint its dataset pins. Nothing was evaluated. */
+  "EVAL_FIXTURE_FINGERPRINT_MISMATCH",
 ] as const;
 export const EvalErrorCodeSchema = z.enum(EVAL_ERROR_CODES);
 export type EvalErrorCode = z.infer<typeof EvalErrorCodeSchema>;
@@ -233,7 +241,31 @@ export const EvalResultSchema = z
   });
 export type EvalResult = z.infer<typeof EvalResultSchema>;
 
-// --- Eval Dataset (schema version 1) ----------------------------------------------------------
+// --- Eval Dataset (schema version 2) ----------------------------------------------------------
+
+/**
+ * The exact verdict a case exists to prove. `failed` names the reason codes
+ * of the failed assertions (a sorted, unique set) and `error` names its
+ * error code, so a negative case matches only the *specific* detected
+ * behavior and a deliberate evaluator-error case only that exact error.
+ * `EVAL_FIXTURE_FINGERPRINT_MISMATCH` is integrity failure, never a
+ * desired outcome.
+ */
+export const EvalExpectedVerdictSchema = z
+  .object({
+    status: EvalResultStatusSchema,
+    errorCode: EvalErrorCodeSchema.optional(),
+    reasonCodes: z.array(EvalReasonCodeSchema).min(1).max(32).optional(),
+  })
+  .strict()
+  .superRefine((expected, ctx) => {
+    const issue = (path: string, message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+    if ((expected.status === "error") !== (expected.errorCode !== undefined)) issue("errorCode", "an expected error names its exact errorCode, and only an expected error has one");
+    if ((expected.status === "failed") !== (expected.reasonCodes !== undefined)) issue("reasonCodes", "an expected failure names the reason codes it detects, and only an expected failure has them");
+    if (expected.reasonCodes && expected.reasonCodes.join("\n") !== [...new Set(expected.reasonCodes)].sort().join("\n")) issue("reasonCodes", "reasonCodes must be sorted and unique");
+    if (expected.errorCode === "EVAL_FIXTURE_FINGERPRINT_MISMATCH") issue("errorCode", "fixture integrity failure is never an expected verdict");
+  });
+export type EvalExpectedVerdict = z.infer<typeof EvalExpectedVerdictSchema>;
 
 /**
  * One stable, human-assigned case. The case references its evidence
@@ -242,6 +274,11 @@ export type EvalResult = z.infer<typeof EvalResultSchema>;
  * a recorded regression Trace, or an alternate adapter's Trace. `expected`
  * states the verdict the case exists to prove — including deliberate
  * `failed` (forbidden behavior) and `error` (untrustworthy evidence) cases.
+ *
+ * Schema version 2 (Sprint 18, ADR-023): an `OFFLINE` case pins the exact
+ * `evidenceFingerprint` of the reproducible evidence it was written against;
+ * a `RUNTIME` case never does (live evidence differs per execution).
+ * `expected` is required.
  */
 export const EvalCaseSchema = z
   .object({
@@ -250,20 +287,26 @@ export const EvalCaseSchema = z
     evalRef: EvalRefSchema,
     mode: EvalModeSchema,
     evidenceRef: EvalEvidenceRefSchema,
-    expected: z.object({ status: EvalResultStatusSchema, errorCode: EvalErrorCodeSchema.optional() }).strict().optional(),
+    evidenceFingerprint: hex64.optional(),
+    expected: EvalExpectedVerdictSchema,
     tags: z.array(identifierSchema.max(64)).max(EVAL_LIMITS.maxTagsPerCase).optional(),
   })
   .strict()
   .superRefine((evalCase, ctx) => {
-    if (evalCase.expected?.errorCode !== undefined && evalCase.expected.status !== "error") ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["expected", "errorCode"], message: "an expected errorCode requires expected status error" });
+    if ((evalCase.mode === "OFFLINE") !== (evalCase.evidenceFingerprint !== undefined)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["evidenceFingerprint"], message: "an OFFLINE case pins its evidence fingerprint; a RUNTIME case never does" });
     if (evalCase.tags && !uniqueValues(evalCase.tags)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["tags"], message: "tags must be unique" });
   });
 export type EvalCase = z.infer<typeof EvalCaseSchema>;
 
-/** A versioned, version-controlled product asset: an ordered, bounded list of uniquely identified cases. */
+/**
+ * A versioned, version-controlled product asset: an ordered, bounded list
+ * of uniquely identified cases. Schema version 2 supersedes version 1
+ * (unpinned fixtures, optional expectations); a version 1 dataset is
+ * rejected, never reinterpreted.
+ */
 export const EvalDatasetSchema = z
   .object({
-    schemaVersion: schemaVersionSchema(1),
+    schemaVersion: schemaVersionSchema(2),
     id: identifierSchema,
     version: entityVersionSchema,
     name: boundedName,
@@ -286,9 +329,11 @@ export type EvalDataset = z.infer<typeof EvalDatasetSchema>;
 
 /**
  * The bounded, ordered output of running one dataset: one result per case,
- * in dataset case order. `matchesExpectation` is null when the case states
- * no expectation. This is not analytics — no rates, history, baselines, or
- * thresholds (Sprint 18).
+ * in dataset case order. `matchesExpectation` is true exactly when the
+ * case expectation verdict is `MATCHED` (`null` is kept for schema
+ * compatibility; schema version 2 datasets always state an expectation).
+ * Rates, comparison, baselines, and gates are Sprint 18 analytics over
+ * this run (`eval-analytics.ts`).
  */
 export const EvalDatasetRunSchema = z
   .object({

@@ -4,15 +4,19 @@ Version-controlled evaluation assets for the AAO Evaluation Runtime (`@aao/evalu
 
 ```text
 evals/
-├── definitions/runtime-foundation.v1.yaml   EvalDefinition v2 — what is judged, by which trusted grader
-├── datasets/runtime-foundation.v1.yaml      EvalDataset v1 — stable cases pointing at evidence
-└── fixtures/*.json                          EvalEvidenceBundle — recorded canonical AAO evidence
+├── definitions/runtime-foundation.v1.yaml        EvalDefinition v2 — what is judged, by which trusted grader
+├── definitions/adapter-conformance.v1.yaml       EvalDefinition v2 — adapter verification criteria (Sprint 18)
+├── datasets/runtime-foundation.v2.yaml           EvalDataset v2 — 35 cases, fixture fingerprints pinned
+├── datasets/adapter-conformance-foundation.v1.yaml  EvalDataset v2 — 20 RUNTIME scenario cases
+├── fixtures/*.json                               EvalEvidenceBundle — recorded canonical AAO evidence
+├── baselines/runtime-foundation.v1.json          EvalBaseline v1 — approved comparison state (see baselines/README.md)
+└── gates/foundation-ci.v1.yaml                   EvalGatePolicy v1 — the deterministic CI gate
 ```
 
 ## Definitions, datasets, and evidence stay separate
 
 - A **definition** states a criterion: a `targetType`, an exact `graderRef { id, version }`, and JSON config. It never contains evidence.
-- A **dataset** lists **cases**. Each case is `evalRef + mode + evidenceRef + expected`. A case references its evidence; it never embeds a Run or Trace. The same case can later point at a live Run, a recorded regression Trace, or another adapter's Trace.
+- A **dataset** lists **cases**. Each case is `evalRef + mode + evidenceRef + evidenceFingerprint (OFFLINE only) + expected`. A case references its evidence; it never embeds a Run or Trace. The same case can later point at a live Run, a recorded regression Trace, or another adapter's Trace.
 - A **fixture** is one `EvalEvidenceBundle`. It can hold canonical Trace events, Runtime execution state, Trace-derived `RunMetrics`, an Audit stream, and, for semantic judges only, an explicit subject.
 
 ## Versioning
@@ -36,11 +40,13 @@ Never renumber or reuse an id. Add `.002` for a new variant of the same behavior
 
 Every case states the verdict it exists to prove:
 
-| `expected.status` | Meaning | Example |
+| `expected` | Meaning | Example |
 | --- | --- | --- |
 | `passed` | Desired behavior | Approval rejected, Run failed, downstream Tool calls = 0 |
-| `failed` | Forbidden behavior is detected | Tool started after a rejected Approval; retry after an Authorization denial |
-| `error` (+ `errorCode`) | Untrustworthy or insufficient evidence must never pass | Corrupt Trace; cost `unavailable`; no rejection occurred, so "no Tool after rejection" is untestable |
+| `failed` + `reasonCodes` | Forbidden behavior is detected, for exactly these reasons | Tool started after a rejected Approval (`[TOOL_AFTER_REJECTED_APPROVAL]`) |
+| `error` + `errorCode` | Untrustworthy or insufficient evidence must never pass | Corrupt Trace; cost `unavailable`; no rejection occurred, so "no Tool after rejection" is untestable |
+
+Expectations are required and exact (dataset schema version 2). In CI, a case whose result is exactly its expectation is **MATCHED**, even when the result is `failed` or `error`. These negative and deliberate-error cases are successful regression cases, not CI failures. `EvalResult.status` is the evaluator's judgment of the system; the case expectation verdict (`MATCHED`/`MISMATCHED`/`ERROR`) is whether the case behaved as declared.
 
 ## OFFLINE vs RUNTIME
 
@@ -57,6 +63,22 @@ Committed fixtures are `origin: recorded` and run in `OFFLINE` mode. `RUNTIME` m
 - **Canonical semantics only.** Criteria use AAO event types, `ToolRef`s, Run status, failure categories, state paths, and `RunMetrics`, never framework or provider constructs.
 - **Bounded.** A dataset holds at most 200 cases, a config at most 16 KiB, and a source file at most 1 MiB.
 
+## Fixture pinning
+
+Every OFFLINE case pins the SHA-256 `evidenceFingerprint` of its fixture (canonical JSON of the evidence, excluding `origin` and `source`). If the resolved fixture differs, the case is `error` `EVAL_FIXTURE_FINGERPRINT_MISMATCH` and reaches no grader, and `pnpm eval:ci` refuses to run at all. Nothing rewrites a pin. Re-pinning is a deliberate dataset change with a new dataset version.
+
+RUNTIME cases (live evidence, such as the adapter conformance scenarios) are never pinned.
+
+Schema version 1 datasets (unpinned fixtures, optional expectations) are refused with a migration message. `aao.runtime-foundation@1.1.0` (schema 1) was migrated to `@2.0.0` (schema 2) with the same 35 cases and evidence.
+
+## CI and comparison
+
+`pnpm eval:ci` runs after the build. It runs this dataset, builds a suite report, compares it with `baselines/runtime-foundation.v1.json` by **comparison key** (Eval, grader, dataset, case, mode, target — never Run, provider, or result id), and applies `gates/foundation-ci.v1.yaml`. It is offline and deterministic, and it excludes the model judge. See [eval analytics & CI](../docs/architecture/eval-analytics-ci.md) and [baselines/README.md](baselines/README.md).
+
+## Adapter verification
+
+`adapter-conformance.v1.yaml` and `adapter-conformance-foundation.v1.yaml` judge the canonical evidence that each substrate's own test driver produces (native Tool, MCP connector, native model, Vercel AI SDK). Evidence is `scenario://<id>`. The definitions and graders are the same Evaluation Runtime; there is no adapter-specific assertion engine. See [adapter verification](../docs/architecture/adapter-verification.md).
+
 ## Regenerating fixtures
 
 Fixtures are rebuilt deterministically on every `pnpm test` (`packages/evaluation/test/foundation-fixtures.test.ts`) and compared with the committed files:
@@ -64,8 +86,8 @@ Fixtures are rebuilt deterministically on every `pnpm test` (`packages/evaluatio
 - Positive evidence comes from real AAO Runs (Runtime, Approval Engine, Tool Runtime, Authorization, Trace and Audit recorders).
 - Negative evidence is synthetic but recorder-validated: valid Traces of undesired behavior that the Runtime itself prevents.
 
-After an intentional change, update the fixtures with `pnpm vitest run packages/evaluation/test/foundation-fixtures.test.ts -u` and review the diff.
+After an intentional change, update the fixtures with `pnpm vitest run packages/evaluation/test/foundation-fixtures.test.ts -u` and review the diff. Then re-pin the affected `evidenceFingerprint`s in a new dataset version, and propose a new baseline (`pnpm eval:baseline:propose`).
 
-## Not here (Sprint 18+)
+## Not here
 
-This directory contains no result history, pass-rate trends, baselines, CI gates, or automatic regression creation.
+This directory contains no result history database, dashboards, automatic baseline updates, or automatic regression creation. Regression findings are printed for human review only.

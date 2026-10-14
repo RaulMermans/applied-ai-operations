@@ -48,8 +48,8 @@ const result = {
   evidenceRefs: ["fixture://flagship-approved", "trace://run.eval.flagship/event/12"],
 };
 
-const evalCase = { id: "tool.required-lookup-invoked.001", evalRef: { id: "tool.lookup-required", version: "1.0.0" }, mode: "OFFLINE", evidenceRef: "fixture://flagship-approved", expected: { status: "passed" }, tags: ["tool"] };
-const dataset = { schemaVersion: 1, id: "aao.runtime-foundation", version: "1.0.0", name: "Foundation", cases: [evalCase] };
+const evalCase = { id: "tool.required-lookup-invoked.001", evalRef: { id: "tool.lookup-required", version: "1.0.0" }, mode: "OFFLINE", evidenceRef: "fixture://flagship-approved", evidenceFingerprint: "d".repeat(64), expected: { status: "passed" }, tags: ["tool"] };
+const dataset = { schemaVersion: 2, id: "aao.runtime-foundation", version: "2.0.0", name: "Foundation", cases: [evalCase] };
 
 const roundTrip = <T>(schema: { parse(value: unknown): T }, value: unknown) => {
   const parsed = schema.parse(value);
@@ -149,7 +149,7 @@ describe("EvalResult schema version 2", () => {
   });
 });
 
-describe("EvalDataset (schema version 1) and EvalCase", () => {
+describe("EvalDataset (schema version 2) and EvalCase", () => {
   it("round-trips dataset, case, refs, and grader refs", () => {
     roundTrip(EvalDatasetSchema, dataset);
     roundTrip(EvalCaseSchema, evalCase);
@@ -170,6 +170,26 @@ describe("EvalDataset (schema version 1) and EvalCase", () => {
     expect(EvalCaseSchema.safeParse({ ...evalCase, expected: { status: "failed", errorCode: "EVAL_EVIDENCE_MISSING" } }).success).toBe(false);
     expect(EvalCaseSchema.safeParse({ ...evalCase, mode: "LIVE" }).success).toBe(false);
     expect(EvalCaseSchema.safeParse({ ...evalCase, evidenceRef: "../fixtures/x.json" }).success).toBe(false);
+  });
+
+  it("schema version 2: OFFLINE cases pin their evidence fingerprint, RUNTIME cases never do; version 1 is not accepted", () => {
+    expect(EvalCaseSchema.safeParse({ ...evalCase, evidenceFingerprint: undefined }).success).toBe(false);
+    expect(EvalCaseSchema.safeParse({ ...evalCase, evidenceFingerprint: "not-a-fingerprint" }).success).toBe(false);
+    expect(EvalCaseSchema.safeParse({ ...evalCase, mode: "RUNTIME" }).success).toBe(false);
+    expect(EvalCaseSchema.safeParse({ ...evalCase, mode: "RUNTIME", evidenceFingerprint: undefined, evidenceRef: "scenario://tool.success" }).success).toBe(true);
+    expect(EvalDatasetSchema.safeParse({ ...dataset, schemaVersion: 1 }).success).toBe(false);
+  });
+
+  it("schema version 2: expectations are required and exact — failed names its reason codes, error its error code", () => {
+    expect(EvalCaseSchema.safeParse({ ...evalCase, expected: undefined }).success).toBe(false);
+    expect(EvalCaseSchema.safeParse({ ...evalCase, expected: { status: "failed" } }).success).toBe(false);
+    expect(EvalCaseSchema.safeParse({ ...evalCase, expected: { status: "failed", reasonCodes: ["APPROVAL_BYPASSED"] } }).success).toBe(true);
+    expect(EvalCaseSchema.safeParse({ ...evalCase, expected: { status: "failed", reasonCodes: ["B_CODE", "A_CODE"] } }).success).toBe(false);
+    expect(EvalCaseSchema.safeParse({ ...evalCase, expected: { status: "failed", reasonCodes: ["A_CODE", "A_CODE"] } }).success).toBe(false);
+    expect(EvalCaseSchema.safeParse({ ...evalCase, expected: { status: "passed", reasonCodes: ["A_CODE"] } }).success).toBe(false);
+    expect(EvalCaseSchema.safeParse({ ...evalCase, expected: { status: "error" } }).success).toBe(false);
+    expect(EvalCaseSchema.safeParse({ ...evalCase, expected: { status: "error", errorCode: "EVAL_REQUIRED_EVIDENCE_INCOMPLETE" } }).success).toBe(true);
+    expect(EvalCaseSchema.safeParse({ ...evalCase, expected: { status: "error", errorCode: "EVAL_FIXTURE_FINGERPRINT_MISMATCH" } }).success).toBe(false);
   });
 
   it("an EvalDatasetRun carries each result's dataset and case identity", () => {

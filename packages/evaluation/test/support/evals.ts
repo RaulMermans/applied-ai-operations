@@ -11,17 +11,20 @@ import { createEvaluatorRegistry, createStaticEvidenceResolver, deterministicGra
  */
 export const evalsRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "evals");
 
-export function loadDefinitions(): EvalDefinition[] {
-  const parsed = parseEvalDefinitions(readFileSync(join(evalsRoot, "definitions", "runtime-foundation.v1.yaml"), "utf8"), "yaml");
+export function loadDefinitions(file = "runtime-foundation.v1.yaml"): EvalDefinition[] {
+  const parsed = parseEvalDefinitions(readFileSync(join(evalsRoot, "definitions", file), "utf8"), "yaml");
   if (!parsed.ok) throw new Error(JSON.stringify(parsed.issues));
   return parsed.value;
 }
 
-export function loadDataset(): EvalDataset {
-  const parsed = parseEvalDataset(readFileSync(join(evalsRoot, "datasets", "runtime-foundation.v1.yaml"), "utf8"), "yaml");
+export function loadDataset(file = "runtime-foundation.v2.yaml"): EvalDataset {
+  const parsed = parseEvalDataset(readFileSync(join(evalsRoot, "datasets", file), "utf8"), "yaml");
   if (!parsed.ok) throw new Error(JSON.stringify(parsed.issues));
   return parsed.value;
 }
+
+export const loadConformanceDefinitions = () => loadDefinitions("adapter-conformance.v1.yaml");
+export const loadConformanceDataset = () => loadDataset("adapter-conformance-foundation.v1.yaml");
 
 export function loadFixture(name: string): EvalEvidenceBundle {
   return JSON.parse(readFileSync(join(evalsRoot, "fixtures", `${name}.json`), "utf8")) as EvalEvidenceBundle;

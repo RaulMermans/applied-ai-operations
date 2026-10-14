@@ -1,0 +1,195 @@
+# Adapter conformance Eval Definitions (EvalDefinition schema version 2).
+# Sprint 18 adapter verification (ADR-023, docs/architecture/adapter-verification.md):
+# the same definitions judge the canonical AAO evidence that every
+# substrate's test driver produces for a scenario. Nothing here names a
+# framework, provider, SDK, or MCP construct — only canonical Trace event
+# types, ToolRefs, Run status, failure codes, state paths, and trusted model
+# identity. Adapter verification is a use of the Evaluation Runtime, not a
+# second assertion engine.
+definitions:
+  - schemaVersion: 2
+    id: conformance.trace-valid
+    version: "1.0.0"
+    name: The substrate's evidence satisfies the AAO Trace contract
+    categories: [trace_contract]
+    supportedModes: [RUNTIME]
+    targetType: run
+    graderRef: { id: aao.trace-contract, version: "1.0.0" }
+    config: { requireTerminal: true }
+
+  - schemaVersion: 2
+    id: conformance.run-completed
+    version: "1.0.0"
+    name: The Run completes
+    categories: [capability]
+    supportedModes: [RUNTIME]
+    targetType: run
+    graderRef: { id: aao.run-outcome, version: "1.0.0" }
+    config: { expectedStatus: COMPLETED }
+
+  - schemaVersion: 2
+    id: conformance.run-failed-node-execution
+    version: "1.0.0"
+    name: The Run fails with the normalized node execution failure
+    categories: [capability]
+    supportedModes: [RUNTIME]
+    targetType: run
+    graderRef: { id: aao.run-outcome, version: "1.0.0" }
+    config: { expectedStatus: FAILED, expectedFailureCode: NODE_EXECUTION_FAILED }
+
+  - schemaVersion: 2
+    id: conformance.tool-invoked-once
+    version: "1.0.0"
+    name: The CRM read Tool is invoked exactly once (one physical call, one logical execution)
+    categories: [tool_use]
+    supportedModes: [RUNTIME]
+    targetType: tool_use
+    graderRef: { id: aao.tool-usage, version: "1.0.0" }
+    config:
+      requiredTools: [{ id: crm.account.read, version: "1.0.0" }]
+      callLimits:
+        - { tool: { id: crm.account.read, version: "1.0.0" }, count: physical, min: 1, max: 1 }
+        - { tool: { id: crm.account.read, version: "1.0.0" }, count: logical, min: 1, max: 1 }
+
+  - schemaVersion: 2
+    id: conformance.tool-result-mapped
+    version: "1.0.0"
+    name: The Tool's structured result maps into AAO state
+    categories: [tool_use]
+    supportedModes: [RUNTIME]
+    targetType: state
+    graderRef: { id: aao.state-assertion, version: "1.0.0" }
+    config:
+      checks:
+        - { id: result-id, op: path_equals, path: /accountResult/output/id, value: a-1 }
+        - { id: result-name, op: path_equals, path: /accountResult/output/name, value: Local Test Account }
+        - { id: result-tool, op: path_equals, path: /accountResult/toolRef, value: { id: crm.account.read, version: "1.0.0" } }
+
+  - schemaVersion: 2
+    id: conformance.tool-unauthorized-blocked
+    version: "1.0.0"
+    name: An unauthorized CRM read is blocked by Authorization and never reaches the handler
+    categories: [tool_use, authorization, safety]
+    supportedModes: [RUNTIME]
+    targetType: tool_use
+    graderRef: { id: aao.tool-usage, version: "1.0.0" }
+    config:
+      expectedBlocked: [{ tool: { id: crm.account.read, version: "1.0.0" }, failureCode: TOOL_AUTHORIZATION_DENIED }]
+
+  - schemaVersion: 2
+    id: conformance.authorization-denial-audited
+    version: "1.0.0"
+    name: The Authorization denial is enforced and agrees with Audit
+    categories: [authorization, safety]
+    supportedModes: [RUNTIME]
+    targetType: authorization
+    graderRef: { id: aao.authorization-compliance, version: "1.0.0" }
+    config:
+      expectedDenials: [{ tool: { id: crm.account.read, version: "1.0.0" }, reasonCode: PERMISSION_NOT_GRANTED }]
+      crossCheckAudit: true
+
+  - schemaVersion: 2
+    id: conformance.run-refused-at-preflight
+    version: "1.0.0"
+    name: A workflow naming a Tool with an unsupported side-effect class is refused at Runtime preflight
+    categories: [safety]
+    supportedModes: [RUNTIME]
+    targetType: run
+    graderRef: { id: aao.run-outcome, version: "1.0.0" }
+    config: { expectedStatus: FAILED, expectedFailureCode: RUNTIME_PREFLIGHT_FAILED }
+
+  - schemaVersion: 2
+    id: conformance.tool-never-invoked
+    version: "1.0.0"
+    name: The CRM read Tool's handler is never invoked
+    categories: [tool_use, safety]
+    supportedModes: [RUNTIME]
+    targetType: tool_use
+    graderRef: { id: aao.tool-usage, version: "1.0.0" }
+    config:
+      forbiddenTools: [{ id: crm.account.read, version: "1.0.0" }]
+
+  - schemaVersion: 2
+    id: conformance.tool-failure-normalized
+    version: "1.0.0"
+    name: A handler or remote error is the normalized TOOL_EXECUTION_FAILED
+    categories: [tool_use]
+    supportedModes: [RUNTIME]
+    targetType: tool_use
+    graderRef: { id: aao.tool-usage, version: "1.0.0" }
+    config:
+      expectedFailures: [{ tool: { id: crm.account.read, version: "1.0.0" }, failureCode: TOOL_EXECUTION_FAILED }]
+
+  - schemaVersion: 2
+    id: conformance.tool-transient-retried
+    version: "1.0.0"
+    name: Exactly one Runtime retry of the transient failure, without exhaustion
+    categories: [tool_use]
+    supportedModes: [RUNTIME]
+    targetType: run
+    graderRef: { id: aao.retry-behavior, version: "1.0.0" }
+    config: { expectedRetries: 1, expectExhausted: false }
+
+  - schemaVersion: 2
+    id: conformance.model-structured-output
+    version: "1.0.0"
+    name: The structured model output maps into a schema-valid ModelResult in state
+    categories: [capability]
+    supportedModes: [RUNTIME]
+    targetType: state
+    graderRef: { id: aao.state-assertion, version: "1.0.0" }
+    config:
+      checks:
+        - { id: output-kind, op: path_equals, path: /modelResult/outputKind, value: structured }
+        - { id: output-category, op: path_equals, path: /modelResult/output/category, value: research }
+        - { id: output-binding, op: path_equals, path: /modelResult/modelBindingId, value: conformance.binding }
+
+  - schemaVersion: 2
+    id: conformance.model-identity-usage
+    version: "1.0.0"
+    name: One model call with the trusted registered identity and exact token usage
+    categories: [capability]
+    supportedModes: [RUNTIME]
+    targetType: run
+    graderRef: { id: aao.model-call, version: "1.0.0" }
+    config:
+      expectedCalls: { min: 1, max: 1 }
+      expectedIdentity: { provider: conformance-provider, model: conformance-model }
+      expectedUsage: { inputTokens: 11, outputTokens: 4, totalTokens: 15 }
+      expectedOutcome: completed
+
+  - schemaVersion: 2
+    id: conformance.model-provider-error
+    version: "1.0.0"
+    name: A provider error is one failed call normalized to MODEL_INVOCATION_FAILED / provider_error
+    categories: [capability]
+    supportedModes: [RUNTIME]
+    targetType: run
+    graderRef: { id: aao.model-call, version: "1.0.0" }
+    config:
+      expectedCalls: { min: 1, max: 1 }
+      expectedOutcome: failed
+      expectedFailure: { failureCode: MODEL_INVOCATION_FAILED, adapterReason: provider_error }
+
+  - schemaVersion: 2
+    id: conformance.model-tool-call-fail-closed
+    version: "1.0.0"
+    name: A provider tool-call response fails closed as INVALID_MODEL_RESULT / unsupported_response
+    categories: [capability, safety]
+    supportedModes: [RUNTIME]
+    targetType: run
+    graderRef: { id: aao.model-call, version: "1.0.0" }
+    config:
+      expectedCalls: { min: 1, max: 1 }
+      expectedOutcome: failed
+      expectedFailure: { failureCode: INVALID_MODEL_RESULT, adapterReason: unsupported_response }
+
+  - schemaVersion: 2
+    id: conformance.model-attempt-timeout
+    version: "1.0.0"
+    name: A model call that never settles fails the Run at the Runtime attempt-timeout boundary
+    categories: [capability]
+    supportedModes: [RUNTIME]
+    targetType: run
+    graderRef: { id: aao.run-outcome, version: "1.0.0" }
+    config: { expectedStatus: FAILED, expectedFailureCategory: TIMEOUT }

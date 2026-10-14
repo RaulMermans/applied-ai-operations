@@ -14,7 +14,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "smoke": "node smoke/run-smoke.mjs"
+    "smoke": "node smoke/run-smoke.mjs",
+    "smoke:sprint18": "node smoke/sprint18/run-smoke.mjs"
   },
   "dependencies": {
     "@aao/contracts": "workspace:*",

@@ -8,7 +8,7 @@ AAO is a layer, not an operating system, chatbot, agent marketplace, no-code wor
 
 ## Current status
 
-Sprint 0 architecture contract complete. Sprint 1 engineering foundation complete (`SPRINT_01_ENGINEERING_FOUNDATION_COMPLETE`). Sprint 2 canonical domain contracts complete (`SPRINT_02_CANONICAL_DOMAIN_CONTRACTS_COMPLETE`). Sprint 3 workflow DSL and compiler complete (`SPRINT_03_WORKFLOW_DSL_COMPILER_COMPLETE`). Sprint 4 Node Registry and Runtime V1 complete (`SPRINT_04_RUNTIME_V1_COMPLETE`). Sprint 5 managed runtime state and lifecycle complete (`SPRINT_05_MANAGED_RUNTIME_STATE_COMPLETE`). Sprint 6 model abstraction and capability routing complete (`SPRINT_06_MODEL_RUNTIME_COMPLETE`). Sprint 7 bounded Agent Runtime complete (`SPRINT_07_BOUNDED_AGENT_RUNTIME_COMPLETE`). Sprint 8 Tool Registry and safe Tool execution boundary complete (`SPRINT_08_TOOL_RUNTIME_COMPLETE`). Sprint 9 authorization and permission enforcement boundary complete (`SPRINT_09_AUTHORIZATION_BOUNDARY_COMPLETE`). Sprint 10 MCP integration boundary and governed Tool adapter sessions complete (`SPRINT_10_MCP_INTEGRATION_BOUNDARY_COMPLETE`). Sprint 11 Actor, Role & Policy Governance complete (`SPRINT_11_GOVERNANCE_MODEL_COMPLETE`). Sprint 12 Approval Engine complete (`SPRINT_12_APPROVAL_ENGINE_COMPLETE`). Sprint 13 Reliability Runtime complete (`SPRINT_13_RELIABILITY_RUNTIME_COMPLETE`). Sprint 14 Durable Execution complete (`SPRINT_14_DURABLE_EXECUTION_COMPLETE`). Sprint 15 Trace Runtime complete (`SPRINT_15_TRACE_RUNTIME_COMPLETE`). Sprint 16 Metrics & Audit complete (`SPRINT_16_METRICS_AUDIT_COMPLETE`). Sprint 17 Evaluation Runtime complete (`SPRINT_17_EVALUATION_RUNTIME_COMPLETE`). Sprint 18 Eval Analytics / CI Gates / Adapter Verification is next.
+Sprint 0 architecture contract complete. Sprint 1 engineering foundation complete (`SPRINT_01_ENGINEERING_FOUNDATION_COMPLETE`). Sprint 2 canonical domain contracts complete (`SPRINT_02_CANONICAL_DOMAIN_CONTRACTS_COMPLETE`). Sprint 3 workflow DSL and compiler complete (`SPRINT_03_WORKFLOW_DSL_COMPILER_COMPLETE`). Sprint 4 Node Registry and Runtime V1 complete (`SPRINT_04_RUNTIME_V1_COMPLETE`). Sprint 5 managed runtime state and lifecycle complete (`SPRINT_05_MANAGED_RUNTIME_STATE_COMPLETE`). Sprint 6 model abstraction and capability routing complete (`SPRINT_06_MODEL_RUNTIME_COMPLETE`). Sprint 7 bounded Agent Runtime complete (`SPRINT_07_BOUNDED_AGENT_RUNTIME_COMPLETE`). Sprint 8 Tool Registry and safe Tool execution boundary complete (`SPRINT_08_TOOL_RUNTIME_COMPLETE`). Sprint 9 authorization and permission enforcement boundary complete (`SPRINT_09_AUTHORIZATION_BOUNDARY_COMPLETE`). Sprint 10 MCP integration boundary and governed Tool adapter sessions complete (`SPRINT_10_MCP_INTEGRATION_BOUNDARY_COMPLETE`). Sprint 11 Actor, Role & Policy Governance complete (`SPRINT_11_GOVERNANCE_MODEL_COMPLETE`). Sprint 12 Approval Engine complete (`SPRINT_12_APPROVAL_ENGINE_COMPLETE`). Sprint 13 Reliability Runtime complete (`SPRINT_13_RELIABILITY_RUNTIME_COMPLETE`). Sprint 14 Durable Execution complete (`SPRINT_14_DURABLE_EXECUTION_COMPLETE`). Sprint 15 Trace Runtime complete (`SPRINT_15_TRACE_RUNTIME_COMPLETE`). Sprint 16 Metrics & Audit complete (`SPRINT_16_METRICS_AUDIT_COMPLETE`). Sprint 17 Evaluation Runtime complete (`SPRINT_17_EVALUATION_RUNTIME_COMPLETE`). Sprint 18 Eval Analytics / CI Gates / Adapter Verification complete (`SPRINT_18_EVAL_ANALYTICS_CI_ADAPTER_VERIFICATION_COMPLETE`). Sprint 19 Framework Surface is next.
 
 Available:
 
@@ -37,9 +37,17 @@ Available:
   - The versioned definitions, datasets, and fixtures live in [`evals/`](evals/README.md).
 
   See [ADR-022](docs/decisions/ADR-022-evaluation-runtime-and-portable-verification.md) and [evaluation runtime](docs/architecture/evaluation-runtime.md).
+- Eval analytics, a deterministic CI quality gate, and adapter verification (`@aao/evaluation`, Sprint 18):
+  - Cases are compared by a logical comparison key and a semantic verdict fingerprint, never by result id or provider.
+  - Expectations are judged per case, so negative and deliberate-error cases count as successes.
+  - Offline fixtures are fingerprint-pinned.
+  - An approved, human-reviewed baseline (`evals/baselines/`) is compared under a strict, versioned gate policy. Approval, Authorization, safety, and Trace regressions always hard-fail; operational movement warns.
+  - `pnpm eval:ci` and `pnpm eval:adapters` run offline in CI and never write a baseline.
+  - Adapter verification judges canonical evidence from the native Tool, MCP connector, native model, and Vercel AI SDK paths with the same Eval definitions. Partial support is reported truthfully.
+  - None of this is Runtime authority, and there is no public Adapter contract yet (Sprint 20). See [ADR-023](docs/decisions/ADR-023-eval-analytics-ci-gates-and-adapter-verification.md), [eval analytics & CI](docs/architecture/eval-analytics-ci.md), and [adapter verification](docs/architecture/adapter-verification.md).
 - a generic safe executor-failure protocol: a node failure stays `NODE_EXECUTION_FAILED` but carries bounded, machine-readable `executorFailure: { namespace, code }` causality (e.g. `model` / `MODEL_ROUTE_NOT_FOUND`)
 - an independent build per package/app, run from compiled JavaScript
-- CI mirroring local verification (`typecheck → lint → build → test`)
+- CI mirroring local verification (`typecheck → lint → build → test → eval:ci → eval:adapters`)
 
 Not yet implemented:
 
@@ -55,7 +63,7 @@ Not yet implemented:
 - integrations (Integration Fabric)
 - exactly-once execution, distributed or multi-host durability, high availability, production queues or worker coordination, durable cloud deployment, automatic compensation, operator recovery tooling for refused ambiguous operations, or circuit breakers
 - an OpenTelemetry or Prometheus exporter, Langfuse/Phoenix or other vendor integrations, provider billing reconciliation, signed or distributed Audit, SIEM integration, Audit retention policy, alerting or SLOs, and a Trace, Metrics, or Audit UI
-- Eval analytics, result history, baselines, CI or release Eval gates, automated regression-case creation, a model/provider benchmarking platform, adapter conformance certification, Eval-driven self-improvement or autonomous optimization (Evaluation judges; it never revises or gates execution)
+- an Eval result database or dashboards, release gates beyond the offline merge gate, a model-judge merge gate, automated regression-case creation, a model/provider benchmarking platform, a public adapter contract or compatibility certification (Sprint 20), Eval-driven self-improvement or autonomous optimization (Evaluation judges; it never revises or gates execution)
 - LangGraph support and portable Skill execution
 - semantic grading of Tool arguments (Trace deliberately excludes them; schema validity is enforced by the Tool Runtime)
 - Control Center UI

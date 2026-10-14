@@ -14,7 +14,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "build": "pnpm -r --if-present run build",
-    "check": "pnpm run typecheck && pnpm run lint && pnpm run build && pnpm run test"
+    "eval:ci": "node packages/evaluation/cli/eval-ci.mjs",
+    "eval:adapters": "node packages/evaluation/cli/eval-adapters.mjs",
+    "eval:baseline:propose": "node packages/evaluation/cli/eval-baseline-propose.mjs",
+    "check": "pnpm run typecheck && pnpm run lint && pnpm run build && pnpm run test && pnpm run eval:ci && pnpm run eval:adapters"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -29,7 +29,7 @@ const SECRET = 'SECRET_DO_NOT_PERSIST';
 // --- 1. OFFLINE dataset over committed fixture evidence. ---
 const definitions = parseEvalDefinitions(readFileSync(join(evals, 'definitions', 'runtime-foundation.v1.yaml'), 'utf8'), 'yaml');
 assert(definitions.ok, 'definitions invalid');
-const dataset = parseEvalDataset(readFileSync(join(evals, 'datasets', 'runtime-foundation.v1.yaml'), 'utf8'), 'yaml');
+const dataset = parseEvalDataset(readFileSync(join(evals, 'datasets', 'runtime-foundation.v2.yaml'), 'utf8'), 'yaml');
 assert(dataset.ok, 'dataset invalid');
 const fixtureNames = readdirSync(join(evals, 'fixtures')).filter((file) => file.endsWith('.json')).map((file) => file.slice(0, -5));
 const resolver = createStaticEvidenceResolver(fixtureNames.map((name) => [`fixture://${name}`, JSON.parse(readFileSync(join(evals, 'fixtures', `${name}.json`), 'utf8'))]));

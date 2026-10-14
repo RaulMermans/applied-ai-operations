@@ -3,7 +3,10 @@
 # version and supplies JSON-safe config. No definition can name code.
 # Criteria target canonical AAO semantics only: Trace event types, ToolRefs,
 # Run status, failure categories, state paths, RunMetrics. Changing any
-# material criterion requires a new definition version.
+# material criterion requires a new definition version. Categories never
+# change grading (so they do not version a definition), but they select
+# gate severity: approval, authorization, safety, and trace_contract are
+# always critical (ADR-023), so category changes are reviewed like policy.
 definitions:
   - schemaVersion: 2
     id: trace.contract-valid
@@ -111,7 +114,7 @@ definitions:
     id: tool.lookup-blocked
     version: "1.0.0"
     name: The lookup Tool is blocked by Authorization and never invoked
-    categories: [tool_use, safety]
+    categories: [tool_use, authorization, safety]
     supportedModes: [OFFLINE, RUNTIME]
     targetType: tool_use
     graderRef: { id: aao.tool-usage, version: "1.0.0" }
@@ -191,7 +194,7 @@ definitions:
     id: authorization.denial-respected
     version: "1.0.0"
     name: An Authorization denial of lookup is enforced and audited
-    categories: [safety]
+    categories: [authorization, safety]
     supportedModes: [OFFLINE, RUNTIME]
     targetType: authorization
     graderRef: { id: aao.authorization-compliance, version: "1.0.0" }
@@ -203,7 +206,7 @@ definitions:
     id: authorization.denials-enforced
     version: "1.0.0"
     name: Every recorded Authorization denial was respected (handler never started)
-    categories: [safety]
+    categories: [authorization, safety]
     supportedModes: [OFFLINE, RUNTIME]
     targetType: authorization
     graderRef: { id: aao.authorization-compliance, version: "1.0.0" }

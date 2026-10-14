@@ -24,7 +24,7 @@ packages/
   substrate-contracts/     research evidence, not production architecture
   substrate-spikes/        research evidence, not production architecture
 
-evals/                versioned Eval definitions, datasets, and canonical evidence fixtures (Sprint 17)
+evals/                versioned Eval definitions, datasets, evidence fixtures (Sprint 17), approved baselines and gate policies (Sprint 18)
 experiments/          research notes accompanying the substrate spikes
 docs/                  architecture contract, ADRs, and engineering docs
 ```
@@ -129,14 +129,20 @@ Its production dependencies are `@aao/contracts` and `zod` only, and no executio
 
 ### `packages/evaluation`
 
-The Evaluation Runtime (Sprint 17). It contains:
+The Evaluation Runtime (Sprint 17) with analytics, CI gates, and adapter verification (Sprint 18). It contains:
 
 - `src/evidence.ts` — the `EvalEvidenceBundle` boundary, defensive deep-freeze, the evidence fingerprint, and opaque evidence references;
 - `src/registry.ts` — the constructible, version-exact Evaluator Registry;
 - `src/runner.ts` — `evaluate()`, deterministic result identity, and the defensive grader boundary;
 - `src/dataset.ts` — the YAML/JSON dataset and definition loaders, validation, the sequential `runEvalDataset`, and the static `EvidenceResolver`;
-- `src/graders/` — nine deterministic graders plus the optional `ModelJudgePort` grader;
-- tests for contracts, registry, graders, datasets, model judge, Runtime E2E, portability, privacy, non-authority, and dependency boundaries;
-- a compiled smoke in `smoke/`.
+- `src/graders/` — ten deterministic graders (Approval compliance at 2.0.0, `aao.model-call` added in Sprint 18) plus the optional `ModelJudgePort` grader;
+- `src/analytics/` — comparison keys and semantic verdict fingerprints, case expectation verdicts, suite reports, baselines, comparison, regression findings, and multi-run analytics (pure);
+- `src/gates/` — strict gate-policy parsing, the deterministic `evaluateEvalGate`, and report formatting;
+- `src/conformance/` — canonical adapter verification scenarios, `verifyAdapter`, and semantic portability comparison;
+- `cli/` — the read-only host for `pnpm eval:ci`, `eval:adapters`, and `eval:baseline:propose` (plain ESM over `dist/`, with a network guard). It is the only code that reads `evals/` from disk;
+- tests for contracts, registry, graders, datasets, model judge, Runtime E2E, portability, privacy, non-authority, dependency boundaries, analytics, gate E2E, and adapter conformance;
+- compiled smokes in `smoke/` (Sprint 17) and `smoke/sprint18/`.
 
-Its production dependencies are `@aao/contracts`, `@aao/observability` (canonical validators only), `yaml`, and `zod`. No execution package depends on it, and it touches no filesystem or network. The committed definitions, datasets, and fixtures live in [`evals/`](../../evals/README.md). See [ADR-022](../decisions/ADR-022-evaluation-runtime-and-portable-verification.md) and [evaluation runtime](../architecture/evaluation-runtime.md).
+Adapter verification drivers live with their substrates, as test-owned plain ESM that never imports `@aao/evaluation`: `packages/tool-runtime/conformance/`, `packages/mcp-connector/conformance/`, and `packages/model-runtime/conformance/`.
+
+Its production dependencies are `@aao/contracts`, `@aao/observability` (canonical validators only), `yaml`, and `zod`. No execution package depends on it, and its `src/` touches no filesystem or network. The committed definitions, datasets, fixtures, baselines, and gate policies live in [`evals/`](../../evals/README.md). See [ADR-022](../decisions/ADR-022-evaluation-runtime-and-portable-verification.md), [ADR-023](../decisions/ADR-023-eval-analytics-ci-gates-and-adapter-verification.md), [evaluation runtime](../architecture/evaluation-runtime.md), [eval analytics & CI](../architecture/eval-analytics-ci.md), and [adapter verification](../architecture/adapter-verification.md).

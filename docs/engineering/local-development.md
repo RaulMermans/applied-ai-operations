@@ -89,7 +89,20 @@ Runs each package's own `tsc -p tsconfig.build.json` in dependency order (`pnpm 
 pnpm check
 ```
 
-Runs `typecheck → lint → build → test`, the same sequence CI runs (see [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)). This ordering verifies the actually-shipped build (compiled apps and packages resolving each other through `dist/`, as they do outside of tests — see "Compiled smoke verification" below), in addition to the tests already having run correctly on their own (see "Tests" above).
+Runs `typecheck → lint → build → test → eval:ci → eval:adapters`, the same sequence CI runs (see [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)). This ordering verifies the actually-shipped build (compiled apps and packages resolving each other through `dist/`, as they do outside of tests — see "Compiled smoke verification" below), in addition to the tests already having run correctly on their own (see "Tests" above).
+
+## Eval quality gate and adapter verification
+
+After `pnpm build`, the deterministic Eval commands run on compiled output. They are offline: no API keys, providers, or network, and a guard fails the command on any connection attempt.
+
+```sh
+pnpm eval:ci                       # foundation gate: PASS/WARN exit 0, hard failure or gate error exit 1
+pnpm eval:ci -- --format json      # machine-readable decision (no ANSI)
+pnpm eval:adapters                 # adapter conformance: native Tool, MCP, native model, Vercel AI SDK
+pnpm eval:baseline:propose -- --id runtime-foundation --version <v>   # prints a proposal; writes nothing
+```
+
+See [eval analytics & CI](../architecture/eval-analytics-ci.md), [adapter verification](../architecture/adapter-verification.md), and [`evals/baselines/README.md`](../../evals/baselines/README.md) for the baseline review workflow. CI never writes a baseline.
 
 ## Compiled smoke verification
 
@@ -115,7 +128,7 @@ wait $W_PID 2>/dev/null
 
 Both processes log structured JSON lines (`started`, `shutting_down`, `stopped`) to stdout and exit `0` after a clean shutdown, with no process left behind.
 
-Built-package acceptance smokes for the MCP, Tool, Approval, Reliability, Durability, Trace, and Metrics/Audit layers use only `dist/` output:
+Built-package acceptance smokes for the MCP, Tool, Approval, Reliability, Durability, Trace, Metrics/Audit, Evaluation, and Eval analytics/CI layers use only `dist/` output:
 
 ```sh
 node packages/mcp-connector/test/smoke.mjs               # SPRINT_10_MCP_CONNECTOR_SMOKE_OK
@@ -126,6 +139,7 @@ pnpm --filter @aao/durability smoke                      # SPRINT_14_DURABLE_EXE
 pnpm --filter @aao/observability smoke                   # SPRINT_15_TRACE_RUNTIME_SMOKE_OK
 pnpm --filter @aao/observability smoke:metrics-audit     # SPRINT_16_METRICS_AUDIT_SMOKE_OK
 pnpm --filter @aao/evaluation smoke                      # SPRINT_17_EVALUATION_RUNTIME_SMOKE_OK
+pnpm --filter @aao/evaluation smoke:sprint18             # SPRINT_18_EVAL_ANALYTICS_CI_ADAPTER_VERIFICATION_SMOKE_OK
 ```
 
 The durability smoke runs three separate Node processes over one temporary directory, which it deletes afterward:
@@ -151,7 +165,7 @@ Audit is opt-in, like Trace: a host constructs `createFileAuditStore({ root })` 
 
 The Evaluation Runtime smoke runs entirely from compiled `dist/` output in three parts:
 
-1. **Offline.** It loads `evals/definitions/runtime-foundation.v1.yaml` and `evals/datasets/runtime-foundation.v1.yaml`, maps `fixture://<name>` to `evals/fixtures/<name>.json` explicitly (the host, not the evaluator, reads files), and runs every deterministic grader. Each of the 35 cases must match its stated expectation, and a repeat run must be identical.
+1. **Offline.** It loads `evals/definitions/runtime-foundation.v1.yaml` and `evals/datasets/runtime-foundation.v2.yaml`, maps `fixture://<name>` to `evals/fixtures/<name>.json` explicitly (the host, not the evaluator, reads files), and runs every deterministic grader. Each of the 35 cases must match its stated expectation, and a repeat run must be identical.
 2. **Model judge.** It runs a bounded fake model judge through the injected port: one call, a structured score, and no subject persisted. A throwing judge must yield `error`.
 3. **Runtime.** It runs a real compiled flagship Run (approval, retry-safe Tool, completion with Trace and Audit) and evaluates it in `RUNTIME` mode after the Runtime returned. It checks that execution evidence is unchanged.
 

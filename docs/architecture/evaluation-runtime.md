@@ -59,8 +59,8 @@ The same grader implementation serves both modes. A mode accepts only its own or
 
 - **`EvalDefinition` v2** has these fields: `id`, `version`, `name`, `description?`, `categories?`, `supportedModes[]` (unique), `targetType`, `graderRef { id, version }`, and `config` (JSON-safe, ≤ 16 KiB, no code-bearing keys). Target types are `run`, `node`, `tool_use`, `artifact`, `trajectory`, `authorization`, `approval`, and `state`. Categories are `capability`, `regression`, `tool_use`, `safety`, `output_quality`, `model_benchmark`, `trace_contract`, `approval`, and `trajectory`; they describe and never grade.
 - **`EvalResult` v2** has these fields: `resultId`, `evalRef`, `graderRef`, `datasetRef?` + `caseId?`, `mode`, `targetType`, `runId?`, `traceId?`, `evidenceFingerprint`, `status`, `score?` (0–1, optional), `errorCode?` (exactly when `error`), `assertions[]` (≤ 64), and `evidenceRefs[]` (≤ 32). Each assertion has `id`, `status`, `score?`, `reasonCode?`, and `evidenceRefs` (≤ 16).
-- **`EvalDataset` v1 / `EvalCase`** hold ordered, uniquely identified cases (≤ 200). Each case has an `evalRef`, a `mode`, an opaque `evidenceRef`, and an `expected?` verdict. **`EvalDatasetRun`** holds ordered case results with `matchesExpectation`.
-- **Error codes:** `EVAL_DEFINITION_NOT_FOUND`, `EVAL_GRADER_NOT_FOUND`, `EVAL_GRADER_VERSION_MISMATCH`, `EVAL_INVALID_DEFINITION`, `EVAL_MODE_UNSUPPORTED`, `EVAL_TARGET_UNSUPPORTED`, `EVAL_EVIDENCE_MISSING`, `EVAL_EVIDENCE_INVALID`, `EVAL_REQUIRED_EVIDENCE_INCOMPLETE`, `EVAL_GRADER_ERROR`, `EVAL_MODEL_JUDGE_ERROR`, `EVAL_DATASET_INVALID`, and `EVAL_CASE_ERROR`. Runtime failure codes are never reused.
+- **`EvalDataset` v2 / `EvalCase`** (Sprint 18; v1 is refused, never reinterpreted) hold ordered, uniquely identified cases (≤ 200). Each case has an `evalRef`, a `mode`, an opaque `evidenceRef`, an `evidenceFingerprint` (exactly for OFFLINE cases), and a required, exact `expected` verdict: `failed` names its sorted `reasonCodes`, and `error` names its `errorCode`. **`EvalDatasetRun`** holds ordered case results with `matchesExpectation` (case expectation verdict `MATCHED`).
+- **Error codes:** `EVAL_DEFINITION_NOT_FOUND`, `EVAL_GRADER_NOT_FOUND`, `EVAL_GRADER_VERSION_MISMATCH`, `EVAL_INVALID_DEFINITION`, `EVAL_MODE_UNSUPPORTED`, `EVAL_TARGET_UNSUPPORTED`, `EVAL_EVIDENCE_MISSING`, `EVAL_EVIDENCE_INVALID`, `EVAL_REQUIRED_EVIDENCE_INCOMPLETE`, `EVAL_GRADER_ERROR`, `EVAL_MODEL_JUDGE_ERROR`, `EVAL_DATASET_INVALID`, `EVAL_CASE_ERROR`, and (Sprint 18) `EVAL_FIXTURE_FINGERPRINT_MISMATCH`. Runtime failure codes are never reused.
 
 ## Evidence
 
@@ -119,7 +119,7 @@ Status is `passed` exactly when every assertion passed. A grader that returns an
 
 - It validates the dataset, definitions, case refs, and case modes before anything runs (`EVAL_DATASET_INVALID`).
 - It runs cases sequentially in dataset order.
-- It isolates each case: unresolvable evidence is `EVAL_EVIDENCE_MISSING`, and a throwing resolver is `EVAL_CASE_ERROR`.
+- It isolates each case: unresolvable evidence is `EVAL_EVIDENCE_MISSING`, a throwing resolver is `EVAL_CASE_ERROR`, and OFFLINE evidence whose fingerprint differs from the case pin is `EVAL_FIXTURE_FINGERPRINT_MISMATCH` and reaches no grader. `verifyDatasetEvidence` checks every pin up front without evaluating anything.
 
 Evidence is resolved only through the injected `EvidenceResolver`. `createStaticEvidenceResolver` maps exact references to host-supplied bundles; Evaluation never reads files or the network.
 
@@ -136,6 +136,7 @@ Evidence is resolved only through the injected `EvidenceResolver`. `createStatic
 | `aao.retry-behavior` | run, node | Exact or maximum retries, no retry for named categories (needs such a failure), exhaustion expected or not. Always needs the whole Run |
 | `aao.state-assertion` | state | `revision_equals`, `path_exists`, `path_not_exists`, `path_equals` (RFC 6901 JSON Pointer). Values are compared and never reported |
 | `aao.metrics-threshold` | run | Max duration, approval wait, retries, failed attempts, physical and logical Tool calls, tokens, modelled cost. Incomplete measurement is `error` |
+| `aao.model-call` (Sprint 18) | run, node | Model invocation count, trusted registered identity, exact token usage, outcome, normalized failure (`code`, `adapterReason`). Judges canonical model Trace only; used by adapter verification |
 
 ### Approval guard Nodes (Sprint 17 closure)
 
@@ -186,17 +187,26 @@ Deterministic graders use no clock and no randomness. The same definition, grade
 
 The datasets, definitions, and fixtures live in [`evals/`](../../evals/README.md):
 
-- `evals/definitions/runtime-foundation.v1.yaml` holds 22 definitions.
-- `evals/datasets/runtime-foundation.v1.yaml` (version 1.1.0) holds 35 cases: desired behavior, forbidden behavior, deliberate evaluator-error cases, and the multi-Approval guard regressions.
+- `evals/definitions/runtime-foundation.v1.yaml` holds 22 definitions; `adapter-conformance.v1.yaml` holds 16 adapter verification definitions.
+- `evals/datasets/runtime-foundation.v2.yaml` (`aao.runtime-foundation@2.0.0`, schema 2) holds 35 fixture-pinned cases: desired behavior, forbidden behavior, deliberate evaluator-error cases, and the multi-Approval guard regressions.
 - `evals/fixtures/` holds the evidence, regenerated deterministically by tests from real Runs and recorder-validated synthetic Traces.
 
-## Not in Sprint 17
+## Sprint 18: analytics, CI gates, adapter verification
 
-These are not built in Sprint 17:
+Sprint 18 builds on this runtime without changing its authority ([ADR-023](../decisions/ADR-023-eval-analytics-ci-gates-and-adapter-verification.md)):
 
-- Eval store, history, analytics, baselines, or CI/release gates (Sprint 18).
-- Adapter conformance or contract (Sprints 18 and 20).
+- **Comparison identity.** `resultId` stays observation identity. `buildEvalComparisonKey` (Eval, grader, dataset, case, mode, target) is the logical identity used for comparison, and `semanticVerdictFingerprint` is the normalized judgment. `evidenceFingerprint` keeps its meaning.
+- **Fixture pinning.** OFFLINE dataset cases pin their evidence fingerprint (dataset schema 2).
+- **CI semantics.** A case's expectation verdict, not raw status, decides CI: negative (`failed`) and deliberate-error cases that behave exactly as expected are `MATCHED`. Suite reports, baseline comparison, and the deterministic gate are described in [eval-analytics-ci.md](eval-analytics-ci.md).
+- **Adapter verification.** Substrate test drivers produce canonical evidence that these same definitions and graders judge. See [adapter-verification.md](adapter-verification.md).
+
+## Not in Sprint 17 or 18
+
+These are still not built:
+
+- An Eval store, result database, dashboards, or time-series history.
+- The public Adapter contract (Sprint 20).
 - Eval-driven Runtime gating or Trace/Audit mutation.
 - Automatic regression creation, Reflexion or evaluator-optimizer loops, memory promotion, or Skill Runtime.
-- A model/provider benchmark runner.
+- A model/provider benchmark runner, or a model-judge merge gate.
 - Side-effect enablement.

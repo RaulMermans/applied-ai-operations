@@ -69,14 +69,22 @@ describe("Evaluation is not inside the Runtime and never becomes execution autho
     for (const file of sourceFiles("evaluation")) expect(code(file), file).not.toMatch(/\.append\(|\.emit\(|deriveRunMetrics|aggregateRunMetrics/);
   });
 
-  it("no Eval store, analytics, CI gate, regression generation, Reflexion loop, memory, or Skill runtime", () => {
+  it("Sprint 18 adds pure analytics, a deterministic gate, and a verification harness — no store, database, dashboard, auto-promotion, Reflexion loop, Memory, or Skill runtime", () => {
     const names = sourceFiles("evaluation").map((file) => file.split("/evaluation/src/")[1]).sort();
     expect(names).toEqual([
-      "dataset.ts", "evidence.ts", "grader.ts",
-      "graders/approval-compliance.ts", "graders/audit-view.ts", "graders/authorization-compliance.ts", "graders/index.ts", "graders/metrics-threshold.ts", "graders/model-judge.ts", "graders/retry-behavior.ts", "graders/run-outcome.ts", "graders/state-assertion.ts", "graders/tool-usage.ts", "graders/trace-contract.ts", "graders/trajectory.ts",
+      "analytics/baseline.ts", "analytics/comparison.ts", "analytics/expectation.ts", "analytics/fingerprints.ts", "analytics/multi-run.ts", "analytics/regression.ts", "analytics/suite-summary.ts",
+      "conformance/adapter-verification.ts", "conformance/scenarios.ts",
+      "dataset.ts", "evidence.ts",
+      "gates/evaluate-gate.ts", "gates/format-report.ts", "gates/policy.ts",
+      "grader.ts",
+      "graders/approval-compliance.ts", "graders/audit-view.ts", "graders/authorization-compliance.ts", "graders/index.ts", "graders/metrics-threshold.ts", "graders/model-call.ts", "graders/model-judge.ts", "graders/retry-behavior.ts", "graders/run-outcome.ts", "graders/state-assertion.ts", "graders/tool-usage.ts", "graders/trace-contract.ts", "graders/trajectory.ts",
       "index.ts", "registry.ts", "runner.ts", "trace-view.ts",
     ]);
-    for (const file of sourceFiles("evaluation")) expect(code(file), file).not.toMatch(/EvalStore|ResultStore|passRate|pass_rate|baseline|trendline|ciGate|releaseGate|createRegression|reflexion|revise|promoteMemory|memoryStore|SkillRuntime|skillRegistry/i);
+    for (const file of sourceFiles("evaluation")) expect(code(file), file).not.toMatch(/EvalStore|ResultStore|evalDatabase|sqlite|postgres|warehouse|dashboard|express|fastify|createServer|trendline|createRegression|promoteFinding|updateBaseline|acceptAll|writeBaseline|reflexion|revise|promoteMemory|memoryStore|SkillRuntime|skillRegistry|defineAdapter|AdapterManifest|CapabilityMatrix|createAAO|defineWorkflow|defineAgent|defineTool/i);
+  });
+
+  it("the model judge is never part of the CI gate or adapter verification", () => {
+    for (const file of sourceFiles("evaluation").filter((path) => /\/(analytics|gates|conformance)\//.test(path))) expect(code(file), file).not.toMatch(/model-judge|createModelJudgeGrader|ModelJudgePort/);
   });
 
   it("side-effect permission classes remain unsupported by the Tool Runtime", () => {

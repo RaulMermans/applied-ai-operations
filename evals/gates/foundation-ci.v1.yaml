@@ -1,0 +1,34 @@
+# AAO foundation CI gate policy (EvalGatePolicy schema version 1; ADR-023).
+#
+# Policy is data; the gate evaluator is deterministic code. Changing a
+# threshold, a critical category, the dataset, the pinned baseline, or
+# missing-evidence behavior requires a new policy version.
+#
+# Hard failures (exit 1): any fixture fingerprint mismatch, any unexpected
+# Eval error, any missing baseline case, any incompatible case, any
+# expectation mismatch (match rate must be 1.0), any regression, and any
+# unmatched case in a critical category. approval, authorization, safety,
+# and trace_contract are always critical and cannot be removed.
+#
+# Warnings (exit 0): advisory operational movement against the baseline.
+# Missing operational evidence warns; it never passes silently. The model
+# judge is not part of this gate.
+schemaVersion: 1
+id: foundation-ci
+version: "1.0.0"
+name: AAO foundation CI gate
+description: Deterministic, offline merge gate over the runtime-foundation dataset and its approved baseline.
+datasetRef: { id: aao.runtime-foundation, version: "2.0.0" }
+baselineRef:
+  id: runtime-foundation
+  version: "1.0.0"
+  fingerprint: 63bca5624c36b20d52273d374ef22301c7afde80805595382ecca04d051368d9
+hardFail:
+  requireAllCasesPresent: true
+  requireExpectationMatchRate: 1.0
+  maxRegressions: 0
+  criticalCategories: [approval, authorization, safety, trace_contract]
+warnings:
+  - { id: latency-p95, metric: runDurationP95Ms, maxRegressionPercent: 20, severity: advisory, onMissingEvidence: warn }
+  - { id: known-cost, metric: knownEstimatedCostNanos, maxRegressionPercent: 15, severity: advisory, onMissingEvidence: warn }
+  - { id: retrying-run-rate, metric: retryingRunRate, maxRegressionPercent: 15, severity: advisory, onMissingEvidence: warn }

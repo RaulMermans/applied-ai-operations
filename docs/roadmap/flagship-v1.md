@@ -60,6 +60,7 @@ Complete: Tool Registry, safe Tool execution, deterministic Authorization, and t
 | Sprint / outcome | Scope | Status |
 | --- | --- | --- |
 | Sprint 17 — Evaluation Runtime | `@aao/evaluation`, a separate non-authoritative layer outside the Runtime:<br>• the Sprint 2 Eval placeholders migrated (not duplicated) to `EvalDefinition` v2 (exact `graderRef`, `supportedModes[]`, `targetType`, JSON config) and `EvalResult` v2 (deterministic `resultId`, `evidenceFingerprint`, bounded assertions and evidence references, `passed` / `failed` / `error`), plus `EvalDataset` v1, `EvalCase`, and `EvalDatasetRun`;<br>• a constructible Evaluator Registry of trusted graders (exact id + version, grader-validated config, no code in Eval data);<br>• one `EvalEvidenceBundle` boundary (Trace, Runtime execution state, RunMetrics, Audit, explicit subject), deep-frozen and fingerprinted;<br>• OFFLINE (recorded evidence) and RUNTIME (a real Run, after the Runtime returned) with the same graders;<br>• nine deterministic graders (trace contract, run outcome, trajectory, Tool usage, Approval, Authorization, retry, state, Metrics thresholds);<br>• an optional, bounded, provider-independent model-judge port;<br>• missing evidence never passes, and `failed` ≠ `error`;<br>• portable verification over canonical AAO semantics;<br>• a 30-case versioned foundation dataset with real and recorder-validated fixtures.<br>No Eval store, analytics, CI gate, Runtime gating, adapter contract, or side-effect enablement. | Complete (`SPRINT_17_EVALUATION_RUNTIME_COMPLETE`) — see [ADR-022](../decisions/ADR-022-evaluation-runtime-and-portable-verification.md) |
+| Sprint 18 — Eval Analytics / CI Gates / Adapter Verification | Sprint 17 closure: `aao.approval-compliance` 2.0.0 binds Tool checks to an explicit `guardApprovalNodeId` (multi-Approval regressions). `@aao/evaluation` gains:<br>• `EvalComparisonKey` (logical identity; never `resultId`) and `semanticVerdictFingerprint` (provider/Run independent);<br>• case expectation verdicts (`MATCHED`/`MISMATCHED`/`ERROR`), so negative and deliberate-error cases count as successes;<br>• `EvalDataset` v2 with fingerprint-pinned OFFLINE fixtures;<br>• `EvalSuiteReport`, `EvalBaseline` (human-reviewed, never auto-updated, pinned by the policy), comparison (unchanged, regression, improvement, new, missing, incompatible), `RegressionFinding`s, and multi-run analytics;<br>• strict versioned `EvalGatePolicy` and deterministic `EvalGateDecision`: critical Approval, Authorization, safety, and Trace regressions always hard-fail, operational movement warns, and missing evidence never passes;<br>• offline `pnpm eval:ci` in CI;<br>• adapter verification through the same Eval Runtime (native Tool, MCP, native model, Vercel AI SDK; LangGraph deferred), with the `aao.model-call` grader.<br>No dashboard, Eval database, public Adapter contract, framework surface, model-judge merge gate, or Runtime authority. | Complete (`SPRINT_18_EVAL_ANALYTICS_CI_ADAPTER_VERIFICATION_COMPLETE`) — see [ADR-023](../decisions/ADR-023-eval-analytics-ci-gates-and-adapter-verification.md) |
 
 ## Forward roadmap
 
@@ -70,8 +71,8 @@ Complete: Tool Registry, safe Tool execution, deterministic Authorization, and t
 | 15 | Trace Runtime — structured execution evidence, persistent local Trace Store, instrumentation, Trace-contract validation | Complete |
 | 16 | Metrics & Audit — trace-derived metrics, latency and token/cost aggregation (explicit pricing profiles), retry/failure rates, source-time audit events (approvals, denied attempts, Tool access, cancellation), hash-chained Audit Store; operator-override audit waits for operator overrides to exist | Complete |
 | 17 | Evaluation Runtime — versioned Eval definitions and datasets, deterministic and trajectory graders, OFFLINE/RUNTIME modes, `EvalResult` v2, Tool/Approval/Authorization/retry/state/Metrics graders, optional bounded model-judge port, portable verification | Complete |
-| 18 | Eval Analytics / CI Gates / Adapter Verification | Next |
-| 19 | Framework Surface | Planned |
+| 18 | Eval Analytics / CI Gates / Adapter Verification — comparison identity and semantic verdict fingerprints, case expectation verdicts, fingerprint-pinned fixtures (EvalDataset v2), approved baselines, deterministic offline CI gate, adapter conformance foundation | Complete |
+| 19 | Framework Surface | Next |
 | 20 | Adapter & Portability Contract | Planned |
 | 21 | Toolbox Foundation | Planned |
 | 22 | Company Research Proof | Planned |
@@ -86,12 +87,12 @@ Complete: Tool Registry, safe Tool execution, deterministic Authorization, and t
 
 Direction for the next portability-related sprints (documentation only; nothing here is implemented early):
 
-- **Sprint 18 — Eval Analytics / CI Gates / Adapter Verification** uses the Sprint 17 Evaluation Runtime for:
-  - Eval result history;
-  - dataset analytics;
-  - baseline and candidate comparisons;
-  - CI quality gates and regression gates;
-  - adapter verification. Each substrate (AAO native Runtime, MCP, Vercel AI SDK, LangGraph, local models) must map correctly into AAO semantics. Adapter-specific checks (MCP structured-output mapping, AI SDK usage mapping, LangGraph interruption mapping) prove the mapping; they never redefine AAO criteria.
+- **Sprint 18 (complete)** proved the requirements for that contract with adapter verification over canonical evidence (see [adapter verification](../architecture/adapter-verification.md)):
+  - The native Tool and MCP paths agree semantically, as do the native model and Vercel AI SDK paths.
+  - MCP declares no retry safety.
+  - A native model adapter cannot express tool calls.
+  - No model adapter can propagate cancellation, because the ModelAdapter port has no abort signal.
+  - LangGraph remains a deferred research spike.
 - **Sprint 20 — Adapter & Portability Contract** formalizes:
   - `AdapterManifest`;
   - capability declaration;

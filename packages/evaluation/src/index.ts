@@ -11,7 +11,13 @@
 // graders by exact id + version; Eval data can never load code. Graders
 // target canonical AAO semantics, never a framework or provider. Depends
 // only on @aao/contracts, @aao/observability (canonical validators), yaml,
-// and zod. No Eval store, analytics, CI gate, or model SDK.
+// and zod. No Eval store, database, dashboard, or model SDK.
+//
+// Sprint 18 (ADR-023) adds pure analytics over EvalResults (comparison
+// identity, semantic verdict fingerprints, case expectation verdicts,
+// suite reports, baseline comparison, multi-run analytics), the
+// deterministic CI quality gate, and the adapter verification harness.
+// All of it consumes evaluation evidence; none of it is Runtime authority.
 
 export {
   EvalEvidenceBundleSchema,
@@ -42,6 +48,8 @@ export {
   parseEvalDefinitions,
   runEvalDataset,
   validateEvalDataset,
+  verifyDatasetEvidence,
+  type EvidencePinMismatch,
   type EvalSourceFormat,
   type EvalSourceIssue,
   type EvalSourceResult,
@@ -53,6 +61,7 @@ export {
   createApprovalComplianceGrader,
   createAuthorizationComplianceGrader,
   createMetricsThresholdGrader,
+  createModelCallGrader,
   createModelJudgeGrader,
   createRetryBehaviorGrader,
   createRunOutcomeGrader,
@@ -65,3 +74,25 @@ export {
   type ModelJudgeRequest,
   type ModelJudgeResult,
 } from "./graders/index.js";
+export { EvalComparisonIdentityError, UNSPECIFIED_REASON_CODE, buildEvalComparisonIdentity, buildEvalComparisonKey, comparisonKeyOf, semanticVerdictFingerprint, verdictSummary } from "./analytics/fingerprints.js";
+export { caseExpectationVerdict } from "./analytics/expectation.js";
+export { EvalAnalyticsInputError, buildEvalSuiteReport, isCritical, operationalSummaryFromAggregate, suiteSemanticFingerprint, summarizeSuiteCases } from "./analytics/suite-summary.js";
+export { evalBaselineFingerprint, proposeEvalBaseline } from "./analytics/baseline.js";
+export { compareEvalSuites, type CompareEvalSuitesResult } from "./analytics/comparison.js";
+export { regressionFindings } from "./analytics/regression.js";
+export { analyzeEvalSuites } from "./analytics/multi-run.js";
+export { parseEvalBaseline, parseEvalGatePolicy, type GateSourceResult } from "./gates/policy.js";
+export { evaluateEvalGate, type EvalGateError, type EvaluateEvalGateResult } from "./gates/evaluate-gate.js";
+export { formatGateDecisionText, formatGateErrorText, gateDecisionJson } from "./gates/format-report.js";
+export { ADAPTER_VERIFICATION_SCENARIOS, scenarioEvidenceRef, type AdapterKind, type AdapterVerificationScenario } from "./conformance/scenarios.js";
+export {
+  ADAPTER_VERIFICATION_CODES,
+  AdapterConformanceReportSchema,
+  AdapterVerificationError,
+  compareAdapterConformance,
+  verifyAdapter,
+  type AdapterConformanceReport,
+  type AdapterPortabilityResult,
+  type AdapterVerificationDriver,
+  type ScenarioSupport,
+} from "./conformance/adapter-verification.js";

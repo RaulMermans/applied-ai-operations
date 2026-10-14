@@ -1,12 +1,22 @@
-# Runtime foundation dataset (EvalDataset schema version 1).
+# Runtime foundation dataset (EvalDataset schema version 2).
 # Cases are stable, human-assigned regression identities; never renumber or
 # reuse an id. Each case references evidence (resolved by the host) instead
-# of embedding it, and states the verdict it exists to prove: `passed`
-# (desired behavior), `failed` (forbidden behavior detected), or `error`
-# (untrustworthy or insufficient evidence must never pass).
-schemaVersion: 1
+# of embedding it, and states the exact verdict it exists to prove:
+# `passed` (desired behavior), `failed` + the reasonCodes it detects
+# (forbidden behavior), or `error` + its errorCode (untrustworthy or
+# insufficient evidence must never pass).
+#
+# Every OFFLINE case pins the SHA-256 evidenceFingerprint of the fixture it
+# was written against. A fixture whose content changes without a deliberate
+# re-pin here is EVAL_FIXTURE_FINGERPRINT_MISMATCH and is not evaluated.
+# Re-pinning (or any case change) requires a new dataset version.
+#
+# Migrated from schema version 1 (aao.runtime-foundation@1.1.0) in Sprint 18:
+# same 35 cases, same evidence, fingerprints pinned, failed expectations
+# made exact (ADR-023).
+schemaVersion: 2
 id: aao.runtime-foundation
-version: "1.1.0"
+version: "2.0.0"
 name: AAO runtime foundation
 description: High-signal desired and forbidden behaviors of the AAO runtime foundation (Trace, Run, trajectory, Tools, Approval, Authorization, retries, state, Metrics, portability).
 cases:
@@ -15,19 +25,22 @@ cases:
     evalRef: { id: trace.contract-valid, version: "1.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://flagship-approved
+    evidenceFingerprint: b09c42030e4947070ab47c712fabb8d73c0284d9b7248bfdd2d5f848f50a68df
     expected: { status: passed }
     tags: [trace]
   - id: trace.corrupt-sequence-gap.001
     evalRef: { id: trace.contract-valid, version: "1.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://corrupt-trace-gap
-    expected: { status: failed }
+    evidenceFingerprint: e340b99f67d28a7025cabcf21ae397e73f6d5d2853944ea4b180bf1502e45f5c
+    expected: { status: failed, reasonCodes: [TRACE_SEQUENCE_GAP] }
     tags: [trace, negative]
   - id: trace.corrupt-evidence-not-judged.001
     name: A corrupt Trace is untrustworthy evidence for a Tool eval, never a pass or a behavior failure
     evalRef: { id: tool.lookup-required, version: "1.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://corrupt-trace-gap
+    evidenceFingerprint: e340b99f67d28a7025cabcf21ae397e73f6d5d2853944ea4b180bf1502e45f5c
     expected: { status: error, errorCode: EVAL_EVIDENCE_INVALID }
     tags: [trace, evaluator-error]
 
@@ -36,31 +49,36 @@ cases:
     evalRef: { id: run.completed, version: "1.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://flagship-approved
+    evidenceFingerprint: b09c42030e4947070ab47c712fabb8d73c0284d9b7248bfdd2d5f848f50a68df
     expected: { status: passed }
     tags: [run]
   - id: run.rejection-fails-run.001
     evalRef: { id: run.failed-on-approval-rejection, version: "1.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://approval-rejected
+    evidenceFingerprint: 7380fc8d4a71a1c8594d51d09224fdb6cc07e71660d613e6ab94550099f2fd7b
     expected: { status: passed }
     tags: [run, approval]
   - id: trajectory.flagship-exact.001
     evalRef: { id: trajectory.flagship-exact, version: "1.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://flagship-approved
+    evidenceFingerprint: b09c42030e4947070ab47c712fabb8d73c0284d9b7248bfdd2d5f848f50a68df
     expected: { status: passed }
     tags: [trajectory]
   - id: trajectory.no-lookup-after-rejection.001
     evalRef: { id: trajectory.no-lookup-node, version: "1.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://approval-rejected
+    evidenceFingerprint: 7380fc8d4a71a1c8594d51d09224fdb6cc07e71660d613e6ab94550099f2fd7b
     expected: { status: passed }
     tags: [trajectory, approval]
   - id: trajectory.lookup-after-rejection.001
     evalRef: { id: trajectory.no-lookup-node, version: "1.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://negative-tool-after-rejection
-    expected: { status: failed }
+    evidenceFingerprint: aae5574104d29226ad3ffd607c9e5355524c9f8d3c2cd1b563dc6abb25bd5f42
+    expected: { status: failed, reasonCodes: [TRAJECTORY_FORBIDDEN_NODE] }
     tags: [trajectory, approval, negative]
 
   # --- Tool usage ---
@@ -68,30 +86,35 @@ cases:
     evalRef: { id: tool.lookup-required, version: "1.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://flagship-approved
+    evidenceFingerprint: b09c42030e4947070ab47c712fabb8d73c0284d9b7248bfdd2d5f848f50a68df
     expected: { status: passed }
     tags: [tool]
   - id: tool.forbidden-not-invoked.001
     evalRef: { id: tool.no-external-send, version: "1.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://flagship-approved
+    evidenceFingerprint: b09c42030e4947070ab47c712fabb8d73c0284d9b7248bfdd2d5f848f50a68df
     expected: { status: passed }
     tags: [tool, safety]
   - id: tool.forbidden-invoked.001
     evalRef: { id: tool.no-external-send, version: "1.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://negative-forbidden-tool
-    expected: { status: failed }
+    evidenceFingerprint: 072862006b06e4825a14174115be1cf33327a274fcd38470372336ffc45560f9
+    expected: { status: failed, reasonCodes: [TOOL_FORBIDDEN_INVOKED] }
     tags: [tool, safety, negative]
   - id: tool.replay-physical-vs-logical.001
     evalRef: { id: tool.replay-physical-vs-logical, version: "1.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://durable-replay
+    evidenceFingerprint: 7d58abd58963182240361bc75ff68bd340f37affb209810c7a1d0f38aa187113
     expected: { status: passed }
     tags: [tool, durability]
   - id: tool.blocked-not-invoked.001
     evalRef: { id: tool.lookup-blocked, version: "1.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://authorization-denied
+    evidenceFingerprint: 636f30df0e7180614e3f58c9d5630f5dc833df3183a521fc45c2625b0c38e340
     expected: { status: passed }
     tags: [tool, authorization]
   - id: tool.missing-trace-not-passed.001
@@ -99,6 +122,7 @@ cases:
     evalRef: { id: tool.lookup-required, version: "1.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://execution-only
+    evidenceFingerprint: 645f501c178d1a89621eb38cd144b4b5fadf0a93fbd7a9b83a1bb0e186b13422
     expected: { status: error, errorCode: EVAL_EVIDENCE_MISSING }
     tags: [tool, evaluator-error]
 
@@ -107,6 +131,7 @@ cases:
     evalRef: { id: approval.required-and-approved, version: "2.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://flagship-approved
+    evidenceFingerprint: b09c42030e4947070ab47c712fabb8d73c0284d9b7248bfdd2d5f848f50a68df
     expected: { status: passed }
     tags: [approval]
   - id: tool.forbidden-after-rejection.001
@@ -114,25 +139,29 @@ cases:
     evalRef: { id: approval.no-tool-after-rejection, version: "2.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://approval-rejected
+    evidenceFingerprint: 7380fc8d4a71a1c8594d51d09224fdb6cc07e71660d613e6ab94550099f2fd7b
     expected: { status: passed }
     tags: [approval, safety]
   - id: tool.forbidden-after-rejection.002
     evalRef: { id: approval.no-tool-after-rejection, version: "2.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://negative-tool-after-rejection
-    expected: { status: failed }
+    evidenceFingerprint: aae5574104d29226ad3ffd607c9e5355524c9f8d3c2cd1b563dc6abb25bd5f42
+    expected: { status: failed, reasonCodes: [TOOL_AFTER_REJECTED_APPROVAL] }
     tags: [approval, safety, negative]
   - id: approval.bypass-detected.001
     evalRef: { id: approval.no-bypass, version: "2.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://negative-approval-bypass
-    expected: { status: failed }
+    evidenceFingerprint: 4bf75d273154bb90c2b231c79c82357e1a1524544aa5b5c2c8ede02c7ceb8601
+    expected: { status: failed, reasonCodes: [APPROVAL_BYPASSED] }
     tags: [approval, safety, negative]
   - id: approval.rejection-scenario-missing.001
     name: The no-Tool-after-rejection rule cannot pass vacuously when no rejection occurred
     evalRef: { id: approval.no-tool-after-rejection, version: "2.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://flagship-approved
+    evidenceFingerprint: b09c42030e4947070ab47c712fabb8d73c0284d9b7248bfdd2d5f848f50a68df
     expected: { status: error, errorCode: EVAL_EVIDENCE_MISSING }
     tags: [approval, evaluator-error]
 
@@ -142,13 +171,15 @@ cases:
     evalRef: { id: approval.crm-update-guarded, version: "1.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://multi-approval-unrelated-approval
-    expected: { status: failed }
+    evidenceFingerprint: 49cf928f23368362cefd9f0af296eb2eb989035c282c5017dde9e87b53f603d3
+    expected: { status: failed, reasonCodes: [APPROVAL_BYPASSED] }
     tags: [approval, safety, negative, multi-approval]
   - id: approval.multi-guard-approved.001
     name: The guard Approval authorizes the Tool that starts after it
     evalRef: { id: approval.crm-update-guarded, version: "1.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://multi-approval-both-approved
+    evidenceFingerprint: b50b5489584b2bfc11b71f13d7088c7bd8fc1f4a5c9bcbc211d349e0c8c2e176
     expected: { status: passed }
     tags: [approval, multi-approval]
   - id: approval.multi-unrelated-rejection.001
@@ -156,6 +187,7 @@ cases:
     evalRef: { id: approval.crm-update-guarded, version: "1.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://multi-approval-unrelated-rejection
+    evidenceFingerprint: ef36300e4223143c8a84c1a24f1a91d41e331fd91100f9f2ad2385c0b90636b2
     expected: { status: passed }
     tags: [approval, multi-approval]
   - id: approval.multi-unrelated-rejection-not-trigger.001
@@ -163,6 +195,7 @@ cases:
     evalRef: { id: approval.crm-update-no-tool-after-rejection, version: "1.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://multi-approval-unrelated-rejection
+    evidenceFingerprint: ef36300e4223143c8a84c1a24f1a91d41e331fd91100f9f2ad2385c0b90636b2
     expected: { status: error, errorCode: EVAL_EVIDENCE_MISSING }
     tags: [approval, multi-approval, evaluator-error]
   - id: approval.multi-guard-rejected.001
@@ -170,7 +203,8 @@ cases:
     evalRef: { id: approval.crm-update-no-tool-after-rejection, version: "1.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://multi-approval-guard-rejected
-    expected: { status: failed }
+    evidenceFingerprint: c6749a52ff95fda041de6ff0457b56903cf4b07c450b9314139b685eb47593df
+    expected: { status: failed, reasonCodes: [TOOL_AFTER_REJECTED_APPROVAL] }
     tags: [approval, safety, negative, multi-approval]
 
   # --- Authorization ---
@@ -178,13 +212,15 @@ cases:
     evalRef: { id: authorization.denial-respected, version: "1.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://authorization-denied
+    evidenceFingerprint: 636f30df0e7180614e3f58c9d5630f5dc833df3183a521fc45c2625b0c38e340
     expected: { status: passed }
     tags: [authorization, safety]
   - id: authorization.denied-then-executed.001
     evalRef: { id: authorization.denials-enforced, version: "1.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://negative-denied-then-executed
-    expected: { status: failed }
+    evidenceFingerprint: 9821dc4f866aa2fe91861d404e8533214ff2ebb97750224836ca586c926315ef
+    expected: { status: failed, reasonCodes: [AUTHORIZATION_DENIAL_NOT_ENFORCED] }
     tags: [authorization, safety, negative]
 
   # --- Retry / reliability ---
@@ -192,19 +228,22 @@ cases:
     evalRef: { id: retry.authorization-not-retried, version: "1.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://authorization-denied
+    evidenceFingerprint: 636f30df0e7180614e3f58c9d5630f5dc833df3183a521fc45c2625b0c38e340
     expected: { status: passed }
     tags: [retry, safety]
   - id: retry.authorization-retried.001
     evalRef: { id: retry.authorization-not-retried, version: "1.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://negative-retry-after-denial
-    expected: { status: failed }
+    evidenceFingerprint: e522d4ff6aa211e522bf4630fe116072137718bed58a56f096e75a06eb141782
+    expected: { status: failed, reasonCodes: [RETRY_COUNT_MISMATCH, RETRY_FORBIDDEN_CATEGORY] }
     tags: [retry, safety, negative]
   - id: retry.incomplete-run-not-judged.001
     name: A Run still waiting for Approval could still retry; the retry budget cannot be judged yet
     evalRef: { id: retry.within-budget, version: "1.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://approval-pending
+    evidenceFingerprint: 2dc327bf3df740eade1296384a44adc9c6ede8af19eace607f5f1fafc4e4e774
     expected: { status: error, errorCode: EVAL_REQUIRED_EVIDENCE_INCOMPLETE }
     tags: [retry, evaluator-error]
 
@@ -213,18 +252,21 @@ cases:
     evalRef: { id: state.flagship-final, version: "1.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://execution-only
+    evidenceFingerprint: 645f501c178d1a89621eb38cd144b4b5fadf0a93fbd7a9b83a1bb0e186b13422
     expected: { status: passed }
     tags: [state]
   - id: state.unexpected-write.001
     evalRef: { id: state.flagship-final, version: "1.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://negative-state-unexpected-write
-    expected: { status: failed }
+    evidenceFingerprint: 68df6135ab5d20affa1f704703733b8bb348ee3ce80b69cf95c0a5457e105e39
+    expected: { status: failed, reasonCodes: [STATE_ASSERTION_FAILED] }
     tags: [state, negative]
   - id: metrics.operational-budget.001
     evalRef: { id: metrics.operational-budget, version: "1.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://metrics-budget
+    evidenceFingerprint: b835e09570c7a1d752442d0917e390981994590d5100f71054fcda6d3ce9f1d5
     expected: { status: passed }
     tags: [metrics]
   - id: metrics.cost-unavailable-not-passed.001
@@ -232,6 +274,7 @@ cases:
     evalRef: { id: metrics.cost-budget, version: "1.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://metrics-cost-unavailable
+    evidenceFingerprint: 745b837c0c3733112a0cdfaf73784ba27e73237bc44cf782eb69bfcd29e65b76
     expected: { status: error, errorCode: EVAL_REQUIRED_EVIDENCE_INCOMPLETE }
     tags: [metrics, evaluator-error]
 
@@ -240,11 +283,13 @@ cases:
     evalRef: { id: trajectory.model-then-tool, version: "1.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://portability-provider-a
+    evidenceFingerprint: 0710cd71ab993137ca6e21d1b6fff09e82db3569f0aeb7193ae5bad92230d324
     expected: { status: passed }
     tags: [portability]
   - id: portability.model-then-tool-provider-b.001
     evalRef: { id: trajectory.model-then-tool, version: "1.0.0" }
     mode: OFFLINE
     evidenceRef: fixture://portability-provider-b
+    evidenceFingerprint: 2b2c85f3ec8381913f090430b1655ddf00510a59a6162a97b6469009c9994993
     expected: { status: passed }
     tags: [portability]

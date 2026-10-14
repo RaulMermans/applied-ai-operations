@@ -2,13 +2,14 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { EVAL_LIMITS } from "@aao/contracts";
-import { MAX_EVAL_SOURCE_BYTES, createEvaluatorRegistry, createStaticEvidenceResolver, deterministicGraders, parseEvalDataset, parseEvalDefinitions, runEvalDataset, validateEvalDataset, zodConfig, type EvalGrader } from "../src/index.js";
+import { MAX_EVAL_SOURCE_BYTES, createEvaluatorRegistry, createStaticEvidenceResolver, deterministicGraders, evidenceFingerprint, parseEvalDataset, parseEvalDefinitions, runEvalDataset, validateEvalDataset, zodConfig, type EvalGrader } from "../src/index.js";
 import { z } from "zod";
 import { evalsRoot, fixtureResolver, loadDataset, loadDefinitions, loadFixture, registry } from "./support/evals.js";
 
-const datasetYaml = () => readFileSync(join(evalsRoot, "datasets", "runtime-foundation.v1.yaml"), "utf8");
-const smallDataset = (cases: object[]) => ({ schemaVersion: 1, id: "test.dataset", version: "1.0.0", name: "Test", cases });
-const okCase = (id: string, evidenceRef = "fixture://flagship-approved") => ({ id, evalRef: { id: "tool.lookup-required", version: "1.0.0" }, mode: "OFFLINE", evidenceRef, expected: { status: "passed" } });
+const datasetYaml = () => readFileSync(join(evalsRoot, "datasets", "runtime-foundation.v2.yaml"), "utf8");
+const smallDataset = (cases: object[]) => ({ schemaVersion: 2, id: "test.dataset", version: "1.0.0", name: "Test", cases });
+const FLAGSHIP_FINGERPRINT = evidenceFingerprint(loadFixture("flagship-approved"));
+const okCase = (id: string, evidenceRef = "fixture://flagship-approved") => ({ id, evalRef: { id: "tool.lookup-required", version: "1.0.0" }, mode: "OFFLINE", evidenceRef, evidenceFingerprint: FLAGSHIP_FINGERPRINT, expected: { status: "passed" } });
 
 describe("dataset loading", () => {
   it("loads the committed YAML dataset and definitions; JSON is equivalent", () => {
@@ -24,9 +25,17 @@ describe("dataset loading", () => {
     expect(parseEvalDataset("{", "json")).toMatchObject({ ok: false, code: "EVAL_DATASET_INVALID" });
     const withCode = datasetYaml().replace("tags: [trace]", "tags: [trace]\n    modulePath: ./evil.js");
     expect(parseEvalDataset(withCode, "yaml")).toMatchObject({ ok: false, issues: [{ path: "$.cases[0].modulePath" }] });
-    expect(parseEvalDataset("schemaVersion: 1\nid: !!js/function 'function () {}'\n", "yaml").ok).toBe(false);
+    expect(parseEvalDataset("schemaVersion: 2\nid: !!js/function 'function () {}'\n", "yaml").ok).toBe(false);
     expect(parseEvalDataset(" ".repeat(MAX_EVAL_SOURCE_BYTES + 1), "yaml")).toMatchObject({ ok: false, issues: [{ path: "$" }] });
     expect(parseEvalDefinitions("definitions:\n  - schemaVersion: 2\n    id: x\n    javascript: 'alert(1)'\n", "yaml").ok).toBe(false);
+  });
+
+  it("refuses a superseded schema version 1 dataset with an explicit migration message — never reinterprets it", () => {
+    const v1 = { ...smallDataset([{ ...okCase("a.001"), evidenceFingerprint: undefined }]), schemaVersion: 1 };
+    const parsed = parseEvalDataset(JSON.stringify(v1), "json");
+    expect(parsed).toMatchObject({ ok: false, code: "EVAL_DATASET_INVALID", issues: [{ path: "$.schemaVersion" }] });
+    expect(!parsed.ok && parsed.issues[0]!.message).toMatch(/superseded by version 2.*migrate/);
+    expect(validateEvalDataset({ dataset: v1, definitions: loadDefinitions() })).toMatchObject({ ok: false, issues: [{ path: "$.schemaVersion" }] });
   });
 
   it("rejects duplicate cases, duplicate definitions, and unbounded datasets", () => {
@@ -43,7 +52,7 @@ describe("dataset validation against definitions", () => {
     expect(validateEvalDataset({ dataset: smallDataset([{ ...okCase("a.001"), evalRef: { id: "tool.unknown", version: "1.0.0" } }]), definitions })).toMatchObject({ ok: false, issues: [{ path: "$.cases.0.evalRef" }] });
     expect(validateEvalDataset({ dataset: smallDataset([{ ...okCase("a.001"), evalRef: { id: "tool.lookup-required", version: "2.0.0" } }]), definitions })).toMatchObject({ ok: false });
     const offlineOnly = definitions.map((definition) => (definition.id === "tool.lookup-required" ? { ...definition, supportedModes: ["OFFLINE" as const] } : definition));
-    expect(validateEvalDataset({ dataset: smallDataset([{ ...okCase("a.001"), mode: "RUNTIME" }]), definitions: offlineOnly })).toMatchObject({ ok: false, issues: [{ path: "$.cases.0.mode" }] });
+    expect(validateEvalDataset({ dataset: smallDataset([{ ...okCase("a.001"), mode: "RUNTIME", evidenceFingerprint: undefined }]), definitions: offlineOnly })).toMatchObject({ ok: false, issues: [{ path: "$.cases.0.mode" }] });
     expect(validateEvalDataset({ dataset: smallDataset([okCase("a.001", "file:///etc/passwd x")]), definitions })).toMatchObject({ ok: false });
   });
 

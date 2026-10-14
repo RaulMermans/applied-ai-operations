@@ -6,13 +6,20 @@ on:
   pull_request:
 
 # CI is verification only: it typechecks, lints, builds, and tests the
-# repository, in that order, matching the canonical "pnpm check" sequence.
+# repository, then runs the deterministic Eval quality gate and adapter
+# conformance (Sprint 18, ADR-023), in that order, matching the canonical
+# "pnpm check" sequence. There is no path filter: every push and pull
+# request runs the gate, because any package, eval asset, or workflow
+# change can affect behavior.
 # "pnpm test" alone is also valid on a clean checkout (see
 # docs/engineering/local-development.md) — Vitest resolves workspace
 # packages straight from TypeScript source via vitest.config.ts, not from
 # compiled dist/ output. Running build before test here additionally
-# verifies the actually-shipped compiled output. CI does not deploy,
-# publish, release, or provision anything.
+# verifies the actually-shipped compiled output. The Eval steps run on that
+# compiled output, offline: no API key, OAuth, provider, MCP remote server,
+# or network (a guard fails the step on any connection attempt), and no
+# model judge. They read the approved baseline and never write it. CI does
+# not deploy, publish, release, or provision anything.
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -45,3 +52,12 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      - name: Eval quality gate
+        run: pnpm eval:ci
+
+      - name: Adapter conformance
+        run: pnpm eval:adapters
+
+      - name: Sprint 18 compiled smoke
+        run: pnpm --filter @aao/evaluation smoke:sprint18

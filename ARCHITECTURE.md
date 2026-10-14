@@ -224,6 +224,18 @@ EvalEvidenceBundle (deep-frozen, fingerprinted) → EvalDefinition v2 → Evalua
 
 See [ADR-022](docs/decisions/ADR-022-evaluation-runtime-and-portable-verification.md), [evaluation runtime](docs/architecture/evaluation-runtime.md), and [`evals/`](evals/README.md).
 
+## Eval analytics, CI gates, and adapter verification
+
+Sprint 18 turns evaluation evidence into deterministic quality control, still outside execution authority:
+
+- **Comparison identity.** Cases are compared by a logical comparison key (Eval, grader, dataset, case, mode, target) and a semantic verdict fingerprint. `resultId` stays observation identity.
+- **Case expectations.** The verdict (`MATCHED`/`MISMATCHED`/`ERROR`), not `EvalResult.status`, decides CI. Offline fixtures are fingerprint-pinned.
+- **Baselines.** An approved, human-reviewed baseline is compared under a strict, versioned gate policy. Approval, Authorization, safety, and Trace regressions always hard-fail.
+- **Offline merge gate.** `pnpm eval:ci` runs offline in CI. Its only effect is an exit code; it never writes a baseline and never changes a Run.
+- **Adapter verification.** Substrate test drivers produce canonical evidence that the same Eval definitions judge. Support may be partial and is reported truthfully. The public Adapter contract is Sprint 20.
+
+See [ADR-023](docs/decisions/ADR-023-eval-analytics-ci-gates-and-adapter-verification.md), [eval analytics & CI](docs/architecture/eval-analytics-ci.md), and [adapter verification](docs/architecture/adapter-verification.md).
+
 ## Canonical architecture documents
 
 - [Product contract](docs/product/product-contract.md) — product purpose, boundaries, V1 proof, and success criteria.
@@ -242,6 +254,8 @@ See [ADR-022](docs/decisions/ADR-022-evaluation-runtime-and-portable-verificatio
 - [Metrics](docs/architecture/metrics.md) — Trace-derived RunMetrics and AggregateMetrics, completeness, latency, token usage, explicit pricing and cost coverage, denominators, and nearest-rank percentiles.
 - [Audit](docs/architecture/audit.md) — source-time accountability events, the emit-only Audit port, the hash-chained Audit Store, verification, failure isolation, and retention limits.
 - [Evaluation runtime](docs/architecture/evaluation-runtime.md) — non-authoritative OFFLINE/RUNTIME evaluation, Eval Definition/Result v2, datasets, the Evaluator Registry, deterministic graders, the bounded model-judge port, and portable verification.
+- [Eval analytics & CI gates](docs/architecture/eval-analytics-ci.md) — comparison identity, case expectation verdicts, suite reports, baselines, comparison, and the deterministic offline gate.
+- [Adapter verification](docs/architecture/adapter-verification.md) — substrate drivers, canonical scenarios, truthful partial support, semantic portability.
 - [Governance](docs/architecture/governance.md) — host-attested actors, role bindings, deny policies, and resolved authority before Authorization.
 - [MCP connector](docs/architecture/mcp-connector.md) — isolated stdio sessions, bounded discovery, explicit Tool bindings, and normalized failures.
 - [System boundaries](docs/architecture/system-boundaries.md) — architectural layers and ownership.

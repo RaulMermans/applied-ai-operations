@@ -12,7 +12,8 @@ import {
   type EvalDefinition,
   type EvalResult,
 } from "@aao/contracts";
-import type { EvalEvidenceBundle } from "./evidence.js";
+import { caseExpectationVerdict } from "./analytics/expectation.js";
+import { evidenceFingerprint, type EvalEvidenceBundle } from "./evidence.js";
 import type { EvaluatorRegistry } from "./registry.js";
 import { evaluate, failedEvaluation } from "./runner.js";
 
@@ -49,10 +50,18 @@ function parseSource(source: string, format: EvalSourceFormat): { ok: true; valu
 
 const zodIssues = (error: z.ZodError): EvalSourceIssue[] => error.issues.slice(0, 32).map((issue) => ({ path: ["$", ...issue.path].join("."), message: issue.message }));
 
-/** Parse a version-controlled `EvalDataset` (schema version 1) from YAML or JSON. */
+/** A superseded dataset schema is refused with an explicit migration message — never reinterpreted. */
+function supersededSchema(value: unknown): EvalSourceIssue[] {
+  const version = value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>).schemaVersion : undefined;
+  return version === 1 ? [{ path: "$.schemaVersion", message: "EvalDataset schema version 1 is superseded by version 2 (pinned OFFLINE evidence fingerprints, required exact expectations); migrate the dataset explicitly" }] : [];
+}
+
+/** Parse a version-controlled `EvalDataset` (schema version 2) from YAML or JSON. */
 export function parseEvalDataset(source: string, format: EvalSourceFormat): EvalSourceResult<EvalDataset> {
   const raw = parseSource(source, format);
   if (!raw.ok) return { ok: false, code: "EVAL_DATASET_INVALID", issues: raw.issues };
+  const superseded = supersededSchema(raw.value);
+  if (superseded.length > 0) return { ok: false, code: "EVAL_DATASET_INVALID", issues: superseded };
   const parsed = EvalDatasetSchema.safeParse(raw.value);
   return parsed.success ? { ok: true, value: parsed.data } : { ok: false, code: "EVAL_DATASET_INVALID", issues: zodIssues(parsed.error) };
 }
@@ -80,6 +89,8 @@ export function validateEvalDataset(params: { dataset: unknown; definitions: rea
   const issues: EvalSourceIssue[] = [];
   const forbidden = findForbiddenEvalCodeKeys(params.dataset);
   if (forbidden.length > 0) return { ok: false, code: "EVAL_DATASET_INVALID", issues: forbidden.slice(0, 16).map((path) => ({ path, message: "code-bearing fields are not allowed in Eval data" })) };
+  const superseded = supersededSchema(params.dataset);
+  if (superseded.length > 0) return { ok: false, code: "EVAL_DATASET_INVALID", issues: superseded };
   const dataset = EvalDatasetSchema.safeParse(params.dataset);
   if (!dataset.success) return { ok: false, code: "EVAL_DATASET_INVALID", issues: zodIssues(dataset.error) };
   const file = EvalDefinitionFileSchema.safeParse({ definitions: params.definitions });
@@ -115,12 +126,58 @@ export function createStaticEvidenceResolver(entries: Iterable<readonly [string,
 
 export type RunEvalDatasetResult = { ok: true; run: EvalDatasetRun } | { ok: false; code: "EVAL_DATASET_INVALID"; issues: EvalSourceIssue[] };
 
+/** Pinned-fingerprint check for one OFFLINE case: the resolved evidence must be byte-for-byte (canonically) what the dataset was written against. */
+function pinnedFingerprintMatches(evalCase: EvalCase, evidence: EvalEvidenceBundle): { ok: true } | { ok: false; actual: string } {
+  if (evalCase.evidenceFingerprint === undefined) return { ok: true };
+  let actual: string;
+  try {
+    actual = evidenceFingerprint(evidence);
+  } catch {
+    return { ok: false, actual: "unfingerprintable" };
+  }
+  return actual === evalCase.evidenceFingerprint ? { ok: true } : { ok: false, actual };
+}
+
+export interface EvidencePinMismatch {
+  caseId: string;
+  evidenceRef: string;
+  expectedFingerprint: string;
+  /** The fingerprint of the evidence actually resolved, or null when none resolved. Printed for a deliberate, reviewed re-pin; never written back. */
+  actualFingerprint: string | null;
+}
+
+/**
+ * Preflight for reproducible OFFLINE assets: resolve every pinned case's
+ * evidence and compare its canonical fingerprint with the dataset pin. It
+ * evaluates nothing and rewrites nothing; a mismatch means a fixture
+ * changed without a deliberate dataset change.
+ */
+export async function verifyDatasetEvidence(params: { dataset: EvalDataset; evidenceResolver: EvidenceResolver }): Promise<{ ok: true; verified: number } | { ok: false; code: "EVAL_FIXTURE_FINGERPRINT_MISMATCH"; mismatches: EvidencePinMismatch[] }> {
+  const mismatches: EvidencePinMismatch[] = [];
+  let verified = 0;
+  for (const evalCase of params.dataset.cases) {
+    if (evalCase.evidenceFingerprint === undefined) continue;
+    let evidence: EvalEvidenceBundle | undefined;
+    try {
+      evidence = await params.evidenceResolver.resolve(evalCase.evidenceRef);
+    } catch {
+      evidence = undefined;
+    }
+    const check = evidence === undefined ? { ok: false as const, actual: null } : pinnedFingerprintMatches(evalCase, evidence);
+    if (check.ok) verified += 1;
+    else mismatches.push({ caseId: evalCase.id, evidenceRef: evalCase.evidenceRef, expectedFingerprint: evalCase.evidenceFingerprint, actualFingerprint: check.actual });
+  }
+  return mismatches.length > 0 ? { ok: false, code: "EVAL_FIXTURE_FINGERPRINT_MISMATCH", mismatches } : { ok: true, verified };
+}
+
 /**
  * Run one dataset, sequentially and deterministically, in dataset case
  * order. Each case is isolated: an unresolvable or throwing evidence lookup,
- * a grader defect, or a judge failure becomes that case's `error` result,
- * and every other case still produces its own result. No case is skipped.
- * Returns serializable results only; nothing is stored.
+ * a pinned-fingerprint mismatch, a grader defect, or a judge failure
+ * becomes that case's `error` result, and every other case still produces
+ * its own result. No case is skipped. A fingerprint mismatch
+ * (`EVAL_FIXTURE_FINGERPRINT_MISMATCH`) reaches no grader. Returns
+ * serializable results only; nothing is stored.
  */
 export async function runEvalDataset(params: { dataset: unknown; definitions: readonly unknown[]; registry: EvaluatorRegistry; evidenceResolver: EvidenceResolver }): Promise<RunEvalDatasetResult> {
   const validation = validateEvalDataset({ dataset: params.dataset, definitions: params.definitions });
@@ -142,6 +199,7 @@ export async function runEvalDataset(params: { dataset: unknown; definitions: re
     }
     if (!resolved) result = failedEvaluation({ ...caseContext, code: "EVAL_CASE_ERROR" });
     else if (evidence === undefined) result = failedEvaluation({ ...caseContext, code: "EVAL_EVIDENCE_MISSING" });
+    else if (!pinnedFingerprintMatches(evalCase, evidence).ok) result = failedEvaluation({ ...caseContext, code: "EVAL_FIXTURE_FINGERPRINT_MISMATCH" });
     else {
       try {
         result = await evaluate({ definition, mode: evalCase.mode, evidence: { ...evidence, source: evidence.source ?? evalCase.evidenceRef }, registry: params.registry, datasetRef, caseId: evalCase.id });
@@ -149,12 +207,7 @@ export async function runEvalDataset(params: { dataset: unknown; definitions: re
         result = failedEvaluation({ ...caseContext, code: "EVAL_CASE_ERROR" });
       }
     }
-    cases.push({ caseId: evalCase.id, matchesExpectation: matchesExpectation(evalCase, result), result });
+    cases.push({ caseId: evalCase.id, matchesExpectation: caseExpectationVerdict(evalCase.expected, result) === "MATCHED", result });
   }
   return { ok: true, run: EvalDatasetRunSchema.parse({ schemaVersion: 1, datasetRef, cases }) };
-}
-
-function matchesExpectation(evalCase: EvalCase, result: EvalResult): boolean | null {
-  if (!evalCase.expected) return null;
-  return evalCase.expected.status === result.status && (evalCase.expected.errorCode === undefined || evalCase.expected.errorCode === result.errorCode);
 }

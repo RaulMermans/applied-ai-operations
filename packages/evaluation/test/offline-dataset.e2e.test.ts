@@ -16,6 +16,6 @@ describe("offline dataset E2E: runtime-foundation", () => {
     // Errors occur only in cases explicitly designed as evaluator-error fixtures.
     const errorCases = run.cases.filter((entry) => entry.result.status === "error").map((entry) => entry.caseId);
     expect(errorCases.sort()).toEqual(dataset.cases.filter((evalCase) => evalCase.expected?.status === "error").map((evalCase) => evalCase.id).sort());
-    for (const entry of run.cases) expect(entry.result).toMatchObject({ datasetRef: { id: "aao.runtime-foundation", version: "1.1.0" }, caseId: entry.caseId, mode: "OFFLINE" });
+    for (const entry of run.cases) expect(entry.result).toMatchObject({ datasetRef: { id: "aao.runtime-foundation", version: "2.0.0" }, caseId: entry.caseId, mode: "OFFLINE" });
   });
 });

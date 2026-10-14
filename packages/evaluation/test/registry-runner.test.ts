@@ -45,9 +45,9 @@ describe("Evaluator Registry", () => {
     expect(resolved.ok && resolved.grader.supportedTargetTypes).toEqual(["run"]);
   });
 
-  it("ships the nine deterministic graders and no model judge by default", () => {
-    expect(createEvaluatorRegistry(deterministicGraders()).list().map((ref) => ref.id)).toEqual([
-      "aao.approval-compliance", "aao.authorization-compliance", "aao.metrics-threshold", "aao.retry-behavior", "aao.run-outcome", "aao.state-assertion", "aao.tool-usage", "aao.trace-contract", "aao.trajectory",
+  it("ships the ten deterministic graders (approval-compliance at 2.0.0 only) and no model judge by default", () => {
+    expect(createEvaluatorRegistry(deterministicGraders()).list().map((ref) => `${ref.id}@${ref.version}`)).toEqual([
+      "aao.approval-compliance@2.0.0", "aao.authorization-compliance@1.0.0", "aao.metrics-threshold@1.0.0", "aao.model-call@1.0.0", "aao.retry-behavior@1.0.0", "aao.run-outcome@1.0.0", "aao.state-assertion@1.0.0", "aao.tool-usage@1.0.0", "aao.trace-contract@1.0.0", "aao.trajectory@1.0.0",
     ]);
   });
 });
