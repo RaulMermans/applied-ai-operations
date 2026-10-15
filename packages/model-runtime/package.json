@@ -13,6 +13,10 @@
     "./vercel-ai": {
       "types": "./src/adapters/vercel-ai.ts",
       "default": "./dist/adapters/vercel-ai.js"
+    },
+    "./vercel-ai/conformance": {
+      "types": "./src/adapters/vercel-ai-conformance.ts",
+      "default": "./dist/adapters/vercel-ai-conformance.js"
     }
   },
   "scripts": {
@@ -20,6 +24,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@aao/adapters": "workspace:*",
     "@aao/contracts": "workspace:*",
     "@aao/runtime": "workspace:*",
     "ai": "^7.0.107",

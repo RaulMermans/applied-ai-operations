@@ -92,6 +92,8 @@ Sprint 17 also left one semantic defect: the Approval grader bound guarded Tools
 - **Evaluation and the gate remain non-authoritative.** A gate decision is not a Run status, and nothing in execution reads a decision, baseline, policy, finding, or conformance report. None of these can approve, authorize, trigger a Tool, change a Run, mark replay safe, change retries, grant a Role, become Memory, modify a Skill, or modify a dataset. The only effect of a gate is the exit code of a developer or CI command.
 - **No Runtime permission changes.** `external_side_effect`, `destructive`, and `sensitive_data` remain unsupported.
 
+> **Sprint 20 update ([ADR-025](ADR-025-adapter-and-portability-contract.md)).** Adapter verification now runs through the public adapter contract. Support is declared by an `AdapterManifest` (not by a driver table), the conformance suite ships with `@aao/adapters`, official subjects are explicit package exports, and reports are the public `AdapterConformanceReport` v1 with integrity validation. The Sprint 18 driver modules and the internal `SUPPORTED` declaration are retired.
+
 ## Consequences
 
 - The merge gate is one command over version-controlled assets. A behavioral regression in a critical area cannot merge, and an intentional behavior change requires a reviewed dataset or baseline change, visible in the diff.

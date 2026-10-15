@@ -189,6 +189,7 @@ export const AGENT_FAILURE_CODES = [
   "AGENT_MODEL_EXECUTION_FAILED",
   "INVALID_AGENT_DECISION",
   "MAX_AGENT_ITERATIONS_EXCEEDED",
+  "AGENT_CANCELLED",
 ] as const;
 export const AgentFailureCodeSchema = z.enum(AGENT_FAILURE_CODES);
 export type AgentFailureCode = z.infer<typeof AgentFailureCodeSchema>;

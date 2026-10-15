@@ -11,9 +11,11 @@ aao
 │   └── compile  <file> [--format json]
 ├── eval
 │   ├── ci        [--format text|json] [--verbose] [--git-sha <sha>] [--root <dir>]
-│   ├── adapters  [--format text|json] [--root <dir>]
+│   ├── adapters  [--format text|json]
 │   └── baseline
 │       └── propose --id <baseline-id> --version <version> [--root <dir>]
+├── adapters
+│   └── matrix    [--format json|markdown]
 └── --help
 ```
 
@@ -55,17 +57,18 @@ Diagnostics are the compiler's canonical `WorkflowDiagnostic`s: code, then `node
 
 ## Eval commands
 
-The Eval commands read the committed assets under `<root>/evals/`. `--root` defaults to the current directory, so run them from the repository root. They never write a file.
+`eval ci` and `eval baseline propose` read the committed assets under `<root>/evals/`. `--root` defaults to the current directory, so run them from the repository root. `eval adapters` reads no project files. The canonical adapter conformance suite ships with `@aao/adapters`, and the official subjects come from explicit package exports, so it runs from any directory. No command writes a file.
 
 | Command | Alias | Does |
 | --- | --- | --- |
 | `aao eval ci` | `pnpm eval:ci` | The deterministic quality gate: verify fixture pins → run the foundation dataset → suite report → compare with the approved baseline → apply the `foundation-ci` policy ([eval analytics & CI](../architecture/eval-analytics-ci.md)) |
-| `aao eval adapters` | `pnpm eval:adapters` | [Adapter verification](../architecture/adapter-verification.md) of the native Tool, MCP, native model, and Vercel AI SDK paths. LangGraph is a deferred research substrate and has no driver |
+| `aao eval adapters` | `pnpm eval:adapters` | [Adapter conformance](../architecture/adapter-contract.md) (contract v1, conformance v1) of the native references, the MCP connector, and the Vercel AI SDK adapter through the public `verifyAdapterConformance`, plus semantic portability. LangGraph is listed only as deferred. It is not an adapter |
+| `aao adapters matrix [--format json\|markdown]` | — | Prints the generated [compatibility matrix](adapter-compatibility.md) from manifests and fresh conformance reports. The committed `docs/generated/adapter-compatibility.json` and `docs/framework/adapter-compatibility.md` are this output, and a test fails on drift. It never loads an adapter from the command line |
 | `aao eval baseline propose --id <id> --version <v>` | `pnpm eval:baseline:propose -- --id <id> --version <v>` | Print a baseline *proposal*. A human reviews it, commits it as a new baseline version, and re-pins the policy |
 
 - **The candidate is always built from evidence.** No command accepts a caller-supplied suite report, and the gate re-checks [report integrity](../architecture/eval-analytics-ci.md#report-integrity-sprint-19).
 - **Offline.** A guard refuses `fetch`, socket connections, and DNS lookups for the whole command. Any attempt prints `AAO_EVAL_NETWORK_FORBIDDEN` and exits 1. No API key, OAuth, provider, remote MCP server, or model judge is involved. The MCP verification server is a local stdio child process, which is not network access.
-- **Output is unchanged from Sprint 18.** `aao eval ci --format json`, the text report, adapter output, and baseline proposals are byte-identical to the Sprint 18 commands for the same repository state.
+- **Output.** `aao eval ci` and baseline proposals are unchanged from Sprint 18. Since Sprint 20, `aao eval adapters` reports public `AdapterConformanceReport` v1 outcomes (`PASSED`, `FAILED`, `UNSUPPORTED`, `NOT_APPLICABLE`) per `id@version`.
 
 ## No manual prior build
 
@@ -90,4 +93,5 @@ Running with no arguments prints the usage to stderr and exits 1.
 ## Not provided
 
 - **No generic Workflow execution CLI** (`aao run <file>`). Running a Workflow needs trusted Tool handlers and a host identity boundary. Those are code, so execution goes through the library API ([quickstart](quickstart.md)). The CLI does no dynamic loading to make a file runner possible.
+- **No arbitrary adapter loading** (`aao adapters verify ./module.js`). A third-party adapter is verified through the library API (`@aao/framework/conformance`), which the developer imports explicitly.
 - **No other commands.** There is no project scaffolding (`aao init`, `create-aao`), plugin loading, environment discovery, publishing, or deployment.

@@ -84,14 +84,21 @@ describe("prepareWorkflow: compile through the canonical compiler only", () => {
     expect(error.message).not.toMatch(/\n\s+at\s/);
   });
 
-  it("node kinds outside the stable V1 scope are refused at preparation, not faked", () => {
+  it("evaluator nodes, which have no executor, are refused at preparation, not faked; model, agent, and deterministic nodes prepare (Sprint 20)", () => {
     const input = toolWorkflowInput();
-    input.entryNodeId = "think";
-    input.nodes.unshift({ id: "think", kind: "model", config: {} }, { id: "act", kind: "agent", config: {} }, { id: "calc", kind: "deterministic", config: {} });
-    input.edges.unshift({ sourceNodeId: "think", targetNodeId: "act" }, { sourceNodeId: "act", targetNodeId: "calc" }, { sourceNodeId: "calc", targetNodeId: "draft" });
+    input.entryNodeId = "judge";
+    input.nodes.unshift({ id: "judge", kind: "evaluator", config: {} });
+    input.edges.unshift({ sourceNodeId: "judge", targetNodeId: "draft" });
     const error = frameworkError(() => appWith().app.prepareWorkflow(input));
     expect(error.code).toBe("FRAMEWORK_FEATURE_NOT_AVAILABLE");
-    expect(error.diagnostics.map((entry) => entry.nodeId)).toEqual(["think", "act", "calc"]);
+    expect(error.diagnostics.map((entry) => entry.nodeId)).toEqual(["judge"]);
+
+    const supported = toolWorkflowInput();
+    supported.entryNodeId = "think";
+    supported.nodes.unshift({ id: "think", kind: "model", config: {} }, { id: "act", kind: "agent", config: {} }, { id: "calc", kind: "deterministic", config: {} });
+    supported.edges.unshift({ sourceNodeId: "think", targetNodeId: "act" }, { sourceNodeId: "act", targetNodeId: "calc" }, { sourceNodeId: "calc", targetNodeId: "draft" });
+    // Their configs are judged canonically by each executor's preflight at execution, never by the Framework.
+    expect(appWith().app.prepareWorkflow(supported).workflow.nodes.map((node) => node.kind)).toEqual(["model", "agent", "deterministic", "tool", "final_output"]);
   });
 });
 

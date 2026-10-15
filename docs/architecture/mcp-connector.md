@@ -118,3 +118,13 @@ Validated with Node 20.20.0 / pnpm 10.26.0, starting from clean generated artifa
 | `pnpm --filter @aao/mcp-connector smoke` | Passed: `SPRINT_10_MCP_CONNECTOR_SMOKE_OK` |
 
 Real stdio evidence: `crm.read_account` → `crm.account.read@1.0.0`, local `capabilityRef: crm.accounts.read`, principal `user.alice` with `read_only` → ALLOW / exactly one call / `{ id: "a-1", name: "Local Test Account" }`. Missing grant, unsupported `external_side_effect` even with its grant, invalid AAO input, and attempted input/config transport selection each produce zero remote invocations. Runtime/Agent/Authorization/Tool Runtime contain no connector or SDK imports. Core contracts and execution semantics are unchanged. The fixture-only temporary ledgers and child processes are cleaned up.
+
+## Adapter contract and host-owned retry safety (Sprint 20)
+
+The connector is the `tool_provider` adapter `aao.mcp-connector@1.0.0` (`MCP_CONNECTOR_ADAPTER_MANIFEST`: `tool.discovery`, `tool.execution`, and `tool.retryable_failure` supported). MCP is a Tool provider, and never a workflow, agent, governance, authorization, approval, or durability provider ([ADR-025](../decisions/ADR-025-adapter-and-portability-contract.md)).
+
+- **Remote metadata stays untrusted.** Discovery keeps name, description, and schemas only. Annotations, `_meta`, and any safety or authority hints are dropped, and nothing reads them.
+- **Retry safety is host configuration.** `createMcpToolBinding({ ..., retrySafety })` is the only way an MCP Tool becomes Runtime-retryable. It defaults to `unsafe`, and `safe` is accepted only when every permission class is `read_only`. It maps into the Tool Runtime's canonical `retrySafety`. It is never inferred from a name, description, annotation, or verb.
+- **The connector still never retries.** A server-side internal error or request timeout (`McpError` `InternalError` / `RequestTimeout`) is returned as `{ ok: false, code: "MCP_CALL_FAILED", retryable: true }`. The Runtime retries only if the host declared the Tool safe, within its bounded policy. A tool-reported error (`isError`) and every other failure stay non-retryable.
+- **Retry safety ≠ recovery safety.** Crash-recovery safety stays the Tool Runtime's canonical derivation. The connector does not forward `toolExecutionId`, so it refuses any `idempotency` assertion, and a `write_draft` MCP Tool is never recovery-safe.
+- **Conformance.** The explicit `@aao/mcp-connector/conformance` export supplies a subject backed by the shipped stdio conformance server (`conformance/server.mjs`), whose discovery metadata is deliberately hostile. See the [compatibility matrix](../framework/adapter-compatibility.md).

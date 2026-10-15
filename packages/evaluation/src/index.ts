@@ -85,15 +85,14 @@ export { analyzeEvalSuites } from "./analytics/multi-run.js";
 export { parseEvalBaseline, parseEvalGatePolicy, type GateSourceResult } from "./gates/policy.js";
 export { evaluateEvalGate, type EvalGateError, type EvaluateEvalGateResult } from "./gates/evaluate-gate.js";
 export { formatGateDecisionText, formatGateErrorText, gateDecisionJson } from "./gates/format-report.js";
-export { ADAPTER_VERIFICATION_SCENARIOS, scenarioEvidenceRef, type AdapterKind, type AdapterVerificationScenario } from "./conformance/scenarios.js";
+// Adapter conformance (Sprint 18 verification, public contract since Sprint 20 / ADR-025):
+// the manifest, scenarios, suite, and report live in @aao/adapters; this
+// package only judges the evidence a host-side driver produced.
 export {
-  ADAPTER_VERIFICATION_CODES,
-  AdapterConformanceReportSchema,
-  AdapterVerificationError,
+  AdapterConformanceError,
   compareAdapterConformance,
-  verifyAdapter,
-  type AdapterConformanceReport,
+  evaluateAdapterConformance,
+  type AdapterConformanceDriver,
   type AdapterPortabilityResult,
-  type AdapterVerificationDriver,
-  type ScenarioSupport,
-} from "./conformance/adapter-verification.js";
+  type AdapterScenarioExecution,
+} from "./conformance/adapter-conformance.js";

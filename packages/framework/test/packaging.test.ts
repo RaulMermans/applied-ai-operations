@@ -7,8 +7,8 @@ const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const manifest = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")) as Record<string, unknown>;
 
 describe("@aao/framework package manifest (packaged as if publishable; not published)", () => {
-  it("exposes exactly one entry point, typed from compiled declarations — never repository src/", () => {
-    expect(manifest.exports).toEqual({ ".": { types: "./dist/index.d.ts", default: "./dist/index.js" }, "./package.json": "./package.json" });
+  it("exposes exactly the root and the explicit conformance subpath, typed from compiled declarations — never repository src/", () => {
+    expect(manifest.exports).toEqual({ ".": { types: "./dist/index.d.ts", default: "./dist/index.js" }, "./conformance": { types: "./dist/conformance/index.d.ts", default: "./dist/conformance/index.js" }, "./package.json": "./package.json" });
     expect(manifest.types).toBe("./dist/index.d.ts");
     expect(manifest.main).toBe("./dist/index.js");
     expect(JSON.stringify(manifest)).not.toMatch(/\.\/src\//);

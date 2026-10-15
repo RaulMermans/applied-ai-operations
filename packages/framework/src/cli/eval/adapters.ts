@@ -1,100 +1,128 @@
-// `aao eval adapters` (alias: `pnpm eval:adapters`) — deterministic adapter
-// conformance verification (Sprint 18, ADR-023; canonical CLI since Sprint 19).
+// `aao eval adapters` (alias: `pnpm eval:adapters`) and `aao adapters matrix`.
+// These run the official adapter conformance through the public contract
+// (Sprint 18 verification, Sprint 20 public contract, ADR-025).
 //
-// Each substrate's own test driver (living with that substrate) turns the canonical scenarios
-// into canonical AAO evidence; the existing Evaluation Runtime judges it
-// with the adapter-conformance definitions. Native AAO drivers are the
-// semantic reference: an adapter must reach the same semantic verdict on
-// every case both execute. Local and mocked only — no network,
-// credentials, live providers, or external side effects (the MCP server is
-// a local stdio child process). This is internal verification, not the
-// public Adapter contract: no adapter type or driver is exported from the
-// @aao/framework root (Sprint 20).
+// The official subjects are imported through explicit package exports
+// (`@aao/mcp-connector/conformance`, `@aao/model-runtime/vercel-ai/conformance`),
+// never by repository path. The canonical suite ships with @aao/adapters,
+// so no evals/ files are read. Each subject runs through the same public
+// `verifyAdapterConformance` a third-party adapter uses. The native AAO
+// references are the semantic baseline: an adapter must reach the same
+// semantic verdict on every case both execute. Everything is local and
+// mocked: `ai/test` models and a stdio MCP child process, with no network,
+// credentials, live providers, or external side effects.
 //
-// Exit codes: 0 = every SUPPORTED scenario passed and no semantic
-// divergence; 1 = a SUPPORTED scenario failed, diverged, or verification
-// could not run. UNSUPPORTED / NOT_APPLICABLE scenarios are reported, never
-// counted as passes.
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { compareAdapterConformance, createEvaluatorRegistry, deterministicGraders, parseEvalDataset, parseEvalDefinitions, verifyAdapter, type AdapterConformanceReport, type AdapterPortabilityResult, type AdapterVerificationDriver } from "@aao/evaluation";
-import { createAuditRecorder, createInMemoryAuditStore, createInMemoryTraceStore, createTraceRecorder } from "@aao/observability";
-// Test-owned substrate drivers stay with their substrates and are not part of
-// any package's exports (each package exposes only its entry point). They are
-// loaded by path from the sibling @aao packages — the Sprint 18 convention,
-// and the same relative depth from src/ and dist/.
-import { createMcpConnectorDriver } from "../../../../mcp-connector/conformance/driver.mjs";
-import { createNativeModelDriver } from "../../../../model-runtime/conformance/native-driver.mjs";
-import { createVercelAiDriver } from "../../../../model-runtime/conformance/vercel-ai-driver.mjs";
-import { createNativeToolDriver } from "../../../../tool-runtime/conformance/driver.mjs";
+// Exit codes: 0 = no claimed or base scenario failed and no semantic
+// divergence; 1 = otherwise, or verification could not run. UNSUPPORTED and
+// NOT_APPLICABLE are reported, never counted as passes.
+import { buildAdapterCompatibilityMatrix, type AdapterCompatibilityMatrix, type AdapterConformanceReport, type DeferredAdapterEntry } from "@aao/adapters";
+import { compareAdapterConformance, type AdapterPortabilityResult } from "@aao/evaluation";
+import { createMcpConformanceSubject } from "@aao/mcp-connector/conformance";
+import { createVercelAiConformanceSubject } from "@aao/model-runtime/vercel-ai/conformance";
+import { nativeModelReference, nativeToolReference, verifyAdapterConformance, type AdapterConformanceSubject } from "../../conformance/index.js";
 import type { CommandOutput } from "../output.js";
 
-export const CONFORMANCE = Object.freeze({ definitions: "evals/definitions/adapter-conformance.v1.yaml", dataset: "evals/datasets/adapter-conformance-foundation.v1.yaml" });
-
-/** The canonical evidence recorders, injected into every driver by this verification host. */
-export const recorders = Object.freeze({ createInMemoryTraceStore, createTraceRecorder, createInMemoryAuditStore, createAuditRecorder });
-
-export interface ConformanceDriverEntry {
-  driver: AdapterVerificationDriver;
-  /** Marks the native semantic reference per adapter kind. */
+export interface ConformanceSubjectEntry {
+  subject: AdapterConformanceSubject;
+  /** Marks the native semantic reference for its kind. */
   reference: boolean;
 }
 
-/** Explicit, static driver list: no discovery, no registry, no dynamic import. */
-export function conformanceDrivers(): ConformanceDriverEntry[] {
-  // The drivers are plain ESM with structural declarations; the verifier validates everything they return.
-  const driver = (value: unknown) => value as AdapterVerificationDriver;
+/** Explicit, static subject list: no discovery, no registry, no dynamic import. */
+export function officialConformanceSubjects(): ConformanceSubjectEntry[] {
   return [
-    { driver: driver(createNativeToolDriver({ recorders })), reference: true },
-    { driver: driver(createMcpConnectorDriver({ recorders })), reference: false },
-    { driver: driver(createNativeModelDriver({ recorders })), reference: true },
-    { driver: driver(createVercelAiDriver({ recorders })), reference: false },
+    { subject: nativeToolReference(), reference: true },
+    { subject: createMcpConformanceSubject(), reference: false },
+    { subject: nativeModelReference(), reference: true },
+    { subject: createVercelAiConformanceSubject(), reference: false },
   ];
 }
 
+/** Substrates with no AAO adapter: listed outside the conformance vocabulary, never as UNSUPPORTED. */
+export const DEFERRED_ADAPTERS: readonly DeferredAdapterEntry[] = Object.freeze([
+  { id: "langgraph", kind: "agent_runtime", status: "DEFERRED", reason: "Sprint 0A research only. No AAO agent_runtime adapter exists, and the native bounded Agent Runtime is the reference semantics." },
+]);
+
 export type AdapterConformanceOutcome =
-  | { ok: true; passed: boolean; reports: AdapterConformanceReport[]; portability: Array<AdapterPortabilityResult & { kind: string; reference: string }> }
+  | { ok: true; passed: boolean; reports: AdapterConformanceReport[]; portability: Array<AdapterPortabilityResult & { kind: string; reference: string }>; matrix: AdapterCompatibilityMatrix }
   | { ok: false; error: { code: string; detail: string } };
 
-export async function runAdapterConformance(options: { root: string; drivers?: ConformanceDriverEntry[] }): Promise<AdapterConformanceOutcome> {
-  const drivers = options.drivers ?? conformanceDrivers();
-  const definitions = parseEvalDefinitions(readFileSync(join(options.root, CONFORMANCE.definitions), "utf8"), "yaml");
-  const dataset = parseEvalDataset(readFileSync(join(options.root, CONFORMANCE.dataset), "utf8"), "yaml");
-  if (!definitions.ok || !dataset.ok) return { ok: false, error: { code: "EVAL_DATASET_INVALID", detail: "adapter conformance definitions or dataset are invalid" } };
-  const registry = createEvaluatorRegistry(deterministicGraders());
+export async function runAdapterConformance(options: { subjects?: ConformanceSubjectEntry[] } = {}): Promise<AdapterConformanceOutcome> {
+  const subjects = options.subjects ?? officialConformanceSubjects();
   const reports: AdapterConformanceReport[] = [];
-  for (const { driver } of drivers) reports.push(await verifyAdapter({ driver, dataset: dataset.value, definitions: definitions.value, registry }));
+  for (const { subject } of subjects) reports.push(await verifyAdapterConformance({ subject }));
   const portability: Array<AdapterPortabilityResult & { kind: string; reference: string }> = [];
-  for (const kind of ["tool", "model"]) {
-    const reference = reports.find((report, index) => report.adapter.kind === kind && drivers[index]!.reference);
-    const candidates = reports.filter((report, index) => report.adapter.kind === kind && !drivers[index]!.reference);
+  for (const kind of ["tool_provider", "model"]) {
+    const reference = reports.find((report, index) => report.adapter.kind === kind && subjects[index]!.reference);
+    const candidates = reports.filter((report, index) => report.adapter.kind === kind && !subjects[index]!.reference);
     if (reference && candidates.length > 0) portability.push({ kind, reference: reference.adapter.id, ...compareAdapterConformance({ reference, candidates }) });
   }
-  const passed = reports.every((report) => report.failed === 0) && portability.every((entry) => entry.consistent);
-  return { ok: true, passed, reports, portability };
+  const matrix = buildAdapterCompatibilityMatrix({ entries: subjects.map(({ subject, reference }, index) => ({ manifest: subject.manifest, report: reports[index], reference })), deferred: DEFERRED_ADAPTERS });
+  const passed = reports.every((report) => report.summary.failed === 0) && portability.every((entry) => entry.consistent);
+  return { ok: true, passed, reports, portability, matrix };
 }
 
 export function renderConformance(outcome: AdapterConformanceOutcome, format: "text" | "json"): CommandOutput {
   if (!outcome.ok) return { exitCode: 1, output: format === "json" ? `${JSON.stringify({ passed: false, error: outcome.error }, null, 2)}\n` : `AAO Adapter Conformance\n\nERROR ${outcome.error.code}: ${outcome.error.detail}\n` };
   if (format === "json") return { exitCode: outcome.passed ? 0 : 1, output: `${JSON.stringify({ passed: outcome.passed, reports: outcome.reports, portability: outcome.portability }, null, 2)}\n` };
-  const lines = ["AAO Adapter Conformance", ""];
+  const lines = ["AAO Adapter Conformance (contract v1, conformance v1)", ""];
   for (const report of outcome.reports) {
-    lines.push(`${report.adapter.id} (${report.adapter.kind}): ${report.passed}/${report.supported} supported passed, ${report.failed} failed, ${report.unsupported} unsupported, ${report.notApplicable} not applicable`);
+    const { passed, failed, unsupported, notApplicable } = report.summary;
+    lines.push(`${report.adapter.id}@${report.adapter.version} (${report.adapter.kind}): ${passed} passed, ${failed} failed, ${unsupported} unsupported, ${notApplicable} not applicable`);
     for (const scenario of report.scenarios) lines.push(`  ${scenario.status.padEnd(14)} ${scenario.scenarioId}`);
   }
   lines.push("");
   for (const entry of outcome.portability) lines.push(`Portability (${entry.kind}, reference ${entry.reference}): ${entry.cases.length} shared cases, ${entry.consistent ? "same semantic verdicts" : `${entry.findings.length} divergence(s)`}`);
+  for (const deferred of outcome.matrix.deferred) lines.push(`Deferred: ${deferred.id} (${deferred.kind}): not an implemented adapter`);
   lines.push("", outcome.passed ? "PASS" : "FAIL");
   return { exitCode: outcome.passed ? 0 : 1, output: `${lines.join("\n")}\n` };
 }
 
+const MARKDOWN_HEADER = `<!-- GENERATED by \`aao adapters matrix --format markdown\` from adapter manifests and fresh conformance reports. Do not edit by hand. -->
+
+# Adapter compatibility matrix
+
+Generated evidence for the official AAO adapters under adapter contract v1 and conformance suite v1 ([ADR-025](../decisions/ADR-025-adapter-and-portability-contract.md), [adapter contract](../architecture/adapter-contract.md)). Every "Conformance" cell comes from running the canonical scenarios through \`verifyAdapterConformance\`. None is typed by hand. "Declared" is what the adapter's manifest claims.
+
+**This matrix is not runtime authority.** It cannot enable an adapter, authorize an actor, or grant a permission. A compatible adapter can still be unauthorized for a Run. Governance, Authorization, the Tool support gate, and Approval decide that.
+`;
+
+/** Human-readable rendering of the generated matrix. Only formatting happens here: every status comes from the matrix. */
+export function renderMatrixMarkdown(matrix: AdapterCompatibilityMatrix): string {
+  const lines = [MARKDOWN_HEADER, `Conformance dataset: \`${matrix.datasetRef.id}@${matrix.datasetRef.version}\`.`, ""];
+  lines.push("| Adapter | Version | Kind | Contract | Native reference | Capability | Declared | Conformance |", "| --- | --- | --- | --- | --- | --- | --- | --- |");
+  for (const adapter of matrix.adapters) {
+    for (const row of adapter.capabilities) lines.push(`| \`${adapter.id}\` | ${adapter.version} | ${adapter.kind} | v${adapter.adapterContractVersion} | ${adapter.reference ? "yes" : "no"} | \`${row.capability}\` | ${row.declared} | ${row.conformance} |`);
+  }
+  lines.push("", "## Base invariants", "", "Scenarios that every adapter of the kind must pass, whatever it declares.", "", "| Adapter | Scenario | Conformance |", "| --- | --- | --- |");
+  for (const adapter of matrix.adapters) for (const invariant of adapter.baseInvariants) lines.push(`| \`${adapter.id}\` | \`${invariant.scenarioId}\` | ${invariant.status} |`);
+  lines.push("", "## Known limitations", "", "Declared by each manifest. They are informational and never change behavior.", "", "| Adapter | Limitation | Description |", "| --- | --- | --- |");
+  for (const adapter of matrix.adapters) for (const limitation of adapter.limitations) lines.push(`| \`${adapter.id}\` | \`${limitation.code}\` | ${limitation.description ?? ""} |`);
+  lines.push("", "## Deferred, not implemented", "", "These substrates are outside the conformance vocabulary. No adapter exists, so there is nothing to verify, and they are not reported as UNSUPPORTED.", "", "| Substrate | Kind | Status | Reason |", "| --- | --- | --- | --- |");
+  for (const entry of matrix.deferred) lines.push(`| ${entry.id} | ${entry.kind} | ${entry.status} | ${entry.reason} |`);
+  return `${lines.join("\n")}\n`;
+}
+
 /** The command: verification errors are reported as a bounded code, never a stack or a raw driver error. */
-export async function runEvalAdapters(options: { root: string; format?: "text" | "json"; drivers?: ConformanceDriverEntry[] }): Promise<CommandOutput> {
+export async function runEvalAdapters(options: { format?: "text" | "json"; subjects?: ConformanceSubjectEntry[] } = {}): Promise<CommandOutput> {
   const format = options.format ?? "text";
   try {
     return renderConformance(await runAdapterConformance(options), format);
   } catch (error) {
     const code = (error as { code?: unknown })?.code;
     return renderConformance({ ok: false, error: { code: typeof code === "string" ? code : "ADAPTER_DRIVER_ERROR", detail: "adapter verification could not run" } }, format);
+  }
+}
+
+/** `aao adapters matrix`: the generated compatibility matrix as JSON (`docs/generated/adapter-compatibility.json`) or Markdown. */
+export async function runAdaptersMatrix(options: { format?: "json" | "markdown"; subjects?: ConformanceSubjectEntry[] } = {}): Promise<CommandOutput> {
+  try {
+    const outcome = await runAdapterConformance(options);
+    if (!outcome.ok) return { exitCode: 1, output: `ERROR ${outcome.error.code}: ${outcome.error.detail}\n` };
+    const output = options.format === "markdown" ? renderMatrixMarkdown(outcome.matrix) : `${JSON.stringify(outcome.matrix, null, 2)}\n`;
+    return { exitCode: outcome.passed ? 0 : 1, output };
+  } catch (error) {
+    const code = (error as { code?: unknown })?.code;
+    return { exitCode: 1, output: `ERROR ${typeof code === "string" ? code : "ADAPTER_DRIVER_ERROR"}: the compatibility matrix could not be generated\n` };
   }
 }

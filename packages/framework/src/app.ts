@@ -1,14 +1,17 @@
 import { createHash } from "node:crypto";
+import { createAgentNodeExecutor } from "@aao/agent-runtime";
 import { createApprovalEngine, createApprovalNodeExecutor, continueApprovedWorkflow } from "@aao/approval";
 import { authorizationContextFromAuthority, type AuthorizationContext } from "@aao/authorization";
-import { canonicalJsonStringify, type ApprovalRecord, type GovernanceConfiguration, type JsonValue, type NodeKind, type Principal, type RunState, type Workflow } from "@aao/contracts";
+import { canonicalJsonStringify, type ApprovalRecord, type GovernanceConfiguration, type JsonValue, type ModelPolicySpec, type NodeKind, type Principal, type ReliabilityPolicy, type RunState, type Workflow } from "@aao/contracts";
 import { createGovernanceRegistry, resolveAuthority, type GovernanceRegistry } from "@aao/governance";
-import { createNodeRegistry, createSystemClock, executeWorkflow, finalOutputExecutor, type RuntimeClock, type RuntimeExecutionState, type WorkflowExecutionResult } from "@aao/runtime";
+import { createModelNodeExecutor, type ModelAdapterDefinition } from "@aao/model-runtime";
+import { createDeterministicNodeExecutor, createNodeRegistry, createSystemClock, executeWorkflow, finalOutputExecutor, type DeterministicExecutor, type NodeExecutor, type RuntimeClock, type RuntimeExecutionState, type RuntimeTracePort, type WorkflowExecutionResult } from "@aao/runtime";
 import { createToolNodeExecutor, createToolRegistry, type ToolAuthorizationTarget, type ToolRegistry } from "@aao/tool-runtime";
 import { compileWorkflow } from "@aao/workflow-dsl";
 import { defineGovernance, defineWorkflow, type ToolDefinition } from "./definitions.js";
 import { AAOFrameworkError } from "./errors.js";
 import { deepFreeze, registrationFailure } from "./internal.js";
+import { composeModels, type AgentDefinition, type ModelBindingDefinition } from "./models.js";
 import { AAO_FRAMEWORK_API_VERSION } from "./version.js";
 
 /**
@@ -31,6 +34,23 @@ export interface AAOOptions {
   principalForRun: PrincipalForRun;
   /** Tools registered once, at construction. Duplicate `id@version` fails construction. */
   tools?: readonly ToolDefinition[];
+  /**
+   * Model adapters (`defineModelAdapter`: an `AdapterManifest` plus the
+   * canonical `ModelAdapter` port), registered once by exact `id@version`.
+   * A concrete adapter (Vercel AI SDK, for example) is imported by the host
+   * from its own package, never from `@aao/framework`.
+   */
+  modelAdapters?: readonly ModelAdapterDefinition[];
+  /** Model bindings naming an exact `adapterRef`. Each binding's capabilities must be declared supported by its adapter. */
+  modelBindings?: readonly ModelBindingDefinition[];
+  /** Canonical Model Policies that `model` nodes and Agents reference by id. Routing stays the Model Runtime's. */
+  modelPolicies?: readonly ModelPolicySpec[];
+  /** Bounded Agents for `agent` nodes, executed by the canonical Agent Runtime only. */
+  agents?: readonly AgentDefinition[];
+  /** Trusted host code for `deterministic` nodes, referenced by exact `executorRef`. Not an adapter. */
+  deterministicExecutors?: readonly DeterministicExecutor[];
+  /** Optional emit-only Trace port (e.g. an `@aao/observability` recorder). Observational only: it never changes an outcome. */
+  trace?: RuntimeTracePort;
   clock?: AAOClock;
 }
 
@@ -64,20 +84,31 @@ export interface AAOApprovals {
   reject(approvalId: string, approver: Principal): ApprovalRecord;
 }
 
+/**
+ * Trusted host execution options for one prepared Workflow. They are never
+ * read from Workflow source or state. `reliability` is the Runtime's own
+ * per-node `ReliabilityPolicy` (bounded attempts, attempt timeout). The
+ * canonical Runtime validates it at execution, and an invalid policy is the
+ * Runtime's canonical failure, never a Framework one.
+ */
+export interface PrepareWorkflowOptions {
+  reliability?: { policiesByNodeId: Readonly<Record<string, ReliabilityPolicy>> };
+}
+
 export interface AAOApp {
   readonly apiVersion: typeof AAO_FRAMEWORK_API_VERSION;
   /** Compiles a canonical Workflow (no second compiler) into a `PreparedWorkflow`. Throws `AAOFrameworkError` on preparation failures only. */
-  prepareWorkflow(workflow: Workflow): PreparedWorkflow;
+  prepareWorkflow(workflow: Workflow, options?: PrepareWorkflowOptions): PreparedWorkflow;
   readonly approvals: AAOApprovals;
 }
 
 /**
- * Node kinds the stable Framework V1 surface executes. `model` and `agent`
- * need the model adapter contract (Sprint 20); `deterministic` and
- * `evaluator` nodes need host executors the public surface does not expose
- * yet. Such Workflows are refused at preparation instead of failing later.
+ * Node kinds the Framework executes. Since Sprint 20 (ADR-025) `model` and
+ * `agent` run through the stable adapter contract, and `deterministic`
+ * runs through registered trusted host executors. `evaluator` nodes have
+ * no executor and are refused at preparation instead of failing later.
  */
-const SUPPORTED_NODE_KINDS: readonly NodeKind[] = ["tool", "approval", "final_output"];
+const SUPPORTED_NODE_KINDS: readonly NodeKind[] = ["tool", "approval", "model", "agent", "deterministic", "final_output"];
 
 function sha256(value: unknown): string {
   return createHash("sha256").update(canonicalJsonStringify(value as JsonValue), "utf8").digest("hex");
@@ -104,10 +135,11 @@ function governedAuthorization(governance: GovernanceRegistry, tools: ToolRegist
 /**
  * Constructs one isolated AAO application: validate → register → freeze →
  * execute. Composes only existing AAO Core: a Governance registry, a Tool
- * Registry, an Approval Engine, and a Node Registry with the canonical
- * Tool, Approval, and `final_output` executors. No global registry, no
- * environment or filesystem discovery, no plugin loading; registration is
- * construction-time only.
+ * Registry, a Model Registry and Model Policy Registry, an Agent Registry,
+ * an Approval Engine, and a Node Registry with the canonical Tool, Model,
+ * Agent, deterministic, Approval, and `final_output` executors. There is no
+ * global registry, no environment or filesystem discovery, no plugin
+ * loading, and no adapter discovery. Registration is construction-time only.
  */
 export function createAAO(options: AAOOptions): AAOApp {
   if (options === null || typeof options !== "object") throw new AAOFrameworkError("FRAMEWORK_INVALID_CONFIGURATION", "createAAO requires an options object");
@@ -116,6 +148,9 @@ export function createAAO(options: AAOOptions): AAOApp {
   const clock: RuntimeClock = options.clock ?? createSystemClock();
   if (typeof clock?.now !== "function") throw new AAOFrameworkError("FRAMEWORK_INVALID_CONFIGURATION", "clock must provide now()");
   if (options.tools !== undefined && !Array.isArray(options.tools)) throw new AAOFrameworkError("FRAMEWORK_INVALID_CONFIGURATION", "tools must be an array");
+  if (options.deterministicExecutors !== undefined && !Array.isArray(options.deterministicExecutors)) throw new AAOFrameworkError("FRAMEWORK_INVALID_CONFIGURATION", "deterministicExecutors must be an array");
+  const trace = options.trace;
+  if (trace !== undefined && typeof trace?.emit !== "function") throw new AAOFrameworkError("FRAMEWORK_INVALID_CONFIGURATION", "trace must provide emit()");
 
   let governance: GovernanceRegistry;
   try {
@@ -136,14 +171,25 @@ export function createAAO(options: AAOOptions): AAOApp {
     }
   }
 
+  const { models, policies, agents } = composeModels(options);
+  let deterministic: NodeExecutor;
+  try {
+    deterministic = createDeterministicNodeExecutor(options.deterministicExecutors ?? []);
+  } catch (error) {
+    throw registrationFailure("FRAMEWORK_INVALID_CONFIGURATION", "deterministic executor", error);
+  }
+
   const approvalEngine = createApprovalEngine({ governance, clock });
   const nodes = createNodeRegistry();
   nodes.register(createToolNodeExecutor({ tools, resolveAuthorizationContext: governedAuthorization(governance, tools, principalForRun) }));
   nodes.register(createApprovalNodeExecutor(approvalEngine, (runId) => principalForRun(Object.freeze({ runId }))));
+  nodes.register(createModelNodeExecutor({ models, policies }));
+  nodes.register(createAgentNodeExecutor({ agents, models, policies }));
+  nodes.register(deterministic);
   nodes.register(finalOutputExecutor);
-  const runtimeOptions = Object.freeze({ clock });
+  const runtimeOptions = Object.freeze({ clock, ...(trace !== undefined ? { trace } : {}) });
 
-  function prepareWorkflow(input: Workflow): PreparedWorkflow {
+  function prepareWorkflow(input: Workflow, prepareOptions?: PrepareWorkflowOptions): PreparedWorkflow {
     const workflow = defineWorkflow(input);
     const compiled = compileWorkflow(workflow);
     if (!compiled.ok) throw new AAOFrameworkError("FRAMEWORK_WORKFLOW_COMPILE_FAILED", `workflow ${workflow.id}@${workflow.version} does not compile`, compiled.diagnostics);
@@ -157,12 +203,15 @@ export function createAAO(options: AAOOptions): AAOApp {
     }
     // The plan stays private to this closure: no caller reference can reach what the Runtime executes.
     const plan = compiled.plan;
+    // Snapshotted now (JSON copy), so later caller mutation cannot change a prepared Workflow's policy.
+    const policies = prepareOptions?.reliability?.policiesByNodeId;
+    const options = policies === undefined ? runtimeOptions : Object.freeze({ ...runtimeOptions, reliability: { policiesByNodeId: JSON.parse(JSON.stringify(policies)) as Record<string, ReliabilityPolicy> } });
     const planFingerprint = sha256(plan);
     return Object.freeze({
       workflow,
       planFingerprint,
-      execute: (request: ExecuteWorkflowInput) => executeWorkflow({ runId: request?.runId, initialState: request?.initialState, plan, registry: nodes, options: runtimeOptions }),
-      continue: (execution: RuntimeExecutionState) => continueApprovedWorkflow(approvalEngine, { plan, registry: nodes, execution, options: runtimeOptions }),
+      execute: (request: ExecuteWorkflowInput) => executeWorkflow({ runId: request?.runId, initialState: request?.initialState, plan, registry: nodes, options }),
+      continue: (execution: RuntimeExecutionState) => continueApprovedWorkflow(approvalEngine, { plan, registry: nodes, execution, options }),
     });
   }
 

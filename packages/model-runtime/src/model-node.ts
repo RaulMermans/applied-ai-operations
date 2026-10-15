@@ -78,7 +78,8 @@ export function createModelNodeExecutor(dependencies: ModelNodeExecutorDependenc
       const { modelPolicyRef, requestStateKey, resultStateKey } = verdict.config;
 
       const observer = context.trace ? modelTraceObserver(context.trace, context.attempt) : undefined;
-      const outcome = await executeModelRequest({ request: context.state.values[requestStateKey], modelPolicyRef, policies, models, ...(observer ? { observer } : {}) });
+      // The Runtime attempt's own signal: one cancellation lineage from attempt timeout to provider.
+      const outcome = await executeModelRequest({ request: context.state.values[requestStateKey], modelPolicyRef, policies, models, signal: context.signal, ...(observer ? { observer } : {}) });
       if (!outcome.ok) return { ok: false, failure: { namespace: MODEL_NODE_FAILURE_NAMESPACE, code: outcome.failure.code } };
       return { ok: true, statePatch: { [resultStateKey]: outcome.result } };
     },

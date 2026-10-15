@@ -67,6 +67,7 @@ Complete: Tool Registry, safe Tool execution, deterministic Authorization, and t
 | Sprint / outcome | Scope | Status |
 | --- | --- | --- |
 | Sprint 19 — Framework Surface | Proof-layer closure: `validateEvalSuiteReportIntegrity` recomputes a suite report's derived fields from its own cases, and the gate, comparison, baseline proposal, and analytics reject self-attested reports. `@aao/framework` is the recommended consumer façade over AAO Core:<br>• an explicit, snapshot-pinned root (`AAO_FRAMEWORK_API_VERSION` 1, no `export *`);<br>• `define*` helpers that validate the canonical contracts (Workflow, Tool, Governance, Eval, and declarative Agent / Model Policy);<br>• `createAAO`, an isolated, construction-time host that composes the existing Governance, Tool Runtime, Authorization, Approval Engine, and Runtime, with identity only from the host's `principalForRun`;<br>• `prepareWorkflow` through the canonical compiler, with `execute`/`continue` returning canonical Runtime results, and deep-equal equivalence with hand-composed Core;<br>• a truthful V1 scope: `tool`, `approval`, and `final_output` nodes, with other kinds refused at preparation;<br>• the canonical TypeScript `aao` CLI (`workflow validate|compile`, `eval ci|adapters|baseline propose`), replacing the Sprint 18 JavaScript host. `pnpm eval:*` are aliases that need no prior build, and their output is byte-identical to Sprint 18.<br>No adapter API, LangGraph support, durable framework host, file runner, plugin loading, Toolbox, UI, or publication. | Complete (`SPRINT_19_FRAMEWORK_SURFACE_COMPLETE`) — see [ADR-024](../decisions/ADR-024-public-framework-surface.md) |
+| Sprint 20 — Adapter & Portability Contract | `@aao/adapters`, the single vendor-free adapter-contract owner:<br>• `AAO_ADAPTER_CONTRACT_VERSION` 1 and conformance v1;<br>• `model` / `tool_provider` / `agent_runtime` kinds with kind-specific ports (no universal adapter), and MCP classified as `tool_provider`;<br>• a canonical capability catalog in AAO terms;<br>• strict, JSON-safe `AdapterManifest` V1 that is a claim, never authority;<br>• exact `id@version` refs, no runtime discovery or module loading, and deterministic compatibility checks;<br>• the canonical conformance suite as package data;<br>• `AdapterConformanceReport` V1 (`PASSED`/`FAILED`/`UNSUPPORTED`/`NOT_APPLICABLE`) with integrity validation;<br>• a generated compatibility matrix with no authority.<br>`ModelAdapter` (one owner, `@aao/model-runtime`) receives the Runtime attempt's `AbortSignal`, which the Vercel AI SDK adapter forwards to the provider. The Agent Runtime stops iterating once aborted. MCP retry safety is host-owned only, and retry safety ≠ recovery safety. `@aao/framework` registers model adapters, bindings, policies, Agents, and deterministic executors, and executes `model`, `agent`, and `deterministic` nodes. Continuation is non-mutating. Cross-adapter portability is proven end to end (native vs Vercel AI SDK + MCP). Official subjects use explicit package exports, and `@aao/framework/conformance` serves third parties.<br>No LangGraph adapter, marketplace, plugin discovery, Toolbox, integrations, side-effect enablement, or UI. | Complete (`SPRINT_20_ADAPTER_PORTABILITY_CONTRACT_COMPLETE`) — see [ADR-025](../decisions/ADR-025-adapter-and-portability-contract.md) |
 
 ## Forward roadmap
 
@@ -79,8 +80,8 @@ Complete: Tool Registry, safe Tool execution, deterministic Authorization, and t
 | 17 | Evaluation Runtime — versioned Eval definitions and datasets, deterministic and trajectory graders, OFFLINE/RUNTIME modes, `EvalResult` v2, Tool/Approval/Authorization/retry/state/Metrics graders, optional bounded model-judge port, portable verification | Complete |
 | 18 | Eval Analytics / CI Gates / Adapter Verification — comparison identity and semantic verdict fingerprints, case expectation verdicts, fingerprint-pinned fixtures (EvalDataset v2), approved baselines, deterministic offline CI gate, adapter conformance foundation | Complete |
 | 19 | Framework Surface — public `@aao/framework` façade (`define*`, `createAAO`), canonical `aao` CLI, Eval report integrity | Complete |
-| 20 | Adapter & Portability Contract | Next |
-| 21 | Toolbox Foundation | Planned |
+| 20 | Adapter & Portability Contract ✅ | Complete |
+| 21 | Toolbox Foundation | ← Next |
 | 22 | Company Research Proof | Planned |
 | 23 | Document Intelligence Proof | Planned |
 | 24 | Operational Request Proof | Planned |
@@ -100,14 +101,13 @@ Direction for the next portability-related sprints (documentation only; nothing 
   - No model adapter can propagate cancellation, because the ModelAdapter port has no abort signal.
   - LangGraph remains a deferred research spike.
 - **Sprint 19 (complete)** added the public framework surface without freezing any adapter semantics: model and agent execution through `@aao/framework` is refused at preparation until Sprint 20 defines the contract. Its concrete open questions are recorded in [framework surface § Sprint 20 handoff](../architecture/framework-surface.md#sprint-20-handoff).
-- **Sprint 20 — Adapter & Portability Contract** formalizes:
-  - `AdapterManifest`;
-  - capability declaration;
-  - a compatibility matrix;
-  - a conformance contract;
-  - AAO port interfaces.
+- **Sprint 20 (complete)** formalized the public adapter contract ([ADR-025](../decisions/ADR-025-adapter-and-portability-contract.md), [adapter contract](../architecture/adapter-contract.md)): `AdapterManifest`, capability declaration, a generated compatibility matrix, a versioned conformance contract, and AAO port interfaces. It verifies one principle: *external substrates implement AAO interfaces; they do not define AAO semantics.*
+- **Sprint 21 — Toolbox Foundation** can assume:
+  - provider-independent Tool capability;
+  - a stable Framework, adapter manifest, and conformance contract;
+  - a stable Tool-provider boundary: host binds a canonical `ToolSpec`, the Tool Runtime executes it, and retry safety is host-owned.
 
-  It verifies one principle: *external substrates implement AAO interfaces; they do not define AAO semantics.*
+  Toolbox Tools are AAO-native capabilities that need not know whether execution ultimately uses a local handler, MCP, REST, or a future provider.
 - **Toolbox (Sprint 21+) evaluators stay provider-neutral.** They assert the right *capability* was used (e.g. `crm.accounts.search`), not that a vendor SDK method was called, except in an explicit adapter-conformance eval.
 
 The framework surface (Sprint 19) already uses that governance boundary unchanged; the generic Toolbox, Integration Fabric, capability packs, and Control Center will use the same governance boundary and the same portable verification invariant (evaluation policies attach to AAO contracts and execution semantics, not to individual model, Tool, or orchestration frameworks). This roadmap adds no implementation or deployment commitment for those future layers.

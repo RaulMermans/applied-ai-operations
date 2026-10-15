@@ -5,9 +5,7 @@ Version-controlled evaluation assets for the AAO Evaluation Runtime (`@aao/evalu
 ```text
 evals/
 ├── definitions/runtime-foundation.v1.yaml        EvalDefinition v2 — what is judged, by which trusted grader
-├── definitions/adapter-conformance.v1.yaml       EvalDefinition v2 — adapter verification criteria (Sprint 18)
 ├── datasets/runtime-foundation.v2.yaml           EvalDataset v2 — 35 cases, fixture fingerprints pinned
-├── datasets/adapter-conformance-foundation.v1.yaml  EvalDataset v2 — 20 RUNTIME scenario cases
 ├── fixtures/*.json                               EvalEvidenceBundle — recorded canonical AAO evidence
 ├── baselines/runtime-foundation.v1.json          EvalBaseline v1 — approved comparison state (see baselines/README.md)
 └── gates/foundation-ci.v1.yaml                   EvalGatePolicy v1 — the deterministic CI gate
@@ -77,7 +75,7 @@ Schema version 1 datasets (unpinned fixtures, optional expectations) are refused
 
 ## Adapter verification
 
-`adapter-conformance.v1.yaml` and `adapter-conformance-foundation.v1.yaml` judge the canonical evidence that each substrate's own test driver produces (native Tool, MCP connector, native model, Vercel AI SDK). Evidence is `scenario://<id>`. The definitions and graders are the same Evaluation Runtime; there is no adapter-specific assertion engine. See [adapter verification](../docs/architecture/adapter-verification.md).
+The adapter conformance definitions and dataset moved in Sprint 20 from this directory into `@aao/adapters` (`ADAPTER_CONFORMANCE_SUITE`, dataset `aao.adapter-conformance@1.0.0`), so third-party adapters can be verified without repository paths. They are still ordinary `EvalDefinition`s and an `EvalDataset` judged by the same Evaluation Runtime, and there is no adapter-specific assertion engine. See the [adapter contract](../docs/architecture/adapter-contract.md).
 
 ## Regenerating fixtures
 

@@ -5,7 +5,7 @@
     // Typecheck without a prior build: the package's own tests (including the
     // consumer fixture they import) resolve the self-reference to source. The
     // compiled smoke compiles the consumer against dist/ declarations instead.
-    "paths": { "@aao/framework": ["./src/index.ts"] }
+    "paths": { "@aao/framework": ["./src/index.ts"], "@aao/framework/conformance": ["./src/conformance/index.ts"] }
   },
   "include": ["src", "test"],
   "exclude": ["test/consumer/.out/**"]

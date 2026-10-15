@@ -187,7 +187,7 @@ Deterministic graders use no clock and no randomness. The same definition, grade
 
 The datasets, definitions, and fixtures live in [`evals/`](../../evals/README.md):
 
-- `evals/definitions/runtime-foundation.v1.yaml` holds 22 definitions; `adapter-conformance.v1.yaml` holds 16 adapter verification definitions.
+- `evals/definitions/runtime-foundation.v1.yaml` holds 22 definitions. The adapter conformance definitions (18 since Sprint 20) moved into `@aao/adapters` as the canonical conformance suite ([ADR-025](../decisions/ADR-025-adapter-and-portability-contract.md)).
 - `evals/datasets/runtime-foundation.v2.yaml` (`aao.runtime-foundation@2.0.0`, schema 2) holds 35 fixture-pinned cases: desired behavior, forbidden behavior, deliberate evaluator-error cases, and the multi-Approval guard regressions.
 - `evals/fixtures/` holds the evidence, regenerated deterministically by tests from real Runs and recorder-validated synthetic Traces.
 

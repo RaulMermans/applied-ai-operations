@@ -23,6 +23,13 @@ export interface ExecuteModelRequestParams {
   models: ModelRegistry;
   /** Optional observer (ADR-020), told about each actual adapter invocation. Never consulted; a throwing observer changes nothing. */
   observer?: ModelInvocationObserver;
+  /**
+   * The caller's cancellation lineage (ADR-025): the Runtime attempt's
+   * signal, passed through unchanged to the adapter. Never replaced by a
+   * Model Runtime timer. When it is already aborted, no adapter is invoked.
+   * Without one, the adapter receives a signal that never aborts.
+   */
+  signal?: AbortSignal;
 }
 
 /**
@@ -81,6 +88,10 @@ export async function executeModelRequest(params: ExecuteModelRequestParams): Pr
     });
   }
 
+  const signal = params.signal ?? new AbortController().signal;
+  // Cancellation observed before the call: nothing is invoked, so this is not a model call (no observer event).
+  if (signal.aborted) return fail({ code: "MODEL_INVOCATION_FAILED", message: "Model invocation was cancelled before it started.", invocationId, modelBindingId: binding.id, details: { reason: "cancelled" } });
+
   const identity = binding.identity ? { modelIdentity: { ...binding.identity } } : {};
   if (params.observer) await notify(params.observer, "started", { invocationId, modelPolicyRef: policy.id, modelBindingId: binding.id, outputKind: request.output.kind, requiredCapabilityIds: [...required], ...identity });
   let adapterResult: unknown;
@@ -89,7 +100,7 @@ export async function executeModelRequest(params: ExecuteModelRequestParams): Pr
       messages: request.messages.map((message) => ({ ...message })),
       output: JSON.parse(JSON.stringify(request.output)) as ModelRequest["output"],
       ...(request.maxOutputTokens !== undefined ? { maxOutputTokens: request.maxOutputTokens } : {}),
-    });
+    }, Object.freeze({ signal }));
   } catch {
     // Never expose the thrown value (message, stack, URL, headers, ...).
     adapterResult = { status: "failed", reason: "provider_error" };

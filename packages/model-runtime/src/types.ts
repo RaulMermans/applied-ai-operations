@@ -165,7 +165,29 @@ export type ModelAdapterResult =
   | { status: "succeeded"; output: unknown; finishReason?: ModelFinishReason; usage?: ModelUsage }
   | { status: "failed"; reason: ModelAdapterFailureReason };
 
-/** The provider-neutral adapter boundary. No AI SDK, provider SDK, or raw HTTP types appear here. */
+/**
+ * The trusted execution context of one invocation (adapter contract v1,
+ * ADR-025). `signal` is the invocation's cancellation lineage: the same
+ * signal the Runtime aborts when it abandons the Node attempt (attempt
+ * timeout), passed through the Model Node or Agent Runtime and Model
+ * Runtime unchanged. It is always present. An adapter declaring
+ * `model.cancellation` must forward it to the provider boundary, and
+ * conformance verifies that. One that cannot must declare the capability
+ * `unsupported`. Either way a late result is ignored by the Runtime and
+ * cannot commit.
+ */
+export interface ModelAdapterContext {
+  readonly signal: AbortSignal;
+}
+
+/**
+ * The canonical, provider-neutral model adapter port (the public `model`
+ * adapter kind since Sprint 20; ADR-011, ADR-025). This interface is its
+ * only definition. No AI SDK, provider SDK, or raw HTTP type appears here.
+ * Pair it with an `AdapterManifest` through `defineModelAdapter` to
+ * register it with `@aao/framework`. A raw `ModelAdapter` in a low-level
+ * `ModelRegistry` claims no capability at all.
+ */
 export interface ModelAdapter {
-  invoke(request: ModelAdapterRequest): Promise<ModelAdapterResult>;
+  invoke(request: ModelAdapterRequest, context: ModelAdapterContext): Promise<ModelAdapterResult>;
 }

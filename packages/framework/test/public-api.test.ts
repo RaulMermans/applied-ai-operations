@@ -17,15 +17,23 @@ const frameworkSources = sourceFiles(srcRoot);
 const indexSource = code(join(srcRoot, "index.ts"));
 
 /**
- * THE public API snapshot (ADR-024). Everything exported from the
- * @aao/framework root is intentional consumer API: adding or removing a
- * symbol must change this list deliberately, and a breaking change needs
- * an ADR or migration note.
+ * THE public API snapshot (ADR-024, extended deliberately by ADR-025).
+ * Everything exported from the @aao/framework root is intentional consumer
+ * API: adding or removing a symbol must change this list deliberately, and
+ * a breaking change needs an ADR or migration note. Sprint 20 adds only the
+ * stable adapter-contract concepts (contract version, manifest definition,
+ * compatibility, the ModelAdapter port and `defineModelAdapter`), model and
+ * Agent registration types, the deterministic executor shape, and the
+ * optional Trace port type. Concrete adapters stay in their own packages.
  */
-const PUBLIC_VALUE_EXPORTS = ["AAOFrameworkError", "AAO_FRAMEWORK_API_VERSION", "createAAO", "defineAgent", "defineEval", "defineGovernance", "defineModelPolicy", "defineTool", "defineWorkflow"];
+const PUBLIC_VALUE_EXPORTS = [
+  "AAOFrameworkError", "AAO_ADAPTER_CONTRACT_VERSION", "AAO_FRAMEWORK_API_VERSION", "AdapterContractError", "checkAdapterCompatibility", "createAAO", "defineAdapterManifest", "defineAgent", "defineEval", "defineGovernance", "defineModelAdapter", "defineModelPolicy", "defineTool", "defineWorkflow",
+];
 const PUBLIC_TYPE_EXPORTS = [
-  "AAOApp", "AAOApprovals", "AAOClock", "AAOFrameworkDiagnostic", "AAOFrameworkErrorCode", "AAOOptions", "AgentSpec", "ApprovalRecord", "EvalDefinition", "ExecuteWorkflowInput", "GovernanceConfiguration",
-  "JsonObject", "JsonValue", "ModelPolicySpec", "PermissionClass", "PreparedWorkflow", "Principal", "PrincipalForRun", "RetrySafety", "RunState", "RuntimeExecutionState", "RuntimeFailure",
+  "AAOApp", "AAOApprovals", "AAOClock", "AAOFrameworkDiagnostic", "AAOFrameworkErrorCode", "AAOOptions", "AdapterCapability", "AdapterCompatibilityResult", "AdapterConformanceReport", "AdapterKind", "AdapterManifest", "AdapterManifestInput", "AdapterRef",
+  "AgentDefinition", "AgentSpec", "ApprovalRecord", "DeterministicExecutor", "DeterministicExecutorContext", "DeterministicExecutorResult", "EvalDefinition", "ExecuteWorkflowInput", "GovernanceConfiguration",
+  "JsonObject", "JsonValue", "ModelAdapter", "ModelAdapterContext", "ModelAdapterDefinition", "ModelAdapterRequest", "ModelAdapterResult", "ModelBindingDefinition", "ModelPolicySpec", "ModelRequest", "ModelResult",
+  "PermissionClass", "PrepareWorkflowOptions", "PreparedWorkflow", "Principal", "PrincipalForRun", "ReliabilityPolicy", "RetrySafety", "RunState", "RuntimeExecutionState", "RuntimeFailure", "RuntimeTracePort",
   "ToolDefinition", "ToolDefinitionInput", "ToolHandler", "ToolHandlerContext", "ToolHandlerResult", "ToolIdempotency", "ToolSpec", "Workflow", "WorkflowDiagnostic", "WorkflowExecutionResult",
 ];
 
@@ -71,8 +79,12 @@ describe("public API snapshot", () => {
       "createGovernanceRegistry", "resolveAuthority", "authorize", "authorizationContextFromAuthority", "createApprovalEngine", "createApprovalNodeExecutor", "createInMemoryApprovalRepository", "ApprovalRepository", "continueApprovedWorkflow",
       // Durability / observability / evaluation internals
       "createDurableRuntimeHost", "createFileDurableStore", "createTraceRecorder", "createAuditRecorder", "evaluateEvalGate", "buildEvalSuiteReport", "EvalSuiteReport", "runGatePipeline",
-      // Adapter contracts (Sprint 20)
-      "AdapterManifest", "AdapterVerificationDriver", "AdapterCapabilityMatrix", "defineAdapter", "registerAdapter", "registerModelAdapter", "registerLangGraph", "registerMCPAdapter", "ModelAdapter", "SUPPORTED", "UNSUPPORTED",
+      // Concrete adapters never come from the root (ADR-025): hosts import them from their own packages.
+      "VercelAIAdapter", "MCPAdapter", "createVercelAiModelAdapter", "defineVercelAiModelAdapter", "VERCEL_AI_SDK_ADAPTER_MANIFEST", "createMcpSession", "createMcpToolBinding", "MCP_CONNECTOR_ADAPTER_MANIFEST", "registerLangGraph", "LangGraphAdapter",
+      // No universal adapter, global registration, discovery, or loading.
+      "Adapter", "defineAdapter", "registerAdapter", "registerModelAdapter", "registerMCPAdapter", "discoverAdapters", "loadAdapter", "AdapterRegistry",
+      // Conformance and the matrix are the explicit "@aao/framework/conformance" subpath, and test subjects never leave it.
+      "verifyAdapterConformance", "evaluateAdapterConformance", "createConformanceDriver", "nativeModelReference", "nativeToolReference", "buildAdapterCompatibilityMatrix", "AdapterVerificationDriver", "AdapterCapabilityMatrix", "ADAPTER_CONFORMANCE_SUITE", "SUPPORTED", "UNSUPPORTED",
     ];
     for (const name of forbidden) expect(exported.has(name), name).toBe(false);
   });
@@ -92,7 +104,10 @@ describe("dependency boundaries", () => {
   });
 
   it("the framework imports no provider or framework SDK, and declares none as a dependency", () => {
-    for (const file of frameworkSources) expect(code(file), relative(packageRoot, file)).not.toMatch(/@modelcontextprotocol|@langchain|langgraph|from\s+["']ai["']|from\s+["']ai\/|@ai-sdk|openai|anthropic|express|fastify/i);
+    // Import specifiers only: the matrix may *name* LangGraph as deferred data, but nothing may import a vendor or protocol SDK.
+    for (const file of frameworkSources) {
+      for (const [, specifier] of code(file).matchAll(/(?:import|export)\s[^;]*?from\s+["']([^"']+)["']/g)) expect(specifier, relative(packageRoot, file)).not.toMatch(/@modelcontextprotocol|@langchain|langgraph|^ai$|^ai\/|@ai-sdk|openai|anthropic|express|fastify/i);
+    }
     const manifest = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")) as { dependencies: Record<string, string> };
     expect(Object.keys(manifest.dependencies).filter((name) => !name.startsWith("@aao/"))).toEqual([]);
   });
@@ -111,7 +126,9 @@ describe("dependency boundaries", () => {
     };
     visit(join(srcRoot, "index.ts"));
     expect([...visited].some((file) => file.includes(`${join("src", "cli")}`))).toBe(false);
-    expect([...bare].sort()).toEqual(["@aao/approval", "@aao/authorization", "@aao/contracts", "@aao/governance", "@aao/runtime", "@aao/tool-runtime", "@aao/workflow-dsl", "node:crypto"]);
+    // Sprint 20: the adapter contract, the Model Runtime root (never its vercel-ai subpath), and the Agent Runtime. No vendor, MCP, Evaluation, or observability.
+    expect([...bare].sort()).toEqual(["@aao/adapters", "@aao/agent-runtime", "@aao/approval", "@aao/authorization", "@aao/contracts", "@aao/governance", "@aao/model-runtime", "@aao/runtime", "@aao/tool-runtime", "@aao/workflow-dsl", "node:crypto"]);
+    expect([...visited].some((file) => file.includes(`${join("src", "conformance")}`))).toBe(false);
   });
 
   it("no dynamic loading, plugin loading, environment discovery, or schema library of its own", () => {
@@ -129,14 +146,18 @@ describe("internal API integrity: the façade calls Core, it does not copy it", 
   const all = frameworkSources.map(code).join("\n");
 
   it("composes the canonical Core functions", () => {
-    for (const fn of ["compileWorkflow", "executeWorkflow", "continueApprovedWorkflow", "createToolRegistry", "createToolNodeExecutor", "createGovernanceRegistry", "resolveAuthority", "authorizationContextFromAuthority", "createApprovalEngine", "createApprovalNodeExecutor", "createNodeRegistry", "finalOutputExecutor", "parseWorkflowSource", "compileWorkflowSource"]) {
+    for (const fn of ["compileWorkflow", "executeWorkflow", "continueApprovedWorkflow", "createToolRegistry", "createToolNodeExecutor", "createGovernanceRegistry", "resolveAuthority", "authorizationContextFromAuthority", "createApprovalEngine", "createApprovalNodeExecutor", "createNodeRegistry", "finalOutputExecutor", "parseWorkflowSource", "compileWorkflowSource", "createModelRegistry", "createModelPolicyRegistry", "createModelNodeExecutor", "createAgentRegistry", "createAgentNodeExecutor", "createDeterministicNodeExecutor", "defineModelAdapter"]) {
       expect(all, fn).toMatch(new RegExp(`\\b${fn}\\(|\\b${fn}\\b[),]`));
     }
   });
 
   it("re-implements none of them: no schema, compiler, allow/deny decision, approval state, Run lifecycle, or retry logic", () => {
     expect(all).not.toMatch(/\bz\.object|WorkflowSchema\s*=|function\s+(authorize|compile|executeWorkflow|continueWaitingWorkflow|transition\w+|fingerprintApprovalSubject|retry\w*)\b/);
-    expect(all).not.toMatch(/WAITING_FOR_APPROVAL|status\s*=\s*["'](approved|rejected|COMPLETED|FAILED)|grantedPermissionClasses\s*:/);
+    expect(all).not.toMatch(/WAITING_FOR_APPROVAL|status\s*=\s*["'](approved|rejected|COMPLETED|FAILED)/);
+    // The application host never fabricates an Authorization Context. Only the conformance host (src/conformance, a separate
+    // subpath unreachable from the root and from createAAO) states a scenario's test principal and grants, exactly as a trusted host does.
+    const host = frameworkSources.filter((file) => !file.includes(join("src", "conformance"))).map(code).join("\n");
+    expect(host).not.toMatch(/grantedPermissionClasses\s*:/);
     expect(all).not.toMatch(/SUPPORTED_TOOL_PERMISSION_CLASSES|checkToolPermissionSupport/);
   });
 
@@ -148,6 +169,10 @@ describe("internal API integrity: the façade calls Core, it does not copy it", 
     }
     const tracked = execFileSync("git", ["ls-files", "packages"], { cwd: repositoryRoot, encoding: "utf8" }).split("\n");
     expect(tracked.filter((file) => /eval-ci\.mjs|eval-adapters\.mjs|eval-baseline-propose\.mjs|cli\/host\.mjs|cli\/network-guard\.mjs/.test(file))).toEqual([]);
+  });
+
+  it("no second Model or Agent Runtime: the framework never invokes an adapter, routes a model, or loops an Agent itself", () => {
+    expect(all).not.toMatch(/\.invoke\(|executeModelRequest\(|executeAgent\(|selectModelBinding\(|deriveRequiredCapabilities\(|maxIterations\s*[<>]=?|for\s*\([^)]*iteration/);
   });
 
   it("no public Framework function accepts a caller-supplied EvalSuiteReport", () => {

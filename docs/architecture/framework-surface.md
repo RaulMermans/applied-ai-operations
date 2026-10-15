@@ -22,7 +22,7 @@ existing AAO Core
 ```
 
 - **Framework ≠ Runtime.** Execution is the Runtime's `executeWorkflow` / `continueApprovedWorkflow`, and its `WorkflowExecutionResult` is returned unchanged.
-- **Framework ≠ Adapter.** There is no model, MCP, or LangGraph adapter API. That is [Sprint 20](#sprint-20-handoff).
+- **Framework ≠ Adapter.** The Framework exports the stable adapter *contract* (Sprint 20, [ADR-025](../decisions/ADR-025-adapter-and-portability-contract.md)), never a concrete adapter. Hosts import the Vercel AI SDK adapter or the MCP connector from their own packages.
 - **Framework ≠ Toolbox.** There is no reusable Tool catalog. That is Sprint 21.
 
 The dependency direction is `@aao/framework → Core`, never the reverse. No Core package or app imports or depends on it, and a static test enforces this. Core never needs the façade: it is the authority the façade calls.
@@ -43,10 +43,23 @@ Lower-level packages evolve under their own contracts.
 | `AAOFrameworkError` | class | Preparation/composition errors: `code`, bounded `diagnostics` |
 | `createAAO` | function | The application host |
 | `defineWorkflow`, `defineTool`, `defineGovernance`, `defineEval`, `defineAgent`, `defineModelPolicy` | functions | Canonical definition validators |
+| `AAO_ADAPTER_CONTRACT_VERSION` | `1` | Adapter-contract version (Sprint 20), from `@aao/adapters` |
+| `defineAdapterManifest`, `checkAdapterCompatibility`, `AdapterContractError` | function / function / class | The manifest claim, pure compatibility, and adapter-contract errors, from `@aao/adapters` |
+| `defineModelAdapter` | function | Pairs a manifest with the canonical `ModelAdapter` port, from `@aao/model-runtime` |
 
-Types: `AAOApp`, `AAOApprovals`, `AAOClock`, `AAOOptions`, `AAOFrameworkDiagnostic`, `AAOFrameworkErrorCode`, `ExecuteWorkflowInput`, `PreparedWorkflow`, `PrincipalForRun`, `ToolDefinition`, and `ToolDefinitionInput`. The canonical Core types are re-exported by name, type-only: `Workflow`, `ToolSpec`, `ToolHandler`, `ToolHandlerContext`, `ToolHandlerResult`, `GovernanceConfiguration`, `Principal`, `PermissionClass`, `RetrySafety`, `ToolIdempotency`, `RunState`, `JsonValue`, `JsonObject`, `EvalDefinition`, `AgentSpec`, `ModelPolicySpec`, `ApprovalRecord`, `WorkflowExecutionResult`, `RuntimeExecutionState`, `RuntimeFailure`, and `WorkflowDiagnostic`. They are the Core types themselves, not copies.
+Types: `AAOApp`, `AAOApprovals`, `AAOClock`, `AAOOptions`, `AAOFrameworkDiagnostic`, `AAOFrameworkErrorCode`, `ExecuteWorkflowInput`, `PreparedWorkflow`, `PrepareWorkflowOptions`, `PrincipalForRun`, `ToolDefinition`, `ToolDefinitionInput`, `ModelBindingDefinition`, and `AgentDefinition`. The canonical Core types are re-exported by name, type-only:
 
-No public type contains a Vercel AI SDK, MCP SDK, LangGraph, provider SDK, or HTTP-framework type. The root's import graph reaches only `@aao/approval`, `@aao/authorization`, `@aao/contracts`, `@aao/governance`, `@aao/runtime`, `@aao/tool-runtime`, `@aao/workflow-dsl`, and `node:crypto`.
+- Workflow and state: `Workflow`, `RunState`, `JsonValue`, `JsonObject`, `WorkflowDiagnostic`.
+- Tools: `ToolSpec`, `ToolHandler`, `ToolHandlerContext`, `ToolHandlerResult`, `RetrySafety`, `ToolIdempotency`.
+- Governance and Approval: `GovernanceConfiguration`, `Principal`, `PermissionClass`, `ApprovalRecord`.
+- Execution: `WorkflowExecutionResult`, `RuntimeExecutionState`, `RuntimeFailure`, `RuntimeTracePort`, `ReliabilityPolicy`, `DeterministicExecutor`, `DeterministicExecutorContext`, `DeterministicExecutorResult`.
+- Definitions: `EvalDefinition`, `AgentSpec`, `ModelPolicySpec`.
+- Adapter contract: `AdapterManifest`, `AdapterManifestInput`, `AdapterKind`, `AdapterCapability`, `AdapterRef`, `AdapterCompatibilityResult`, `AdapterConformanceReport`.
+- Model port: `ModelAdapter`, `ModelAdapterContext`, `ModelAdapterRequest`, `ModelAdapterResult`, `ModelAdapterDefinition`, `ModelRequest`, `ModelResult`.
+
+They are the Core types themselves, not copies.
+
+No public type contains a Vercel AI SDK, MCP SDK, LangGraph, provider SDK, or HTTP-framework type. The root's import graph reaches only `@aao/adapters`, `@aao/agent-runtime`, `@aao/approval`, `@aao/authorization`, `@aao/contracts`, `@aao/governance`, `@aao/model-runtime` (root only, never `/vercel-ai`), `@aao/runtime`, `@aao/tool-runtime`, `@aao/workflow-dsl`, and `node:crypto`. Conformance verification is the separate, explicit `@aao/framework/conformance` subpath.
 
 ## Public vs internal
 
@@ -60,10 +73,13 @@ No public type contains a Vercel AI SDK, MCP SDK, LangGraph, provider SDK, or HT
 | Approval | via app (`app.approvals`, `prepared.continue`) | ✅ `@aao/approval` | Stable |
 | Eval definitions | ✅ `defineEval` | ✅ `@aao/evaluation` | Stable |
 | Eval CLI | ✅ `aao eval …` | ✅ internals | Stable |
-| Agent / model policy specs | ✅ declarative only | ✅ `@aao/agent-runtime`, `@aao/model-runtime` | Declarative |
-| Model / agent execution | ❌ refused at preparation | ✅ | Await Sprint 20 |
-| Model adapter | ❌ | ✅ `ModelAdapter`, Vercel AI SDK adapter | Await Sprint 20 |
-| MCP adapter API | ❌ | ✅ `@aao/mcp-connector` | Await Sprint 20 |
+| Agent / model policy specs | ✅ `defineAgent`, `defineModelPolicy` | ✅ `@aao/agent-runtime`, `@aao/model-runtime` | Stable |
+| Model / agent execution | ✅ `modelAdapters`, `modelBindings`, `modelPolicies`, `agents` | ✅ | Stable (Sprint 20) |
+| Model adapter contract | ✅ `defineModelAdapter`, `ModelAdapter`, manifest types | ✅ `@aao/model-runtime`, `@aao/adapters` | Stable (Sprint 20) |
+| Concrete adapters | ❌ never from the root | ✅ `@aao/model-runtime/vercel-ai`, `@aao/mcp-connector` | Stable |
+| MCP Tools | via `defineTool(createMcpToolBinding(...))` | ✅ `@aao/mcp-connector` | Stable; no general Tool-provider port |
+| Deterministic nodes | ✅ `deterministicExecutors` | ✅ `createDeterministicNodeExecutor` | Stable (Sprint 20) |
+| Adapter conformance | ✅ `@aao/framework/conformance` subpath | ✅ `@aao/evaluation`, `@aao/adapters` | Stable (Sprint 20) |
 | Durable execution | ❌ | ✅ `createDurableRuntimeHost` | Advanced, lower-level |
 | Trace / Metrics / Audit | ❌ | ✅ `@aao/observability` | Advanced, lower-level |
 | LangGraph | ❌ | research spike only | Deferred |
@@ -158,11 +174,18 @@ prepared.continue(execution) ──► continueApprovedWorkflow ──► Tool r
 - **Forged executions fail canonically.** A forged reference is `INVALID_APPROVAL_CONTEXT`, and a changed subject is `APPROVAL_REQUEST_MISMATCH`. In both cases the Tool never runs.
 - **Approvals are in memory.** They live in the app's memory and do not survive a restart. Restart-safe Approval waits use `@aao/durability`.
 
-## Framework V1 execution scope
+## Execution scope
 
-Framework V1 executes `tool`, `approval`, and `final_output` nodes through the existing Runtime, and nothing else.
+The Framework executes `tool`, `approval`, `model`, `agent`, `deterministic`, and `final_output` nodes through the existing Runtime (Sprint 19 V1, extended in Sprint 20).
 
-- **Other node kinds are refused at preparation.** `model`, `agent`, `deterministic`, and `evaluator` nodes produce `FRAMEWORK_FEATURE_NOT_AVAILABLE`, with one diagnostic per node. Model and agent execution need the model adapter contract (Sprint 20). Deterministic and evaluator nodes need host executors the public surface does not expose. Nothing is faked: there is no framework model adapter and no stub executor.
+- **Model nodes** run through Model Policy → Model Binding (exact `adapterRef`) → canonical Model Runtime → the registered `ModelAdapter`. The adapter receives the Runtime attempt's `AbortSignal`. The Framework never calls a provider SDK.
+- **Agent nodes** run through the native bounded Agent Runtime only. Max iterations, stopping rules, and model-call bounds are unchanged, and Agents get no Tool use.
+- **Deterministic nodes** run trusted host executors referenced by exact `config.executorRef`. These are not adapters.
+- **Construction-time checks.** A missing adapter, wrong version, wrong kind, or missing capability fails construction with `FRAMEWORK_INVALID_CONFIGURATION`, whose diagnostic code is the adapter-contract code (for example `ADAPTER_NOT_FOUND`), before any provider call.
+- **`evaluator` nodes are refused at preparation** with `FRAMEWORK_FEATURE_NOT_AVAILABLE`. Nothing is faked.
+- **Reliability.** `prepareWorkflow(workflow, { reliability: { policiesByNodeId } })` passes trusted per-node retry and timeout policy to the Runtime, which validates it.
+- **Trace.** `createAAO({ trace })` accepts an emit-only Trace port (an `@aao/observability` recorder). It is observational and never changes an outcome.
+- **Continuation is non-mutating.** `prepared.continue(execution)` returns a new execution and leaves its input unchanged, inherited from the Core fix.
 - **Unsupported permission classes stay unsupported.** `external_side_effect`, `destructive`, and `sensitive_data` Tools fail Runtime preflight with `TOOL_PERMISSION_UNSUPPORTED`, and the handler never runs, whatever the grants.
 - **Execution is in memory only.** For durable Runs, use `createDurableRuntimeHost` from `@aao/durability`.
 
@@ -172,9 +195,9 @@ Framework V1 executes `tool`, `approval`, and `final_output` nodes through the e
 | --- | --- |
 | `FRAMEWORK_INVALID_DEFINITION` | A `define*` input violates its canonical schema or registration rules |
 | `FRAMEWORK_WORKFLOW_COMPILE_FAILED` | `prepareWorkflow` compile failure; `diagnostics` are the compiler's canonical `WorkflowDiagnostic`s |
-| `FRAMEWORK_INVALID_CONFIGURATION` | `createAAO` options: Governance, Tools (including duplicates), clock |
+| `FRAMEWORK_INVALID_CONFIGURATION` | `createAAO` options: Governance, Tools (including duplicates), model adapters and bindings (diagnostic codes `ADAPTER_NOT_FOUND`, `ADAPTER_KIND_MISMATCH`, `ADAPTER_CAPABILITY_UNSUPPORTED`, `ADAPTER_DUPLICATE`, `ADAPTER_MANIFEST_INVALID`, `ADAPTER_CONTRACT_VERSION_UNSUPPORTED`), policies, Agents, deterministic executors, trace, clock |
 | `FRAMEWORK_PRINCIPAL_UNAVAILABLE` | No `principalForRun` |
-| `FRAMEWORK_FEATURE_NOT_AVAILABLE` | A node kind outside the V1 scope |
+| `FRAMEWORK_FEATURE_NOT_AVAILABLE` | An `evaluator` node |
 
 Errors are bounded: messages are capped, at most 50 diagnostics are kept, and no stack is included. Framework errors are for preparation and composition only. Once execution begins, Runtime, Tool, Authorization, and Approval failures are returned as the canonical `WorkflowExecutionResult`, never rewrapped. For example, `NODE_EXECUTION_FAILED` keeps `executorFailure: { namespace: "tool", code }`.
 
@@ -197,7 +220,7 @@ It requires deep-equal results: Run status, state revision and values, node stat
 The framework surface does not include:
 
 - a second Runtime, compiler, policy engine, Approval engine, retry engine, or Run state;
-- adapter APIs, manifests, capability or compatibility matrices, or a public conformance vocabulary;
+- concrete adapters, a general Tool-provider port, adapter discovery or module loading, or a global adapter registry;
 - LangGraph support;
 - `aao run <file>` (a Workflow file carries no trusted Tool code), `aao init`, or `create-aao`;
 - plugin loading or environment discovery;
@@ -207,17 +230,22 @@ The framework surface does not include:
 
 See [CLI](../framework/cli.md) and the [quickstart](../framework/quickstart.md).
 
-## Sprint 20 handoff
+## Sprint 20 handoff (resolved)
 
-These questions surfaced while building the surface. Sprint 19 deliberately leaves them open; they belong to the Adapter & Portability Contract.
+Every question Sprint 19 left open was decided by [ADR-025](../decisions/ADR-025-adapter-and-portability-contract.md):
 
-- **AdapterManifest.** What a substrate declares (identity, kind, version, supported AAO contract versions, capabilities), and whether the framework root ever accepts one.
-- **Adapter kind taxonomy.** Today the internal verification kinds are `tool` and `model`. MCP is a Tool *source* bound into `RegisteredTool`s, not a kind of its own. Sprint 20 must decide where MCP, agent orchestrators (LangGraph), and future workflow substrates sit.
-- **Capability declaration.** How an adapter states what it can do (structured output, tool calls, cancellation, retry safety), and how that relates to `ModelPolicySpec.requiredCapabilities` and the Tool support gate.
-- **Conformance vocabulary.** Whether `SUPPORTED` / `UNSUPPORTED` / `NOT_APPLICABLE` / `FAILED` becomes a public compatibility contract.
-- **`ModelAdapter` cancellation.** The port has no `AbortSignal`, so a Runtime attempt timeout cannot cancel provider work. Changing the port is a contract change.
-- **MCP retry safety.** MCP-backed Tools declare no retry or recovery safety, so they are never retried or recovery-replayed. Should a binding be able to declare it, and who attests it?
-- **Framework-level model registration.** The minimal public way to register a model route or adapter so `model` and `agent` nodes can run through `createAAO`, without exposing provider SDK types.
-- **Compatibility matrix.** Whether the adapter verification report becomes a published, versioned compatibility artifact.
-- **Host executors for `deterministic` nodes.** These are not adapters, but they also need a public executor shape. Decide whether that belongs with Sprint 20's port interfaces.
-- **Continuation input mutation.** `continueWaitingWorkflow` advances the caller's `execution` object in place. The framework passes it through unchanged to stay equivalent. Decide whether Core should copy instead, which would be a Runtime change for both paths.
+- **AdapterManifest and kinds.** `AdapterManifest` V1 lives in `@aao/adapters`, with the kinds `model`, `tool_provider` (MCP), and `agent_runtime` (none implemented; LangGraph deferred).
+- **Capabilities and conformance.** There is a canonical capability catalog. A binding's capabilities must be declared supported by its adapter. The public conformance vocabulary is `PASSED`, `FAILED`, `UNSUPPORTED`, and `NOT_APPLICABLE`, and there is a generated compatibility matrix.
+- **Cancellation.** `ModelAdapter` v1 carries `{ signal }` from the Runtime attempt to the provider.
+- **MCP retry safety.** It is host-owned only, and recovery safety stays the Tool Runtime's canonical derivation.
+- **Framework registration.** The Framework registers model adapters, bindings, policies, Agents, and deterministic executors.
+- **Continuation.** It is non-mutating in Core.
+
+## Sprint 21 handoff
+
+The Toolbox can rely on:
+
+- a stable Framework and a stable Tool-provider boundary (host-bound canonical `ToolSpec`, Tool Runtime execution, host-owned retry safety);
+- stable adapter manifests and a stable conformance contract.
+
+Toolbox capabilities are AAO-native and need not know whether execution uses a local handler, MCP, REST, or a future provider.

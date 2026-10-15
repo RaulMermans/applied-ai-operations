@@ -59,11 +59,13 @@ describe("@aao/model-runtime dependency boundary", () => {
     for (const forbidden of FORBIDDEN_IMPORT_SUBSTRINGS) expect(codeOnly).not.toContain(forbidden.toLowerCase());
   });
 
-  it("only the AI SDK adapter imports `ai`; generic modules import only @aao/contracts, @aao/runtime, zod, ajv", () => {
-    const generic = new Set(["@aao/contracts", "@aao/runtime", "zod", "ajv"]);
+  it("only the AI SDK adapter (and its conformance subject) imports `ai`; generic modules import only @aao/adapters, @aao/contracts, @aao/runtime, zod, ajv", () => {
+    const generic = new Set(["@aao/adapters", "@aao/contracts", "@aao/runtime", "zod", "ajv"]);
+    // The AI SDK adapter also pairs itself with its manifest; its conformance subject uses the SDK's deterministic mock (ai/test). Both are explicit subpaths, never the root.
+    const perFile: Record<string, Set<string>> = { [AI_SDK_ADAPTER]: new Set(["ai", "@aao/adapters"]), [join("adapters", "vercel-ai-conformance.ts")]: new Set(["ai/test", "@aao/adapters"]) };
     for (const file of sourceFiles) {
       const rel = relative(srcDir, file);
-      const allowed = rel === AI_SDK_ADAPTER ? new Set(["ai"]) : generic;
+      const allowed = perFile[rel] ?? generic;
       for (const specifier of importSpecifiers(file)) {
         expect(allowed.has(specifier), `${rel} imports unexpected module "${specifier}"`).toBe(true);
       }
@@ -83,6 +85,6 @@ describe("@aao/model-runtime dependency boundary", () => {
 
   it("declares exactly the expected production dependencies", () => {
     const packageJson = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")) as { dependencies?: Record<string, string> };
-    expect(Object.keys(packageJson.dependencies ?? {}).sort()).toEqual(["@aao/contracts", "@aao/runtime", "ai", "ajv", "zod"]);
+    expect(Object.keys(packageJson.dependencies ?? {}).sort()).toEqual(["@aao/adapters", "@aao/contracts", "@aao/runtime", "ai", "ajv", "zod"]);
   });
 });

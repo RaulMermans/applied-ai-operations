@@ -69,9 +69,10 @@ assert(regressed.ok && !regressed.decision.passed && regressed.decision.hardFail
 assert(renderGateOutcome(regressed, { format: 'text' }).exitCode === 1, 'hard failure did not exit 1');
 
 // --- 4. Adapter conformance subset. ---
-const conformance = await runAdapterConformance({ root: repositoryRoot });
+// Since Sprint 20 the suite ships with @aao/adapters and reports use the public AdapterConformanceReport v1 summary.
+const conformance = await runAdapterConformance();
 assert(conformance.ok && conformance.passed, 'adapter conformance failed');
-const supported = Object.fromEntries(conformance.reports.map((report) => [report.adapter.id, `${report.passed}/${report.supported}${report.unsupported ? ` +${report.unsupported} unsupported` : ''}${report.notApplicable ? ` +${report.notApplicable} n/a` : ''}`]));
+const supported = Object.fromEntries(conformance.reports.map((report) => [report.adapter.id, `${report.summary.passed}/${report.summary.passed + report.summary.failed}${report.summary.unsupported ? ` +${report.summary.unsupported} unsupported` : ''}${report.summary.notApplicable ? ` +${report.summary.notApplicable} n/a` : ''}`]));
 assert(conformance.portability.every((entry) => entry.consistent && entry.cases.length > 0), 'semantic verdicts diverged across substrates');
 assert(guard.attempts().length === 0, `network access attempted: ${guard.attempts()}`);
 

@@ -44,6 +44,17 @@ export type {
 
 export { createNodeRegistry } from "./registry.js";
 export { createRuntimeV1Registry, finalOutputExecutor } from "./default-registry.js";
+export {
+  createDeterministicNodeExecutor,
+  DeterministicExecutorRefSchema,
+  DeterministicNodeConfigSchema,
+  DETERMINISTIC_NODE_FAILURE_NAMESPACE,
+  type DeterministicExecutor,
+  type DeterministicExecutorContext,
+  type DeterministicExecutorRef,
+  type DeterministicExecutorResult,
+  type DeterministicNodeConfig,
+} from "./deterministic.js";
 export { applyStatePatch, cloneRunState, captureStateSnapshot } from "./state.js";
 export { runPreflight } from "./preflight.js";
 export { validateRuntimeInput } from "./runtime-input-validation.js";
