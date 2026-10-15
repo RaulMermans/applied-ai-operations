@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { EvalDatasetRefSchema, identifierSchema } from "@aao/contracts";
 import { ADAPTER_KINDS, AdapterCapabilitySchema, AdapterKindSchema, CapabilitySupportSchema, capabilitiesForKind } from "./capabilities.js";
-import { ConformanceOutcomeSchema, validateAdapterConformanceReportIntegrity, type AdapterConformanceReport, type ConformanceOutcome } from "./conformance/report.js";
+import { ConformanceOutcomeSchema, adapterConformancePassed, validateCompleteAdapterConformanceReport, type AdapterConformanceReport, type ConformanceOutcome } from "./conformance/report.js";
 import { conformanceScenariosForKind } from "./conformance/scenarios.js";
 import { AdapterContractError } from "./errors.js";
 import { deepFreeze } from "./json.js";
@@ -40,7 +40,7 @@ export type DeferredAdapterEntry = z.infer<typeof DeferredEntrySchema>;
 
 /**
  * The compatibility matrix: product and documentation evidence, generated
- * from manifests plus intact conformance reports. It is not runtime
+ * from manifests plus complete conformance reports. It is not runtime
  * authority. It cannot enable an adapter, authorize an actor, or grant a
  * permission. A deferred substrate (LangGraph) is listed outside the
  * conformance vocabulary, because no adapter exists to verify.
@@ -66,8 +66,11 @@ export interface AdapterMatrixEntryInput {
 }
 
 /**
- * Pure and deterministic. Each report must be intact and produced for its
- * manifest (`ADAPTER_CONFORMANCE_REPORT_INVALID` otherwise). Each
+ * Pure and deterministic. Each report must be complete canonical evidence
+ * for its manifest (`validateCompleteAdapterConformanceReport`). An intact
+ * but partial report is refused with its completeness code, so a scenario
+ * subset can never produce a green cell. Every report therefore shares the
+ * canonical dataset. Each
  * capability's conformance cell is derived from the report's own scenario
  * outcomes, never from the manifest. Entries are ordered by kind, then
  * reference before adapter, then id and version.
@@ -78,10 +81,9 @@ export function buildAdapterCompatibilityMatrix(params: { entries: readonly Adap
     const validated = validateAdapterManifest(entry.manifest);
     if (!validated.ok) throw new AdapterContractError(validated.code, "matrix entry manifest is invalid", validated.issues);
     const manifest = validated.manifest;
-    const integrity = validateAdapterConformanceReportIntegrity(entry.report, manifest);
-    if (!integrity.ok) throw new AdapterContractError("ADAPTER_CONFORMANCE_REPORT_INVALID", `conformance report for ${manifest.id}@${manifest.version} is not intact`, integrity.issues);
-    const report = integrity.report;
-    if (datasetRef !== undefined && (datasetRef.id !== report.datasetRef.id || datasetRef.version !== report.datasetRef.version)) throw new AdapterContractError("ADAPTER_CONFORMANCE_REPORT_INVALID", "every report in one matrix must come from the same conformance dataset");
+    const complete = validateCompleteAdapterConformanceReport(entry.report, manifest);
+    if (!complete.ok) throw new AdapterContractError(complete.codes[0]!, `conformance report for ${manifest.id}@${manifest.version} is not complete canonical evidence`, complete.issues);
+    const report = complete.report;
     datasetRef = report.datasetRef;
     const scenarios = conformanceScenariosForKind(manifest.kind);
     const statusOf = new Map(report.scenarios.map((scenario) => [scenario.scenarioId, scenario.status] as const));
@@ -89,11 +91,9 @@ export function buildAdapterCompatibilityMatrix(params: { entries: readonly Adap
       const declared = declaredSupport(manifest, capability)!;
       const covering = scenarios.filter((scenario) => scenario.requires.includes(capability)).map((scenario) => scenario.id);
       if (covering.length === 0) throw new AdapterContractError("ADAPTER_CONFORMANCE_REPORT_INVALID", `capability ${capability} has no canonical scenario`);
-      const statuses = covering.map((id) => statusOf.get(id));
-      if (statuses.some((status) => status === undefined)) throw new AdapterContractError("ADAPTER_CONFORMANCE_REPORT_INVALID", `report for ${manifest.id}@${manifest.version} is missing scenarios for ${capability}`);
-      return { capability, declared, conformance: capabilityOutcome(declared, statuses as ConformanceOutcome[]), scenarios: covering };
+      return { capability, declared, conformance: capabilityOutcome(declared, covering.map((id) => statusOf.get(id)!)), scenarios: covering };
     });
-    const baseInvariants = scenarios.filter((scenario) => scenario.requires.length === 0).map((scenario) => ({ scenarioId: scenario.id, status: statusOf.get(scenario.id) ?? ("FAILED" as const) }));
+    const baseInvariants = scenarios.filter((scenario) => scenario.requires.length === 0).map((scenario) => ({ scenarioId: scenario.id, status: statusOf.get(scenario.id)! }));
     return {
       id: manifest.id,
       version: manifest.version,
@@ -102,7 +102,7 @@ export function buildAdapterCompatibilityMatrix(params: { entries: readonly Adap
       reference: entry.reference,
       manifestFingerprint: adapterManifestFingerprint(manifest),
       reportFingerprint: report.fingerprint,
-      conformance: report.summary.failed === 0 && baseInvariants.every((invariant) => invariant.status === "PASSED") ? ("PASSED" as const) : ("FAILED" as const),
+      conformance: adapterConformancePassed(report, manifest) ? ("PASSED" as const) : ("FAILED" as const),
       capabilities,
       baseInvariants,
       limitations: (manifest.limitations ?? []).map((limitation) => ({ ...limitation })),

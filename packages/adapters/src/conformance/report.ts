@@ -4,7 +4,9 @@ import { AdapterCapabilitySchema, AdapterKindSchema } from "../capabilities.js";
 import { deepFreeze, jsonClone, sha256Hex } from "../json.js";
 import { AdapterIdSchema, AdapterVersionSchema, adapterManifestFingerprint, declaredSupport, type AdapterManifest } from "../manifest.js";
 import { AAO_ADAPTER_CONFORMANCE_VERSION, AAO_ADAPTER_CONTRACT_VERSION } from "../version.js";
-import type { AdapterConformanceScenario } from "./scenarios.js";
+import type { AdapterContractErrorCode } from "../errors.js";
+import { conformanceScenarioEvidenceRef, conformanceScenariosForKind, type AdapterConformanceScenario } from "./scenarios.js";
+import { ADAPTER_CONFORMANCE_SUITE } from "./suite.js";
 
 /**
  * The public conformance vocabulary (conformance v1):
@@ -115,6 +117,11 @@ export interface AdapterConformanceReportInput {
  * the summary, and the fingerprint are *derived* here, never supplied. A
  * claimed or base scenario is PASSED only with at least one case, every
  * case MATCHED, and no failing finding.
+ *
+ * Building a valid report does not imply complete conformance. The input
+ * may be any scenario subset (a development run), so the result is only
+ * intact. Full conformance is `validateCompleteAdapterConformanceReport`,
+ * and a PASS is `adapterConformancePassed`.
  */
 export function buildAdapterConformanceReport(input: AdapterConformanceReportInput): AdapterConformanceReport {
   const { manifest } = input;
@@ -147,6 +154,9 @@ export type AdapterConformanceReportIntegrity = { ok: true; report: AdapterConfo
  * fingerprint, and checks that claims and cases agree. With `manifest`, it
  * also checks that the report is about exactly that manifest (identity and
  * manifest fingerprint).
+ *
+ * Internal report consistency does not prove complete AAO conformance.
+ * Integrity says nothing about which scenarios were run.
  */
 export function validateAdapterConformanceReportIntegrity(input: unknown, manifest?: AdapterManifest): AdapterConformanceReportIntegrity {
   const parsed = AdapterConformanceReportSchema.safeParse(input);
@@ -178,10 +188,76 @@ export function validateAdapterConformanceReportIntegrity(input: unknown, manife
   return issues.length === 0 ? { ok: true, report } : { ok: false, issues };
 }
 
-/** "AAO conformance v1 PASS": an intact report of this suite version with no FAILED scenario. */
-export function adapterConformancePassed(report: unknown, manifest?: AdapterManifest): boolean {
-  const integrity = validateAdapterConformanceReportIntegrity(report, manifest);
-  return integrity.ok && integrity.report.conformanceVersion === AAO_ADAPTER_CONFORMANCE_VERSION && integrity.report.summary.failed === 0;
+export type AdapterConformanceCompletenessCode = Extract<
+  AdapterContractErrorCode,
+  "ADAPTER_CONFORMANCE_REPORT_INVALID" | "ADAPTER_CONFORMANCE_INCOMPLETE" | "ADAPTER_CONFORMANCE_DATASET_MISMATCH" | "ADAPTER_CONFORMANCE_SCENARIO_MISSING" | "ADAPTER_CONFORMANCE_SCENARIO_UNEXPECTED" | "ADAPTER_CONFORMANCE_SCENARIO_MISMATCH" | "ADAPTER_CONFORMANCE_CLAIM_MISMATCH"
+>;
+export type AdapterConformanceCompleteness = { ok: true; report: AdapterConformanceReport } | { ok: false; codes: AdapterConformanceCompletenessCode[]; issues: string[] };
+
+/**
+ * Full conformance, distinct from integrity. Integrity proves a report is
+ * internally consistent. It does not prove the report covers the suite: an
+ * intact report with no scenarios has `failed = 0`. This check requires, for
+ * exactly this manifest:
+ *
+ * - integrity (`ADAPTER_CONFORMANCE_REPORT_INVALID`);
+ * - the canonical dataset id and version (`ADAPTER_CONFORMANCE_DATASET_MISMATCH`);
+ * - every canonical scenario of the manifest's kind (`ADAPTER_CONFORMANCE_SCENARIO_MISSING`)
+ *   and no other (`ADAPTER_CONFORMANCE_SCENARIO_UNEXPECTED`). A kind with no
+ *   canonical scenario cannot be complete (`ADAPTER_CONFORMANCE_INCOMPLETE`);
+ * - each scenario's `requires` and, for one that ran with cases, its exact
+ *   canonical case ids and expectations (`ADAPTER_CONFORMANCE_SCENARIO_MISMATCH`);
+ * - each claim equal to `scenarioClaim(manifest, canonical scenario)`, so a
+ *   report can neither downgrade nor upgrade what the manifest declares
+ *   (`ADAPTER_CONFORMANCE_CLAIM_MISMATCH`).
+ *
+ * A partial report (a scenario subset, as development runs produce) stays
+ * a valid, intact report for inspection. It is never complete.
+ */
+export function validateCompleteAdapterConformanceReport(input: unknown, manifest: AdapterManifest): AdapterConformanceCompleteness {
+  const integrity = validateAdapterConformanceReportIntegrity(input, manifest);
+  if (!integrity.ok) return { ok: false, codes: ["ADAPTER_CONFORMANCE_REPORT_INVALID"], issues: integrity.issues };
+  const report = integrity.report;
+  const failures: Array<{ code: AdapterConformanceCompletenessCode; issue: string }> = [];
+  const fail = (code: AdapterConformanceCompletenessCode, issue: string) => failures.push({ code, issue });
+
+  const dataset = ADAPTER_CONFORMANCE_SUITE.dataset;
+  if (report.datasetRef.id !== dataset.id || report.datasetRef.version !== dataset.version) fail("ADAPTER_CONFORMANCE_DATASET_MISMATCH", `datasetRef: ${report.datasetRef.id}@${report.datasetRef.version} is not the canonical ${dataset.id}@${dataset.version}`);
+
+  const canonical = conformanceScenariosForKind(manifest.kind);
+  if (canonical.length === 0) fail("ADAPTER_CONFORMANCE_INCOMPLETE", `kind ${manifest.kind} has no canonical conformance scenario, so nothing can be fully verified`);
+  const reported = new Map(report.scenarios.map((scenario) => [scenario.scenarioId, scenario] as const));
+  for (const scenario of canonical) if (!reported.has(scenario.id)) fail("ADAPTER_CONFORMANCE_SCENARIO_MISSING", `scenarios: canonical scenario ${scenario.id} is missing`);
+  const expectedIds = new Set(canonical.map((scenario) => scenario.id));
+  for (const scenario of report.scenarios) if (!expectedIds.has(scenario.scenarioId)) fail("ADAPTER_CONFORMANCE_SCENARIO_UNEXPECTED", `scenarios: ${scenario.scenarioId} is not a canonical ${manifest.kind} scenario`);
+
+  for (const scenario of canonical) {
+    const entry = reported.get(scenario.id);
+    if (entry === undefined) continue;
+    if (entry.requires.length !== scenario.requires.length || entry.requires.some((capability, index) => capability !== scenario.requires[index])) fail("ADAPTER_CONFORMANCE_SCENARIO_MISMATCH", `scenarios.${scenario.id}.requires: does not match the canonical scenario`);
+    const claim = scenarioClaim(manifest, scenario);
+    if (entry.claim !== claim) fail("ADAPTER_CONFORMANCE_CLAIM_MISMATCH", `scenarios.${scenario.id}.claim: ${entry.claim} is not the manifest-derived ${claim}`);
+    // A scenario that ran either has no cases (a driver error, already FAILED) or exactly the canonical cases.
+    if (entry.cases.length === 0) continue;
+    const ref = conformanceScenarioEvidenceRef(scenario.id);
+    const canonicalCases = dataset.cases.filter((evalCase) => evalCase.evidenceRef === ref);
+    const sameCases = entry.cases.length === canonicalCases.length && canonicalCases.every((evalCase) => entry.cases.some((judged) => judged.caseId === evalCase.id && sha256Hex(judged.expected) === sha256Hex(evalCase.expected)));
+    if (!sameCases) fail("ADAPTER_CONFORMANCE_SCENARIO_MISMATCH", `scenarios.${scenario.id}.cases: do not match the canonical cases`);
+  }
+  if (failures.length > 0) return { ok: false, codes: [...new Set(failures.map((failure) => failure.code))], issues: failures.map((failure) => `${failure.code}: ${failure.issue}`) };
+  return { ok: true, report };
+}
+
+/**
+ * "AAO conformance v1 PASS": a complete report for exactly this manifest
+ * (`validateCompleteAdapterConformanceReport`) with no FAILED scenario and
+ * at least one PASSED scenario. An intact report is not enough: an empty or
+ * partial report never passes, and neither does one that verified nothing.
+ * UNSUPPORTED and NOT_APPLICABLE never count as passes.
+ */
+export function adapterConformancePassed(report: unknown, manifest: AdapterManifest): boolean {
+  const complete = validateCompleteAdapterConformanceReport(report, manifest);
+  return complete.ok && complete.report.conformanceVersion === AAO_ADAPTER_CONFORMANCE_VERSION && complete.report.summary.failed === 0 && complete.report.summary.passed > 0;
 }
 
 function deriveStatus(claim: ScenarioClaim, cases: readonly ConformanceCase[], findings: readonly ConformanceFinding[]): ConformanceOutcome {

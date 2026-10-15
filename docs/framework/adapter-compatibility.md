@@ -2,7 +2,7 @@
 
 # Adapter compatibility matrix
 
-Generated evidence for the official AAO adapters under adapter contract v1 and conformance suite v1 ([ADR-025](../decisions/ADR-025-adapter-and-portability-contract.md), [adapter contract](../architecture/adapter-contract.md)). Every "Conformance" cell comes from running the canonical scenarios through `verifyAdapterConformance`. None is typed by hand. "Declared" is what the adapter's manifest claims.
+Generated evidence for the official AAO adapters under adapter contract v1 and conformance suite v1 ([ADR-025](../decisions/ADR-025-adapter-and-portability-contract.md), [adapter contract](../architecture/adapter-contract.md)). Every "Conformance" cell comes from running the canonical scenarios through `verifyAdapterConformance`. None is typed by hand, and an adapter appears only with a complete canonical report for its own manifest, so a partial report cannot produce a cell. "Declared" is what the adapter's manifest claims. "Conformance" is what was verified.
 
 **This matrix is not runtime authority.** It cannot enable an adapter, authorize an actor, or grant a permission. A compatible adapter can still be unauthorized for a Run. Governance, Authorization, the Tool support gate, and Approval decide that.
 

@@ -41,7 +41,7 @@ Changing provider means changing host configuration. The Workflow, its compiled 
 
 ## What portability does not mean
 
-- **Not universal compatibility.** Only adapters that pass the canonical conformance suite for their declared capabilities are interchangeable, and only for those capabilities.
+- **Not universal compatibility.** Only adapters that pass the canonical conformance suite for their declared capabilities are interchangeable, and only for those capabilities. Passing means a complete canonical report for the adapter's own manifest (`adapterConformancePassed(report, manifest)`), never only an intact or partial one.
 - **Not authority.** A compatible, conformant adapter is still subject to Governance, Authorization, the Tool support gate, and Approval on every Run.
 - **Not side effects.** `external_side_effect`, `destructive`, and `sensitive_data` remain unsupported, whatever an adapter or server claims.
 - **Not LangGraph.** No `agent_runtime` adapter exists. The native bounded Agent Runtime is the reference semantics.

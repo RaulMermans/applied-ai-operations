@@ -132,6 +132,18 @@ Manifest claim ──► canonical scenarios (selected by the claim) ──► r
 
 Privacy is enforced on every running scenario. Seeded provider and server secrets must never appear in evidence (`ADAPTER_EVIDENCE_LEAK`). Reports carry identifiers, claims, outcomes, codes, and fingerprints only, and `validateAdapterConformanceReportIntegrity` rejects any self-attested field.
 
+### Claim, evidence, integrity, and full conformance
+
+| Term | Meaning | Checked by |
+| --- | --- | --- |
+| `AdapterManifest` | what the adapter claims | `validateAdapterManifest` |
+| Conformance report | the evidence gathered | `buildAdapterConformanceReport` (derives outcomes, summary, fingerprint) |
+| Report integrity | the report is internally consistent and about this manifest | `validateAdapterConformanceReportIntegrity` |
+| Full conformance | the complete canonical AAO suite for the kind was executed, with manifest-derived claims, on the canonical dataset | `validateCompleteAdapterConformanceReport(report, manifest)` |
+| AAO conformance v1 PASS | full conformance, no `FAILED`, at least one `PASSED` | `adapterConformancePassed(report, manifest)` |
+
+Internal report consistency does not prove complete AAO conformance. Building a valid report does not imply complete conformance either. An empty report is intact with `failed = 0`, but it is missing every scenario. Full conformance requires exactly the canonical scenarios of the manifest's kind (`ADAPTER_CONFORMANCE_SCENARIOS`, the one registry), their canonical `requires` and cases, the canonical dataset `aao.adapter-conformance@1.0.0`, and every claim equal to `scenarioClaim(manifest, scenario)`. A report cannot downgrade `supported` to `unsupported` to skip a scenario, cannot upgrade a declared-unsupported capability, and cannot mark an applicable scenario `NOT_APPLICABLE`. A restricted `verifyAdapterConformance({ subject, scenarios })` run is a partial report: useful locally, never a PASS. See [ADR-025 § Integrity is not completeness](../decisions/ADR-025-adapter-and-portability-contract.md#integrity-is-not-completeness-sprint-20-closure).
+
 ### Verifying a third-party adapter
 
 ```ts
@@ -139,9 +151,10 @@ import { verifyAdapterConformance, adapterConformancePassed } from "@aao/framewo
 import { defineAdapterManifest } from "@aao/framework";
 import { createAcmeModelAdapter } from "acme-aao-adapter";
 
+const manifest = defineAdapterManifest({ /* the adapter's own claim */ });
 const report = await verifyAdapterConformance({
   subject: {
-    manifest: defineAdapterManifest({ /* the adapter's own claim */ }),
+    manifest,
     sensitiveMarkers: ["acme-secret"],
     // A fresh adapter per scenario, scripted by the scenario's canonical parameters.
     prepare: (scenario) => {
@@ -150,11 +163,11 @@ const report = await verifyAdapterConformance({
     },
   },
 });
-adapterConformancePassed(report); // "AAO conformance v1 PASS" only when true
+adapterConformancePassed(report, manifest); // "AAO conformance v1 PASS" only for a complete report of this manifest
 ```
 
 There is no discovery and no module loading. The developer imports the adapter, the suite, and the verifier explicitly.
 
 ## The official matrix
 
-`aao adapters matrix --format json|markdown` regenerates [the compatibility matrix](../framework/adapter-compatibility.md) (`docs/generated/adapter-compatibility.json`) from manifests and fresh conformance reports. A test fails if the committed artifacts drift. The matrix is documentation evidence with `authority: "none"`. LangGraph appears only as `DEFERRED`.
+`aao adapters matrix --format json|markdown` regenerates [the compatibility matrix](../framework/adapter-compatibility.md) (`docs/generated/adapter-compatibility.json`) from manifests and fresh conformance reports. Only complete reports are accepted. A partial or self-downgraded report makes generation fail. A test fails if the committed artifacts drift. The matrix is documentation evidence with `authority: "none"`. LangGraph appears only as `DEFERRED`.

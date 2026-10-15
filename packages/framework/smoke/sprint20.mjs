@@ -14,11 +14,13 @@
 //  9. An unsupported side-effect class remains blocked.
 // 10. Continuation returns a new execution without mutating its input.
 // 11. The generated compatibility matrix reflects real conformance.
+// 12. Anti-self-attestation: an empty or partial conformance report is
+//     intact but never a full PASS; a real complete official report is.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
 import { URL, fileURLToPath } from 'node:url';
-import { ADAPTER_CONFORMANCE_SCENARIOS, validateAdapterManifest } from '@aao/adapters';
+import { ADAPTER_CONFORMANCE_SCENARIOS, ADAPTER_CONFORMANCE_SUITE, adapterConformancePassed, buildAdapterConformanceReport, validateAdapterConformanceReportIntegrity, validateAdapterManifest, validateCompleteAdapterConformanceReport } from '@aao/adapters';
 import { buildEvalComparisonKey, createEvaluatorRegistry, deterministicGraders, runEvalDataset, semanticVerdictFingerprint } from '@aao/evaluation';
 import { MCP_CONNECTOR_ADAPTER_MANIFEST, createMcpSession, createMcpToolBinding } from '@aao/mcp-connector';
 import { createMcpConformanceSubject } from '@aao/mcp-connector/conformance';
@@ -26,7 +28,7 @@ import { VERCEL_AI_SDK_ADAPTER_MANIFEST } from '@aao/model-runtime/vercel-ai';
 import { createVercelAiConformanceSubject } from '@aao/model-runtime/vercel-ai/conformance';
 import { createInMemoryTraceStore, createTraceRecorder } from '@aao/observability';
 import { createAAO, defineModelAdapter, defineTool } from '../dist/index.js';
-import { NATIVE_MODEL_REFERENCE_MANIFEST, NATIVE_TOOL_REFERENCE_MANIFEST, createConformanceDriver, verifyAdapterConformance } from '../dist/conformance/index.js';
+import { NATIVE_MODEL_REFERENCE_MANIFEST, NATIVE_TOOL_REFERENCE_MANIFEST, createConformanceDriver, nativeToolReference, verifyAdapterConformance } from '../dist/conformance/index.js';
 import { runAdaptersMatrix } from '../dist/cli/eval/adapters.js';
 
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
@@ -160,6 +162,16 @@ assert(matrix.exitCode === 0 && matrix.output === readFileSync(join(repositoryRo
 const parsed = JSON.parse(matrix.output);
 assert(parsed.authority === 'none' && parsed.deferred.some((entry) => entry.id === 'langgraph' && entry.status === 'DEFERRED'), 'matrix authority or LangGraph deferral is wrong');
 
+// --- 12. Full conformance, not report integrity, is a PASS. ---
+const datasetRef = { id: ADAPTER_CONFORMANCE_SUITE.dataset.id, version: ADAPTER_CONFORMANCE_SUITE.dataset.version };
+const empty = buildAdapterConformanceReport({ manifest: MCP_CONNECTOR_ADAPTER_MANIFEST, datasetRef, scenarios: [], findings: [] });
+assert(validateAdapterConformanceReportIntegrity(empty, MCP_CONNECTOR_ADAPTER_MANIFEST).ok && empty.summary.failed === 0, 'an empty report should be intact');
+assert(!validateCompleteAdapterConformanceReport(empty, MCP_CONNECTOR_ADAPTER_MANIFEST).ok && !adapterConformancePassed(empty, MCP_CONNECTOR_ADAPTER_MANIFEST), 'an empty conformance report passed');
+const partial = await verifyAdapterConformance({ subject: nativeToolReference(), scenarios: [scenario('tool.success-structured-result')] });
+assert(partial.summary.failed === 0 && !adapterConformancePassed(partial, NATIVE_TOOL_REFERENCE_MANIFEST), 'a partial conformance report passed');
+assert(validateCompleteAdapterConformanceReport(mcpReport, MCP_CONNECTOR_ADAPTER_MANIFEST).ok && adapterConformancePassed(mcpReport, MCP_CONNECTOR_ADAPTER_MANIFEST), 'the complete official MCP report did not pass');
+assert(parsed.adapters.every((adapter) => adapter.conformance === 'PASSED'), 'an official adapter is not PASSED in the matrix');
+
 await Promise.all(sessions.map((session) => session.close()));
-process.stdout.write(`${JSON.stringify({ manifests: 4, portable: { planFingerprint: a.planFingerprint.slice(0, 12), trajectory: trajectory(a), evals: verdictsA.length }, cancellationObserved: true, mcp: status, sideEffectBlocked: true, matrixAdapters: parsed.adapters.length })}\n`);
+process.stdout.write(`${JSON.stringify({ manifests: 4, portable: { planFingerprint: a.planFingerprint.slice(0, 12), trajectory: trajectory(a), evals: verdictsA.length }, cancellationObserved: true, mcp: status, sideEffectBlocked: true, matrixAdapters: parsed.adapters.length, fullConformance: { empty: false, partial: false, mcpComplete: true } })}\n`);
 process.stdout.write('SPRINT_20_ADAPTER_PORTABILITY_CONTRACT_SMOKE_OK\n');

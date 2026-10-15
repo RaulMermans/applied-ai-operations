@@ -2,12 +2,12 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
-import { ADAPTER_CONFORMANCE_SCENARIOS, ADAPTER_CONFORMANCE_SUITE, adapterConformancePassed, defineAdapterManifest, validateAdapterConformanceReportIntegrity, type AdapterConformanceReport, type AdapterConformanceScenario } from "@aao/adapters";
+import { ADAPTER_CONFORMANCE_SCENARIOS, ADAPTER_CONFORMANCE_SUITE, adapterConformancePassed, buildAdapterCompatibilityMatrix, defineAdapterManifest, validateAdapterConformanceReportIntegrity, validateCompleteAdapterConformanceReport, type AdapterConformanceReport, type AdapterConformanceScenario } from "@aao/adapters";
 import { AdapterConformanceError, createEvaluatorRegistry, deterministicGraders } from "@aao/evaluation";
 import { createMcpConformanceSubject } from "@aao/mcp-connector/conformance";
 import { createVercelAiConformanceSubject } from "@aao/model-runtime/vercel-ai/conformance";
 import { createConformanceDriver, nativeModelReference, nativeToolReference, verifyAdapterConformance, type ModelConformanceSubject, type ToolProviderConformanceSubject } from "@aao/framework/conformance";
-import { renderConformance, renderMatrixMarkdown, runAdapterConformance, runAdaptersMatrix } from "../src/cli/eval/adapters.js";
+import { officialConformanceSubjects, renderConformance, renderMatrixMarkdown, runAdapterConformance, runAdaptersMatrix } from "../src/cli/eval/adapters.js";
 import { installNetworkGuard } from "../src/cli/eval/network-guard.js";
 
 /**
@@ -47,6 +47,15 @@ describe("official adapters: the exact, truthful conformance table", () => {
       expect(report.conformanceVersion).toBe(1);
       expect(report.adapter.adapterContractVersion).toBe(1);
       expect(validateAdapterConformanceReportIntegrity(JSON.parse(JSON.stringify(report))).ok, report.adapter.id).toBe(true);
+    }
+    // Genuine full conformance: every official report is intact, complete for its own manifest, and a PASS.
+    const manifests = new Map(officialConformanceSubjects().map(({ subject }) => [subject.manifest.id, subject.manifest] as const));
+    expect([...manifests.keys()]).toEqual(["aao.native-tool", "aao.mcp-connector", "aao.native-model", "aao.vercel-ai-sdk"]);
+    for (const report of outcome().reports) {
+      const manifest = manifests.get(report.adapter.id)!;
+      expect(validateAdapterConformanceReportIntegrity(JSON.parse(JSON.stringify(report)), manifest).ok, report.adapter.id).toBe(true);
+      expect(validateCompleteAdapterConformanceReport(JSON.parse(JSON.stringify(report)), manifest), report.adapter.id).toEqual({ ok: true, report: JSON.parse(JSON.stringify(report)) });
+      expect(adapterConformancePassed(report, manifest), report.adapter.id).toBe(true);
     }
     const rendered = renderConformance(outcome(), "text");
     expect(rendered.exitCode).toBe(0);
@@ -165,7 +174,7 @@ describe("truthfulness: claims are verified, never trusted", () => {
     const report = await verifyAdapterConformance({ subject: ignoringSignal() });
     expect(statuses(report)["model.cancellation-propagated"]).toBe("FAILED");
     expect(report.findings).toContainEqual({ code: "ADAPTER_BOUNDARY_UNOBSERVED", scenarioId: "model.cancellation-propagated" });
-    expect(adapterConformancePassed(report)).toBe(false);
+    expect(adapterConformancePassed(report, ignoringSignal().manifest)).toBe(false);
   });
 
   it("a conservative under-claim is allowed: model.cancellation declared unsupported is UNSUPPORTED and conformance infers nothing", async () => {
@@ -173,7 +182,7 @@ describe("truthfulness: claims are verified, never trusted", () => {
     const manifest = defineAdapterManifest({ ...reference.manifest, id: "test.underclaims", capabilities: reference.manifest.capabilities.map((entry) => (entry.capability === "model.cancellation" ? { ...entry, support: "unsupported" as const } : entry)) });
     const report = await verifyAdapterConformance({ subject: { ...reference, manifest } });
     expect(statuses(report)["model.cancellation-propagated"]).toBe("UNSUPPORTED");
-    expect(adapterConformancePassed(report)).toBe(true);
+    expect(adapterConformancePassed(report, manifest)).toBe(true);
   });
 
   it("a false tool.retryable_failure claim (the handler never reports retryable) fails the transient-retry scenario", async () => {
@@ -198,10 +207,33 @@ describe("truthfulness: claims are verified, never trusted", () => {
     expect(statuses(report)["tool.unsafe-default-no-retry"]).toBe("FAILED");
   });
 
-  it("a wrong-kind scenario is NOT_APPLICABLE, never support", async () => {
-    const report = await verifyAdapterConformance({ subject: nativeToolReference(), scenarios: [scenario("model.structured-output"), scenario("tool.success-structured-result")] });
+  it("a wrong-kind scenario is NOT_APPLICABLE, never support, and such a run is not canonical evidence", async () => {
+    const subject = nativeToolReference();
+    const report = await verifyAdapterConformance({ subject, scenarios: [scenario("model.structured-output"), scenario("tool.success-structured-result")] });
     expect(statuses(report)).toEqual({ "model.structured-output": "NOT_APPLICABLE", "tool.success-structured-result": "PASSED" });
     expect(report.summary).toEqual({ total: 2, passed: 1, failed: 0, unsupported: 0, notApplicable: 1 });
+    expect(validateCompleteAdapterConformanceReport(report, subject.manifest)).toMatchObject({ ok: false, codes: ["ADAPTER_CONFORMANCE_SCENARIO_MISSING", "ADAPTER_CONFORMANCE_SCENARIO_UNEXPECTED"] });
+    expect(adapterConformancePassed(report, subject.manifest)).toBe(false);
+  });
+
+  it("a partial development run (one scenario) is an intact, inspectable report, never a full PASS", async () => {
+    const subject = nativeModelReference();
+    const report = await verifyAdapterConformance({ subject, scenarios: [scenario("model.structured-output")] });
+    expect(statuses(report)).toEqual({ "model.structured-output": "PASSED" });
+    expect(report.summary).toEqual({ total: 1, passed: 1, failed: 0, unsupported: 0, notApplicable: 0 });
+    expect(validateAdapterConformanceReportIntegrity(report, subject.manifest).ok).toBe(true);
+    expect(validateCompleteAdapterConformanceReport(report, subject.manifest)).toMatchObject({ ok: false, codes: ["ADAPTER_CONFORMANCE_SCENARIO_MISSING"] });
+    expect(adapterConformancePassed(report, subject.manifest)).toBe(false);
+  });
+
+  it("a mutated canonical scenario (narrowed requires) yields a report that cannot claim full conformance", async () => {
+    const subject = nativeModelReference();
+    const narrowed: AdapterConformanceScenario = { ...scenario("model.cancellation-propagated"), requires: ["model.text_generation"] };
+    const canonical = ADAPTER_CONFORMANCE_SCENARIOS.filter((entry) => entry.kind === "model").map((entry) => (entry.id === narrowed.id ? narrowed : entry));
+    const report = await verifyAdapterConformance({ subject, scenarios: canonical });
+    expect(report.summary.failed).toBe(0);
+    expect(validateCompleteAdapterConformanceReport(report, subject.manifest)).toMatchObject({ ok: false, codes: ["ADAPTER_CONFORMANCE_SCENARIO_MISMATCH"] });
+    expect(adapterConformancePassed(report, subject.manifest)).toBe(false);
   });
 
   it("a throwing subject fails every running scenario (ADAPTER_DRIVER_ERROR) without leaking; leaked provider content fails (ADAPTER_EVIDENCE_LEAK)", async () => {
@@ -267,6 +299,56 @@ describe("conformance evidence is private, deterministic, and offline", () => {
   it("reports, matrix, and CLI output carry identifiers, statuses, codes, and fingerprints only", () => {
     const serialized = JSON.stringify([outcome(), renderConformance(outcome(), "json").output, renderMatrixMarkdown(outcome().matrix)]);
     for (const forbidden of ["Local Test Account", "Conformance answer", "Classify: quarterly", "secret-token", "sk-live", "sk-native", "api.example.com", "native-provider-secret", "bypass authorization", "structuredContent", "toolName", "safeToRetry", "a-1\""]) expect(serialized, forbidden).not.toContain(forbidden);
+  });
+
+  it("SECRET_DO_NOT_PERSIST seeded through adapter config, provider errors, model results, Tool errors, and Tool output never reaches a report, Eval result, matrix, Trace, or CLI output", async () => {
+    const SECRET = "SECRET_DO_NOT_PERSIST";
+    const model = nativeModelReference();
+    const secretModel: ModelConformanceSubject = {
+      manifest: defineAdapterManifest({ ...model.manifest, id: "test.secret-model" }),
+      sensitiveMarkers: [SECRET],
+      prepare(target) {
+        const config = Object.freeze({ apiKey: SECRET });
+        const prepared = model.prepare(target);
+        const invoke = prepared.adapter.invoke.bind(prepared.adapter);
+        return {
+          ...prepared,
+          adapter: {
+            async invoke(request, context) {
+              if ((target.parameters as { outcome: string }).outcome === "provider_error") throw new Error(`provider failed with ${config.apiKey}`);
+              const result = await invoke(request, context);
+              return result.status === "succeeded" ? ({ ...result, providerMetadata: { raw: config.apiKey } } as typeof result) : result;
+            },
+          },
+        };
+      },
+    };
+    const tool = nativeToolReference();
+    const secretTool: ToolProviderConformanceSubject = {
+      manifest: defineAdapterManifest({ ...tool.manifest, id: "test.secret-tool" }),
+      sensitiveMarkers: [SECRET],
+      async prepare(target, host) {
+        const prepared = await tool.prepare(target, host);
+        const execute = prepared.tool.handler.execute;
+        return { ...prepared, tool: { ...prepared.tool, handler: { execute: async (context) => { const result = await execute(context); if (!result.ok && !result.retryable) throw new Error(`remote said ${SECRET}`); return result; } } } };
+      },
+    };
+    const reports = [await verifyAdapterConformance({ subject: secretModel }), await verifyAdapterConformance({ subject: secretTool })];
+    const manifests = [secretModel.manifest, secretTool.manifest];
+    reports.forEach((report, index) => expect(adapterConformancePassed(report, manifests[index]!), report.adapter.id).toBe(true));
+    // Tool output outside the host schema fails the Run, and still never reaches canonical evidence.
+    const leakyOutput: ToolProviderConformanceSubject = {
+      ...secretTool,
+      async prepare(target, host) {
+        const prepared = await secretTool.prepare(target, host);
+        return { ...prepared, tool: { ...prepared.tool, handler: { execute: async () => ({ ok: true, output: { id: "a-1", name: "x", token: SECRET } }) } } };
+      },
+    };
+    const execution = await createConformanceDriver(leakyOutput).executeScenario(scenario("tool.success-structured-result"));
+    expect(execution.evidence.execution?.run.status).toBe("FAILED");
+    const matrix = buildAdapterCompatibilityMatrix({ entries: reports.map((report, index) => ({ manifest: manifests[index]!, report, reference: false })) });
+    const cli = renderConformance({ ok: true, passed: true, reports, portability: [], matrix }, "json").output + renderConformance({ ok: true, passed: true, reports, portability: [], matrix }, "text").output;
+    expect(JSON.stringify([reports, matrix, renderMatrixMarkdown(matrix), cli, execution])).not.toContain(SECRET);
   });
 
   it("a second run produces deep-equal reports and matrix, with no network access", async () => {

@@ -6,7 +6,8 @@
 // AdapterManifest V1, exact adapter references, registration-time
 // compatibility, the canonical conformance suite (scenarios, Eval
 // definitions, dataset), the public conformance vocabulary and
-// AdapterConformanceReport V1 with integrity validation, and the
+// AdapterConformanceReport V1 with integrity validation and the separate
+// full-conformance (completeness) validation, and the
 // generated compatibility matrix.
 //
 // It depends only on @aao/contracts and zod. It imports no vendor SDK, no
@@ -77,6 +78,7 @@ export {
   scenarioClaim,
   buildAdapterConformanceReport,
   validateAdapterConformanceReportIntegrity,
+  validateCompleteAdapterConformanceReport,
   adapterConformancePassed,
   type ConformanceOutcome,
   type ScenarioClaim,
@@ -87,5 +89,7 @@ export {
   type AdapterConformanceReport,
   type AdapterConformanceReportInput,
   type AdapterConformanceReportIntegrity,
+  type AdapterConformanceCompleteness,
+  type AdapterConformanceCompletenessCode,
 } from "./conformance/report.js";
 export { AdapterCompatibilityMatrixSchema, buildAdapterCompatibilityMatrix, type AdapterCompatibilityMatrix, type AdapterMatrixEntryInput, type DeferredAdapterEntry } from "./matrix.js";
