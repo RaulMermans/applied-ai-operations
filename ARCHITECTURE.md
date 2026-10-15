@@ -34,7 +34,7 @@ flowchart TB
 Developer → @aao/framework (definitions · app host · CLI) → AAO Core → Runtime / Governance / Evaluation
 ```
 
-Dependencies run one way, `framework → core`, and Core never imports it. The root exports an explicit, snapshot-pinned allowlist with no vendor types. Framework errors cover preparation only, and Runtime failures stay canonical. Framework V1 executes `tool`, `approval`, and `final_output` nodes, and adapter contracts remain Sprint 20. See [framework surface](docs/architecture/framework-surface.md).
+Dependencies run one way, `framework → core`, and Core never imports it. The root exports an explicit, snapshot-pinned allowlist with no vendor types. Framework errors cover preparation only, and Runtime failures stay canonical. Since Sprint 20 the Framework executes `tool`, `approval`, `model`, `agent`, `deterministic`, and `final_output` nodes, through the adapter contract below. See [framework surface](docs/architecture/framework-surface.md).
 
 ## Canonical domain contracts
 
@@ -145,7 +145,7 @@ Discovery → explicit trusted binding → Tool Registry → executeTool
 → structured output normalization → AAO output validation → ToolResult
 ```
 
-SDK types, subprocess configuration, and sessions stay inside infrastructure configuration. The generic Runtime, Agent Runtime, Authorization, and Tool Runtime remain MCP-unaware. No HTTP, OAuth, resources, prompts, sampling, Agent Tool use, retry, reconnect, or persistence is implemented. See [ADR-015](docs/decisions/ADR-015-mcp-integration-boundary-and-tool-adapter-sessions.md) and [MCP connector](docs/architecture/mcp-connector.md).
+SDK types, subprocess configuration, and sessions stay inside infrastructure configuration. The generic Runtime, Agent Runtime, Authorization, and Tool Runtime remain MCP-unaware. No HTTP, OAuth, resources, prompts, sampling, Agent Tool use, reconnect, or persistence is implemented. The connector never retries. Since Sprint 20 a host may declare a `read_only` binding retry-safe (never from server metadata), and then the *Runtime* may retry a transient remote failure. See [ADR-015](docs/decisions/ADR-015-mcp-integration-boundary-and-tool-adapter-sessions.md) and [MCP connector](docs/architecture/mcp-connector.md).
 
 ## Runtime reliability
 
@@ -250,6 +250,22 @@ Sprint 18 turns evaluation evidence into deterministic quality control, still ou
 
 See [ADR-023](docs/decisions/ADR-023-eval-analytics-ci-gates-and-adapter-verification.md), [eval analytics & CI](docs/architecture/eval-analytics-ci.md), and [adapter verification](docs/architecture/adapter-verification.md).
 
+## Adapter and portability contract
+
+Sprint 20 makes substrate independence a public, versioned contract. AAO business logic, workflow semantics, governance, evaluation, and durability remain independent of concrete model, Tool, and agent frameworks. Adapters map external substrate behavior into canonical AAO contracts, and never redefine them.
+
+```text
+AAO semantics → Adapter Contract (@aao/adapters, v1) → Model Adapter | Tool Provider | Agent Runtime (none yet) → provider / MCP / future
+Manifest claim → canonical conformance (real AAO Runs, Evaluation Runtime) → AdapterConformanceReport v1 → generated compatibility matrix
+```
+
+- **One vendor-free owner.** `@aao/adapters` holds the contract version, kinds, capability catalog, `AdapterManifest` V1, exact refs, compatibility, the conformance suite, the report with integrity validation, and the matrix. It depends only on `@aao/contracts`.
+- **Kind-specific ports.** `ModelAdapter` stays in `@aao/model-runtime` and now carries the Runtime attempt's `AbortSignal` to the provider. Tool providers bind to the Tool Runtime's `RegisteredTool`. MCP is a `tool_provider`.
+- **Claims are not authority.** A manifest grants nothing. Compatibility is not authorization. A false claim fails conformance, and the matrix has no runtime authority.
+- **Explicit everything.** Registration is explicit and version-exact, with no discovery, dynamic loading, or autonomous adapter selection. Continuation is non-mutating. Deterministic executors are trusted host code, not adapters.
+
+See [ADR-025](docs/decisions/ADR-025-adapter-and-portability-contract.md), [adapter contract](docs/architecture/adapter-contract.md), [portability](docs/architecture/portability.md), and the generated [compatibility matrix](docs/framework/adapter-compatibility.md).
+
 ## Canonical architecture documents
 
 - [Product contract](docs/product/product-contract.md) — product purpose, boundaries, V1 proof, and success criteria.
@@ -269,8 +285,10 @@ See [ADR-023](docs/decisions/ADR-023-eval-analytics-ci-gates-and-adapter-verific
 - [Audit](docs/architecture/audit.md) — source-time accountability events, the emit-only Audit port, the hash-chained Audit Store, verification, failure isolation, and retention limits.
 - [Evaluation runtime](docs/architecture/evaluation-runtime.md) — non-authoritative OFFLINE/RUNTIME evaluation, Eval Definition/Result v2, datasets, the Evaluator Registry, deterministic graders, the bounded model-judge port, and portable verification.
 - [Eval analytics & CI gates](docs/architecture/eval-analytics-ci.md) — comparison identity, case expectation verdicts, suite reports, baselines, comparison, and the deterministic offline gate.
-- [Adapter verification](docs/architecture/adapter-verification.md) — substrate drivers, canonical scenarios, truthful partial support, semantic portability.
-- [Framework surface](docs/architecture/framework-surface.md) — the public `@aao/framework` façade, application host, identity ownership, and Sprint 20 handoff; with the developer [quickstart](docs/framework/quickstart.md) and [CLI](docs/framework/cli.md).
+- [Adapter verification](docs/architecture/adapter-verification.md) — Sprint 18 verification history, now running through the public adapter contract.
+- [Adapter contract](docs/architecture/adapter-contract.md) — `@aao/adapters`: manifests, kinds, capabilities, ports, cancellation, conformance vocabulary, report integrity, and the generated matrix.
+- [Portability](docs/architecture/portability.md) — the portability invariant, where substrate choice lives, and the cross-adapter proof.
+- [Framework surface](docs/architecture/framework-surface.md) — the public `@aao/framework` façade, application host, identity ownership, model/agent/deterministic registration, and the Sprint 21 handoff; with the developer [quickstart](docs/framework/quickstart.md) and [CLI](docs/framework/cli.md).
 - [Governance](docs/architecture/governance.md) — host-attested actors, role bindings, deny policies, and resolved authority before Authorization.
 - [MCP connector](docs/architecture/mcp-connector.md) — isolated stdio sessions, bounded discovery, explicit Tool bindings, and normalized failures.
 - [System boundaries](docs/architecture/system-boundaries.md) — architectural layers and ownership.
@@ -288,9 +306,10 @@ Dependencies implement infrastructure; AAO defines product semantics.
 
 | Capability | AAO owns | Current substrate stance |
 | --- | --- | --- |
-| Workflow semantics | Yes | LangGraph.js behind an adapter |
-| Model policy and contracts | Yes | Vercel AI SDK behind an adapter |
-| MCP policy and exposure | Yes | Official MCP TypeScript SDK as connector protocol |
+| Adapter contract | Yes | `@aao/adapters`: vendor-free manifests, capabilities, conformance, matrix (Sprint 20) |
+| Workflow semantics | Yes | Native AAO Runtime; LangGraph.js deferred (no `agent_runtime` adapter exists) |
+| Model policy and contracts | Yes | Vercel AI SDK behind the conformance-verified `model` adapter contract |
+| MCP policy and exposure | Yes | Official MCP TypeScript SDK as a conformance-verified `tool_provider` |
 | Durability semantics | Yes | `@aao/durability`; local filesystem reference store, single host / single writer (Sprint 14) |
 | Canonical integrations | Yes | Provider capability adapters |
 | Visualization truth | Yes | xyflow may visualize backend truth later |

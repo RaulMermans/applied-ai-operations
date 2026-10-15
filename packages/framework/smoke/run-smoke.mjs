@@ -24,7 +24,8 @@ const fixtures = join(packageRoot, 'test', 'fixtures', 'workflows');
 
 // --- 1. Compiled public root. ---
 const framework = await import('../dist/index.js');
-const expected = ['AAOFrameworkError', 'AAO_FRAMEWORK_API_VERSION', 'createAAO', 'defineAgent', 'defineEval', 'defineGovernance', 'defineModelPolicy', 'defineTool', 'defineWorkflow'];
+// The approved root (Sprint 19, extended deliberately by Sprint 20 / ADR-025 with the stable adapter-contract values).
+const expected = ['AAOFrameworkError', 'AAO_ADAPTER_CONTRACT_VERSION', 'AAO_FRAMEWORK_API_VERSION', 'AdapterContractError', 'checkAdapterCompatibility', 'createAAO', 'defineAdapterManifest', 'defineAgent', 'defineEval', 'defineGovernance', 'defineModelAdapter', 'defineModelPolicy', 'defineTool', 'defineWorkflow'];
 assert(JSON.stringify(Object.keys(framework).sort()) === JSON.stringify(expected), `unexpected public exports: ${Object.keys(framework)}`);
 assert(framework.AAO_FRAMEWORK_API_VERSION === 1, 'framework API version is not 1');
 

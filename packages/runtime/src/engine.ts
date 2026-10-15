@@ -98,9 +98,16 @@ export async function executeWorkflow(request: ExecuteWorkflowRequest): Promise<
   return runLoop({ runId, plan, registry, clock, maxSteps, reliability: resolved.reliability, hooks, tracer, execution, latestSnapshot: boundary.snapshot, currentNodeId });
 }
 
-/** Validated in-process continuation. The exact request is checked before consuming the waiting execution object. */
+/**
+ * Validated in-process continuation. The exact request is checked before
+ * the waiting execution is used. The caller's `execution` is never mutated
+ * (ADR-025): continuation works on a detached copy that preserves Run
+ * identity, workflow identity, history, revision, approval references, and
+ * attempt counts exactly, and returns the new `RuntimeExecutionState`.
+ */
 export async function continueWaitingWorkflow(request: ContinueWaitingWorkflowRequest): Promise<WorkflowExecutionResult> {
-  const { execution, approval, plan, registry } = request;
+  const { approval, plan, registry } = request;
+  let execution = request.execution;
   const wait = execution.wait;
   const invalid = (code: RuntimeFailure["code"]): WorkflowExecutionResult => ({ ok: false, failure: { code, message: code }, execution });
   if (execution.run.status !== "WAITING_FOR_APPROVAL" || !wait || wait.kind !== "approval" || execution.run.currentNodeId !== wait.nodeId || execution.nodeStatusesById[wait.nodeId] !== "WAITING" || plan.nodesById[wait.nodeId]?.kind !== "approval") return invalid("INVALID_APPROVAL_CONTEXT");
@@ -123,6 +130,9 @@ export async function continueWaitingWorkflow(request: ContinueWaitingWorkflowRe
   if (!node) return invalid("INVALID_APPROVAL_CONTEXT");
   const next = plan.outgoingEdgesByNode[wait.nodeId]?.[0]?.targetNodeId;
   if (approval.status === "approved" && (!next || execution.nodeStatusesById[next] !== "PENDING")) return invalid("INVALID_APPROVAL_CONTEXT");
+  // From here on the Run advances: only a detached copy changes, never the caller's input.
+  try { execution = cloneExecution(execution); }
+  catch { return invalid("INVALID_APPROVAL_CONTEXT"); }
   // The waiting boundary is the last durable truth until the resolution boundary below is persisted.
   const waitingBoundary = { execution: cloneExecution(execution), snapshot };
   const terminal = approval.status === "cancelled" ? "CANCELLED" : "FAILED";

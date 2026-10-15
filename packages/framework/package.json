@@ -11,6 +11,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./conformance": {
+      "types": "./dist/conformance/index.d.ts",
+      "default": "./dist/conformance/index.js"
+    },
     "./package.json": "./package.json"
   },
   "bin": {
@@ -28,9 +32,12 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "smoke": "node smoke/run-smoke.mjs",
-    "smoke:no-build": "node smoke/no-build.mjs"
+    "smoke:no-build": "node smoke/no-build.mjs",
+    "smoke:sprint20": "node smoke/sprint20.mjs"
   },
   "dependencies": {
+    "@aao/adapters": "workspace:*",
+    "@aao/agent-runtime": "workspace:*",
     "@aao/approval": "workspace:*",
     "@aao/authorization": "workspace:*",
     "@aao/contracts": "workspace:*",

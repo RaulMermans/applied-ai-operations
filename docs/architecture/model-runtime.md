@@ -13,16 +13,16 @@ Capability Router       deriveRequiredCapabilities → selectModelBinding (filte
       ↓
 Registered Model Binding
       ↓
-AAO Model Adapter       ModelAdapter.invoke(AAO data) — invoked exactly once
+AAO Model Adapter       ModelAdapter.invoke(AAO data, { signal }) — invoked exactly once; signal = the caller's cancellation lineage
       ↓
-Vercel AI SDK           generateText (+ Output.object(jsonSchema(...)) for structured), maxRetries: 0
+Vercel AI SDK           generateText (+ Output.object(jsonSchema(...)) for structured), maxRetries: 0, abortSignal: signal
       ↓
 Injected model          any AI-SDK-compatible LanguageModel (ai/test in tests)
       ↓
 Validated ModelResult   isJsonSafe + output-kind check + Ajv schema validation + ModelResultSchema
 ```
 
-The single entry point is `executeModelRequest({ request, modelPolicyRef, policies, models })`, returning `{ ok: true, result } | { ok: false, failure }`.
+The single entry point is `executeModelRequest({ request, modelPolicyRef, policies, models, signal? })`, returning `{ ok: true, result } | { ok: false, failure }`.
 
 ## Workflow path
 
@@ -99,3 +99,16 @@ Agent loops inside Model Runtime, tools/tool calling, retries, fallback, adaptiv
 - `model.call.failed`: the safe Model failure code.
 
 Messages, output, provider errors, URLs, and headers are never traced. No prompt version or cost is fabricated. See [trace runtime](trace-runtime.md).
+
+## Adapter contract (Sprint 20)
+
+`ModelAdapter` is the public `model` adapter port ([ADR-025](../decisions/ADR-025-adapter-and-portability-contract.md), [adapter contract](adapter-contract.md)). This package is its single owner.
+
+- **Invocation context.** `invoke(request, context)` always receives `{ signal }`.
+  - The `model` node passes the Runtime attempt's own signal, and the Agent Runtime passes its caller's. No layer creates its own timer.
+  - An already-aborted signal invokes nothing (`MODEL_INVOCATION_FAILED`, `details.reason: "cancelled"`, and no model-call Trace).
+  - An adapter that ignores the signal still cannot commit a late result.
+  - Code that only implements `invoke` keeps compiling. Callers of `invoke` must pass the context.
+- **`defineModelAdapter({ manifest, adapter })`** pairs the port with an `AdapterManifest` (kind `model`). It snapshots the manifest and captures `invoke`. A raw adapter in a low-level `ModelRegistry` claims no capability.
+- **Vercel AI SDK.** `@aao/model-runtime/vercel-ai` exports `VERCEL_AI_SDK_ADAPTER_MANIFEST` (every model capability supported and verified) and `defineVercelAiModelAdapter({ model })`. Its conformance subject is the explicit `@aao/model-runtime/vercel-ai/conformance` export, which uses the SDK's `ai/test` model and is never loaded by the root.
+- **Binding vs adapter capabilities.** Binding capabilities (`model.text_generation`, `model.structured_output`) stay the routing vocabulary. `@aao/framework` requires every capability a binding declares to be declared supported by its adapter's manifest.

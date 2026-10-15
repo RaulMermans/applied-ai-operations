@@ -124,12 +124,13 @@ describe("static non-authority", () => {
     for (const pkg of EXECUTION_PACKAGES) for (const file of sourceFiles(pkg)) expect(code(file), file).not.toMatch(/evals\/baselines|evals\/gates|EvalBaseline|EvalGateDecision|EvalGatePolicy|AdapterConformanceReport|RegressionFinding|semanticVerdictFingerprint/);
   });
 
-  it("conformance drivers live with their substrates and never import @aao/evaluation", () => {
-    for (const [pkg, files] of [["tool-runtime", ["driver.mjs"]], ["mcp-connector", ["driver.mjs"]], ["model-runtime", ["harness.mjs", "native-driver.mjs", "vercel-ai-driver.mjs"]]] as const) {
-      for (const file of files) {
-        const source = code(join(packagesDir, pkg, "conformance", file));
-        expect(source, `${pkg}/${file}`).not.toMatch(/@aao\/evaluation|@aao\/observability|import\(/);
-      }
+  it("official conformance subjects live with their adapters, behind explicit subpaths, and never import @aao/evaluation or load code", () => {
+    for (const [pkg, file] of [["mcp-connector", "src/conformance.ts"], ["model-runtime", "src/adapters/vercel-ai-conformance.ts"]] as const) {
+      const source = code(join(packagesDir, pkg, file));
+      expect(source, `${pkg}/${file}`).not.toMatch(/@aao\/evaluation|@aao\/observability|import\(|require\(/);
     }
+    // No Core Tool Runtime conformance subpath: the native Tool reference is the conformance host's, not an adapter's.
+    const toolRuntime = JSON.parse(readFileSync(join(packagesDir, "tool-runtime", "package.json"), "utf8")) as { exports: Record<string, unknown> };
+    expect(Object.keys(toolRuntime.exports)).toEqual(["."]);
   });
 });

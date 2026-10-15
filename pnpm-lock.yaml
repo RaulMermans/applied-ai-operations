@@ -45,6 +45,15 @@ importers:
         specifier: workspace:*
         version: link:../../packages/config
 
+  packages/adapters:
+    dependencies:
+      '@aao/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      zod:
+        specifier: ^3.24.3
+        version: 3.25.76
+
   packages/agent-runtime:
     dependencies:
       '@aao/contracts':
@@ -143,6 +152,9 @@ importers:
 
   packages/evaluation:
     dependencies:
+      '@aao/adapters':
+        specifier: workspace:*
+        version: link:../adapters
       '@aao/contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -177,6 +189,12 @@ importers:
 
   packages/framework:
     dependencies:
+      '@aao/adapters':
+        specifier: workspace:*
+        version: link:../adapters
+      '@aao/agent-runtime':
+        specifier: workspace:*
+        version: link:../agent-runtime
       '@aao/approval':
         specifier: workspace:*
         version: link:../approval
@@ -222,6 +240,9 @@ importers:
 
   packages/mcp-connector:
     dependencies:
+      '@aao/adapters':
+        specifier: workspace:*
+        version: link:../adapters
       '@aao/contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -250,6 +271,9 @@ importers:
 
   packages/model-runtime:
     dependencies:
+      '@aao/adapters':
+        specifier: workspace:*
+        version: link:../adapters
       '@aao/contracts':
         specifier: workspace:*
         version: link:../contracts

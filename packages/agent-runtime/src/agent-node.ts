@@ -103,7 +103,8 @@ export function createAgentNodeExecutor(dependencies: AgentRuntimeDependencies):
           },
         };
       }
-      const outcome = await executeAgent({ request, ...dependencies, ...(observer ? { observer } : {}) });
+      // The Runtime attempt's own signal reaches every iteration's model call (ADR-025).
+      const outcome = await executeAgent({ request, ...dependencies, signal: context.signal, ...(observer ? { observer } : {}) });
       if (trace && started) {
         if (outcome.ok) await trace.emit({ type: "agent.completed", span, key: {}, payload: { agentRef: ref, agentExecutionId, attempt, iterationsUsed: outcome.result.iterationsUsed, ...(outcome.result.usage ? { usage: outcome.result.usage } : {}) } });
         else await trace.emit({ type: "agent.failed", span, key: {}, payload: { agentRef: ref, agentExecutionId, attempt, code: outcome.failure.code, ...(outcome.failure.iteration ? { iteration: outcome.failure.iteration } : {}), ...(outcome.failure.modelFailureCode ? { modelFailureCode: outcome.failure.modelFailureCode } : {}) } });

@@ -15,8 +15,8 @@ const outDir = join(here, "consumer", ".out", "docs");
 afterAll(() => rmSync(outDir, { recursive: true, force: true }));
 
 describe("docs/framework/quickstart.md", () => {
-  it("has two examples, each importing only @aao/framework", () => {
-    expect(examples).toHaveLength(2);
+  it("has three examples, each importing only @aao/framework (concrete adapters are shown outside the executable examples)", () => {
+    expect(examples).toHaveLength(3);
     for (const example of examples) expect([...example.matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1])).toEqual(["@aao/framework"]);
   });
 
@@ -45,6 +45,6 @@ describe("docs/framework/quickstart.md", () => {
     } finally {
       spy.mockRestore();
     }
-    expect(logged).toEqual([[true, "COMPLETED"], ["WAITING_FOR_APPROVAL"], ["COMPLETED"]]);
+    expect(logged).toEqual([[true, "COMPLETED"], ["WAITING_FOR_APPROVAL"], ["COMPLETED"], [{ category: "research" }]]);
   });
 });

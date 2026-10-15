@@ -112,3 +112,9 @@ Sprint 8 added a Tool Runtime ([tool runtime](tool-runtime.md)), but Agents stil
 ## Explicit non-goals (Sprint 7)
 
 Tools, Skills Runtime, MCP, side effects, delegation or multi-agent patterns, dynamic workflow modification, long-term memory, persistence/checkpointing/resume, mid-Agent snapshots, Reflexion/evaluator loops, retries, fallback, and model escalation.
+
+## Cancellation (Sprint 20)
+
+`executeAgent({ ..., signal })` and the `agent` node pass one cancellation lineage, the Runtime attempt's signal, into every iteration's model invocation ([ADR-025](../decisions/ADR-025-adapter-and-portability-contract.md)). The controller checks the signal before every iteration. Once it is aborted, no new iteration starts and there is no cleanup loop, and the Agent fails with `AGENT_CANCELLED`, keeping the iteration evidence so far. Bounds are unchanged (`maxIterations`, one model call per iteration, final-iteration `CONTINUE` fails closed), and Agents still have no Tool use.
+
+The native bounded Agent Runtime is the reference semantics for the `agent_runtime` adapter kind. That kind has no capabilities and no implementation yet, and LangGraph remains deferred. `@aao/framework` executes `agent` nodes only through this runtime.

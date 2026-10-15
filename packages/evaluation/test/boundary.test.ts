@@ -23,12 +23,16 @@ const EXECUTION_PACKAGES = ["runtime", "tool-runtime", "model-runtime", "agent-r
 const FORBIDDEN_SPECIFIERS = /langgraph|@langchain|^ai$|@ai-sdk|@modelcontextprotocol|@aao\/mcp-connector|@aao\/substrate-|openai|@anthropic-ai|langfuse|phoenix|arize|promptfoo|deepeval|ragas|braintrust|@aao\/(?:runtime|approval|authorization|governance|tool-runtime|durability|model-runtime|agent-runtime|workflow-dsl|config)$/;
 
 describe("@aao/evaluation dependency direction", () => {
-  it("production dependencies are exactly contracts, observability (canonical validators), yaml, and zod", () => {
-    expect(Object.keys(manifest("evaluation").dependencies ?? {}).sort()).toEqual(["@aao/contracts", "@aao/observability", "yaml", "zod"]);
+  it("production dependencies are exactly adapters (the vendor-free conformance contract), contracts, observability (canonical validators), yaml, and zod", () => {
+    expect(Object.keys(manifest("evaluation").dependencies ?? {}).sort()).toEqual(["@aao/adapters", "@aao/contracts", "@aao/observability", "yaml", "zod"]);
+  });
+
+  it("@aao/adapters, which execution packages depend on, never depends on Evaluation or any execution package", () => {
+    expect(Object.keys(manifest("adapters").dependencies ?? {}).sort()).toEqual(["@aao/contracts", "zod"]);
   });
 
   it("imports no framework, provider SDK, MCP, substrate, eval vendor, or execution package", () => {
-    const allowed = new Set(["@aao/contracts", "@aao/observability", "yaml", "zod", "node:crypto"]);
+    const allowed = new Set(["@aao/adapters", "@aao/contracts", "@aao/observability", "yaml", "zod", "node:crypto"]);
     for (const file of sourceFiles("evaluation")) {
       for (const specifier of imports(file).filter((spec) => !spec.startsWith("."))) {
         expect(allowed.has(specifier), `${file} imports ${specifier}`).toBe(true);
@@ -73,14 +77,16 @@ describe("Evaluation is not inside the Runtime and never becomes execution autho
     const names = sourceFiles("evaluation").map((file) => file.split("/evaluation/src/")[1]).sort();
     expect(names).toEqual([
       "analytics/baseline.ts", "analytics/comparison.ts", "analytics/expectation.ts", "analytics/fingerprints.ts", "analytics/integrity.ts", "analytics/multi-run.ts", "analytics/regression.ts", "analytics/suite-summary.ts",
-      "conformance/adapter-verification.ts", "conformance/scenarios.ts",
+      "conformance/adapter-conformance.ts",
       "dataset.ts", "evidence.ts",
       "gates/evaluate-gate.ts", "gates/format-report.ts", "gates/policy.ts",
       "grader.ts",
       "graders/approval-compliance.ts", "graders/audit-view.ts", "graders/authorization-compliance.ts", "graders/index.ts", "graders/metrics-threshold.ts", "graders/model-call.ts", "graders/model-judge.ts", "graders/retry-behavior.ts", "graders/run-outcome.ts", "graders/state-assertion.ts", "graders/tool-usage.ts", "graders/trace-contract.ts", "graders/trajectory.ts",
       "index.ts", "registry.ts", "runner.ts", "trace-view.ts",
     ]);
-    for (const file of sourceFiles("evaluation")) expect(code(file), file).not.toMatch(/EvalStore|ResultStore|evalDatabase|sqlite|postgres|warehouse|dashboard|express|fastify|createServer|trendline|createRegression|promoteFinding|updateBaseline|acceptAll|writeBaseline|reflexion|revise|promoteMemory|memoryStore|SkillRuntime|skillRegistry|defineAdapter|AdapterManifest|CapabilityMatrix|createAAO|defineWorkflow|defineAgent|defineTool/i);
+    for (const file of sourceFiles("evaluation")) expect(code(file), file).not.toMatch(/EvalStore|ResultStore|evalDatabase|sqlite|postgres|warehouse|dashboard|express|fastify|createServer|trendline|createRegression|promoteFinding|updateBaseline|acceptAll|writeBaseline|reflexion|revise|promoteMemory|memoryStore|SkillRuntime|skillRegistry|createAAO|defineWorkflow|defineAgent|defineTool/i);
+    // Sprint 20: the adapter contract is consumed from @aao/adapters, never defined here.
+    for (const file of sourceFiles("evaluation")) expect(code(file), file).not.toMatch(/(?:export\s+(?:const|function|interface|type|class)\s+)(?:AdapterManifest\w*|defineAdapterManifest|CapabilityMatrix|AdapterCompatibilityMatrix\w*|ADAPTER_CONFORMANCE_SCENARIOS|AdapterConformanceReportSchema)\b/);
   });
 
   it("the model judge is never part of the CI gate or adapter verification", () => {

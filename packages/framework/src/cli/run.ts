@@ -6,7 +6,7 @@
 // API's job).
 import { AAO_FRAMEWORK_API_VERSION } from "../version.js";
 import { formatOption, parseOptions } from "./args.js";
-import { runEvalAdapters } from "./eval/adapters.js";
+import { runAdaptersMatrix, runEvalAdapters } from "./eval/adapters.js";
 import { proposeBaseline } from "./eval/baseline.js";
 import { runEvalCi } from "./eval/ci.js";
 import { installNetworkGuard } from "./eval/network-guard.js";
@@ -19,13 +19,16 @@ Usage:
   aao workflow validate <file> [--format text|json]
   aao workflow compile <file> [--format json]
   aao eval ci [--format text|json] [--verbose] [--git-sha <sha>] [--root <dir>]
-  aao eval adapters [--format text|json] [--root <dir>]
+  aao eval adapters [--format text|json]
   aao eval baseline propose --id <baseline-id> --version <version> [--root <dir>]
+  aao adapters matrix [--format json|markdown]
   aao --help
 
 Workflow files are .yaml, .yml, or .json; they are validated and compiled, never executed.
-Eval commands read evals/ under --root (default: the current directory), run offline,
-and never write files.
+eval ci and eval baseline read evals/ under --root (default: the current directory).
+eval adapters and adapters matrix verify the official adapters against the canonical
+conformance suite shipped with @aao/adapters, so they read no project files.
+Every Eval and adapter command runs offline and never writes files.
 
 Exit codes: 0 success (eval ci: PASS or WARN); 1 invalid workflow, gate failure, or error.
 `;
@@ -74,9 +77,9 @@ async function evalCommand(args: readonly string[], context: CliContext): Promis
     return offline(() => runEvalCi({ root, format, verbose: parsed.booleans.has("--verbose"), ...(gitSha !== undefined ? { gitSha } : {}) }));
   }
   if (sub === "adapters") {
-    const parsed = parseOptions(rest, { values: ["--format", "--root"] });
+    const parsed = parseOptions(rest, { values: ["--format"] });
     const format = formatOption(parsed, ["text", "json"], "text");
-    return offline(() => runEvalAdapters({ root: parsed.values["--root"] ?? context.cwd, format }));
+    return offline(() => runEvalAdapters({ format }));
   }
   if (sub === "baseline") {
     const [action, ...options] = rest;
@@ -88,6 +91,16 @@ async function evalCommand(args: readonly string[], context: CliContext): Promis
     return offline(() => proposeBaseline({ root: parsed.values["--root"] ?? context.cwd, id, version }));
   }
   throw new CliError("AAO_CLI_UNKNOWN_COMMAND", sub === undefined ? "missing eval command (ci | adapters | baseline propose)" : `unknown command "eval ${sub}"`);
+}
+
+/** `aao adapters matrix`: renders the generated compatibility matrix. It loads no adapter from the command line. */
+async function adaptersCommand(args: readonly string[]): Promise<CliResult> {
+  const [sub, ...rest] = args;
+  if (sub !== "matrix") throw new CliError("AAO_CLI_UNKNOWN_COMMAND", sub === undefined ? "missing adapters command (matrix)" : `unknown command "adapters ${sub}"`);
+  const parsed = parseOptions(rest, { values: ["--format"] });
+  const format = parsed.values["--format"] ?? "json";
+  if (format !== "json" && format !== "markdown") throw new CliError("AAO_CLI_INVALID_OPTION", "--format must be json or markdown");
+  return offline(() => runAdaptersMatrix({ format }));
 }
 
 /**
@@ -104,6 +117,7 @@ export async function runCli(argv: readonly string[], context: CliContext): Prom
     const [group, ...rest] = args;
     if (group === "workflow") return await workflowCommand(rest, context);
     if (group === "eval") return await evalCommand(rest, context);
+    if (group === "adapters") return await adaptersCommand(rest);
     if (group?.startsWith("-")) throw new CliError("AAO_CLI_UNKNOWN_OPTION", `unknown option ${group}`);
     throw new CliError("AAO_CLI_UNKNOWN_COMMAND", `unknown command "${group}"`);
   } catch (error) {

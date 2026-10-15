@@ -1,0 +1,268 @@
+{
+  "schemaVersion": 1,
+  "adapterContractVersion": 1,
+  "conformanceVersion": 1,
+  "datasetRef": {
+    "id": "aao.adapter-conformance",
+    "version": "1.0.0"
+  },
+  "authority": "none",
+  "adapters": [
+    {
+      "id": "aao.native-model",
+      "version": "1.0.0",
+      "kind": "model",
+      "adapterContractVersion": 1,
+      "reference": true,
+      "manifestFingerprint": "45d19f094fef993dec7ca9455fdf64130a3a05590f9300ec5b1747d236028c46",
+      "reportFingerprint": "6f66b9180dd2d3d45a2460fcccd4700e6ead17bad065d961cb574a7753862502",
+      "conformance": "PASSED",
+      "capabilities": [
+        {
+          "capability": "model.text_generation",
+          "declared": "supported",
+          "conformance": "PASSED",
+          "scenarios": [
+            "model.identity-and-usage",
+            "model.provider-error-normalized",
+            "model.attempt-timeout",
+            "model.cancellation-propagated"
+          ]
+        },
+        {
+          "capability": "model.structured_output",
+          "declared": "supported",
+          "conformance": "PASSED",
+          "scenarios": [
+            "model.structured-output"
+          ]
+        },
+        {
+          "capability": "model.usage",
+          "declared": "supported",
+          "conformance": "PASSED",
+          "scenarios": [
+            "model.identity-and-usage"
+          ]
+        },
+        {
+          "capability": "model.cancellation",
+          "declared": "supported",
+          "conformance": "PASSED",
+          "scenarios": [
+            "model.cancellation-propagated"
+          ]
+        },
+        {
+          "capability": "model.tool_call_response",
+          "declared": "unsupported",
+          "conformance": "UNSUPPORTED",
+          "scenarios": [
+            "model.tool-call-fail-closed"
+          ]
+        }
+      ],
+      "baseInvariants": [],
+      "limitations": [
+        {
+          "code": "reference.semantics_only",
+          "description": "The semantic reference for model conformance, not a provider integration."
+        }
+      ]
+    },
+    {
+      "id": "aao.vercel-ai-sdk",
+      "version": "1.0.0",
+      "kind": "model",
+      "adapterContractVersion": 1,
+      "reference": false,
+      "manifestFingerprint": "8befb27c7d9de8c7628f7a9b99184d9cf2ccf5d82f1f34f3618b459f0aabefa9",
+      "reportFingerprint": "495e373a54012f22c293633171fcdaab87101f24393320b74950dd8dce680c6b",
+      "conformance": "PASSED",
+      "capabilities": [
+        {
+          "capability": "model.text_generation",
+          "declared": "supported",
+          "conformance": "PASSED",
+          "scenarios": [
+            "model.identity-and-usage",
+            "model.provider-error-normalized",
+            "model.attempt-timeout",
+            "model.cancellation-propagated"
+          ]
+        },
+        {
+          "capability": "model.structured_output",
+          "declared": "supported",
+          "conformance": "PASSED",
+          "scenarios": [
+            "model.structured-output"
+          ]
+        },
+        {
+          "capability": "model.usage",
+          "declared": "supported",
+          "conformance": "PASSED",
+          "scenarios": [
+            "model.identity-and-usage"
+          ]
+        },
+        {
+          "capability": "model.cancellation",
+          "declared": "supported",
+          "conformance": "PASSED",
+          "scenarios": [
+            "model.cancellation-propagated"
+          ]
+        },
+        {
+          "capability": "model.tool_call_response",
+          "declared": "supported",
+          "conformance": "PASSED",
+          "scenarios": [
+            "model.tool-call-fail-closed"
+          ]
+        }
+      ],
+      "baseInvariants": [],
+      "limitations": [
+        {
+          "code": "model.provider_injected",
+          "description": "The host injects the language model. The adapter never reads credentials or chooses a provider."
+        },
+        {
+          "code": "model.single_invocation",
+          "description": "The SDK's own retries are disabled. AAO invokes exactly once per request, and Runtime reliability policy owns retries."
+        }
+      ]
+    },
+    {
+      "id": "aao.native-tool",
+      "version": "1.0.0",
+      "kind": "tool_provider",
+      "adapterContractVersion": 1,
+      "reference": true,
+      "manifestFingerprint": "8e5823902fc6fd17baf4d27cf8cb0542cbd5ee89f1a71fab93a1ccc8844aed9d",
+      "reportFingerprint": "63f24c9455911e601214fa950a8e3886c5be0bce9c2ccd7b43cc50ee97fed1e2",
+      "conformance": "PASSED",
+      "capabilities": [
+        {
+          "capability": "tool.discovery",
+          "declared": "unsupported",
+          "conformance": "UNSUPPORTED",
+          "scenarios": [
+            "tool.discovery-metadata-non-authoritative"
+          ]
+        },
+        {
+          "capability": "tool.execution",
+          "declared": "supported",
+          "conformance": "PASSED",
+          "scenarios": [
+            "tool.success-structured-result",
+            "tool.failure-normalized",
+            "tool.transient-retry",
+            "tool.unsafe-default-no-retry",
+            "tool.discovery-metadata-non-authoritative"
+          ]
+        },
+        {
+          "capability": "tool.retryable_failure",
+          "declared": "supported",
+          "conformance": "PASSED",
+          "scenarios": [
+            "tool.transient-retry"
+          ]
+        }
+      ],
+      "baseInvariants": [
+        {
+          "scenarioId": "tool.unauthorized-blocked",
+          "status": "PASSED"
+        },
+        {
+          "scenarioId": "tool.unsupported-permission-blocked",
+          "status": "PASSED"
+        }
+      ],
+      "limitations": [
+        {
+          "code": "reference.semantics_only",
+          "description": "The semantic reference for Tool-provider conformance, not an integration."
+        }
+      ]
+    },
+    {
+      "id": "aao.mcp-connector",
+      "version": "1.0.0",
+      "kind": "tool_provider",
+      "adapterContractVersion": 1,
+      "reference": false,
+      "manifestFingerprint": "1dd2a00fee8f5c1bb7e9b4c41bc1796a57dc628e2c09803289f2f3008fbe9842",
+      "reportFingerprint": "edd5686534bdcf89359c4e88b7bb281dfd102649dddf2be7dd25a866667c8136",
+      "conformance": "PASSED",
+      "capabilities": [
+        {
+          "capability": "tool.discovery",
+          "declared": "supported",
+          "conformance": "PASSED",
+          "scenarios": [
+            "tool.discovery-metadata-non-authoritative"
+          ]
+        },
+        {
+          "capability": "tool.execution",
+          "declared": "supported",
+          "conformance": "PASSED",
+          "scenarios": [
+            "tool.success-structured-result",
+            "tool.failure-normalized",
+            "tool.transient-retry",
+            "tool.unsafe-default-no-retry",
+            "tool.discovery-metadata-non-authoritative"
+          ]
+        },
+        {
+          "capability": "tool.retryable_failure",
+          "declared": "supported",
+          "conformance": "PASSED",
+          "scenarios": [
+            "tool.transient-retry"
+          ]
+        }
+      ],
+      "baseInvariants": [
+        {
+          "scenarioId": "tool.unauthorized-blocked",
+          "status": "PASSED"
+        },
+        {
+          "scenarioId": "tool.unsupported-permission-blocked",
+          "status": "PASSED"
+        }
+      ],
+      "limitations": [
+        {
+          "code": "tool.execution_id_not_forwarded",
+          "description": "The toolExecutionId is not sent to the server, so execution_id idempotency cannot be asserted. A write_draft MCP Tool is never recovery-safe."
+        },
+        {
+          "code": "tool.structured_output_required",
+          "description": "A remote result without structured content fails closed."
+        },
+        {
+          "code": "transport.stdio_only",
+          "description": "One explicit stdio session per server. No HTTP transport, remote authentication flows, resources, prompts, or sampling."
+        }
+      ]
+    }
+  ],
+  "deferred": [
+    {
+      "id": "langgraph",
+      "kind": "agent_runtime",
+      "status": "DEFERRED",
+      "reason": "Sprint 0A research only. No AAO agent_runtime adapter exists, and the native bounded Agent Runtime is the reference semantics."
+    }
+  ]
+}

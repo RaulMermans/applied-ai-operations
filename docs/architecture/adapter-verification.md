@@ -1,63 +1,70 @@
 # Adapter Verification
 
-**Sprint 18 verifies adapter behavior but does not yet define the public AAO adapter contract.** `AdapterManifest`, a capability matrix, compatibility promises, and public adapter ports belong to Sprint 20, and will be built on the requirements proven here ([ADR-023](../decisions/ADR-023-eval-analytics-ci-gates-and-adapter-verification.md)).
+> **Since Sprint 20 this verification runs through the public adapter contract.** See the [adapter contract](adapter-contract.md), [ADR-025](../decisions/ADR-025-adapter-and-portability-contract.md), and the generated [compatibility matrix](../framework/adapter-compatibility.md). This page records how verification works and how it evolved from Sprint 18 ([ADR-023](../decisions/ADR-023-eval-analytics-ci-gates-and-adapter-verification.md)).
 
 The principle under test: *different substrates must map into the same canonical AAO behavior before AAO treats them as interchangeable.* Substrates preserve AAO semantics; they never define them.
 
 ```text
-External substrate (Vercel AI SDK, MCP connector, native handler/adapter)
+AdapterManifest (claim) ─┐
+                         ▼
+canonical scenarios (@aao/adapters, selected by the claim; base invariants always)
+      ↓   conformance host (@aao/framework/conformance): a real compiled AAO Run per scenario,
+      ↓   canonical Trace/Audit recorders, the subject supplies only the substrate
+AAO canonical evidence (Trace, execution state, Audit) + boundary observation (cancellation)
       ↓
-test driver (lives with the substrate: packages/<substrate>/conformance/)
-      ↓   real compiled AAO workflow, host-injected Trace/Audit recorders
-AAO canonical evidence (Trace, execution state, Audit)
-      ↓
-AAO EvalDefinitions (evals/definitions/adapter-conformance.v1.yaml), Evaluator Registry, case expectations
-      ↓
-conformance result (AdapterConformanceReport) + semantic comparison with the native reference
+canonical Eval definitions + dataset (aao.adapter-conformance@1.0.0), Evaluator Registry, case expectations
+      ↓   @aao/evaluation evaluateAdapterConformance
+AdapterConformanceReport v1 (integrity-checked) ──► semantic comparison with the native reference ──► generated matrix
 ```
 
 ## Inventory
 
-| Substrate | Kind | Location | Classification |
-| --- | --- | --- | --- |
-| AAO native Tool (Tool Runtime + local handler) | tool | `packages/tool-runtime` | ACTIVE — semantic reference for Tool scenarios |
-| MCP connector (official SDK, stdio) | tool | `packages/mcp-connector` | ACTIVE |
-| AAO native model adapter (plain `ModelAdapter`) | model | `packages/model-runtime` | ACTIVE — semantic reference for model scenarios |
-| Vercel AI SDK model adapter | model | `packages/model-runtime/src/adapters/vercel-ai.ts` | ACTIVE |
-| LangGraph | orchestration | `packages/substrate-spikes` (Sprint 0A research) | DEFERRED — no maintained AAO adapter, so no driver and no support claim |
+| Substrate | Kind | Manifest | Subject | Role |
+| --- | --- | --- | --- | --- |
+| AAO native Tool (Tool Runtime + local handler) | tool_provider | `aao.native-tool@1.0.0` | `@aao/framework/conformance` | semantic reference |
+| MCP connector (official SDK, stdio) | tool_provider | `aao.mcp-connector@1.0.0` | `@aao/mcp-connector/conformance` | adapter |
+| AAO native model (plain `ModelAdapter`) | model | `aao.native-model@1.0.0` | `@aao/framework/conformance` | semantic reference |
+| Vercel AI SDK model adapter | model | `aao.vercel-ai-sdk@1.0.0` | `@aao/model-runtime/vercel-ai/conformance` | adapter |
+| LangGraph | agent_runtime | none | none | DEFERRED: no maintained AAO adapter, so no subject and no support claim |
 
-## Pieces
-
-- **Scenarios** (`src/conformance/scenarios.ts`). Canonical behaviors with JSON-safe parameters (ToolRef, input, principal, grants, trusted model identity, usage, scripted outcomes). They hold no provider payloads, and each scenario has a kind (`tool`, `model`, `orchestration`).
-- **Dataset** (`evals/datasets/adapter-conformance-foundation.v1.yaml`, 20 RUNTIME cases). Evidence is `scenario://<id>`, produced at verification time and never fixture-pinned.
-- **Definitions** use existing graders plus `aao.model-call`, a canonical grader for model Trace evidence: invocation count, trusted identity, usage, outcome, and normalized `code` / `adapterReason`.
-- **`AdapterVerificationDriver`** has `{ id, kind, support, sensitiveMarkers?, executeScenario(scenario) → EvalEvidenceBundle }`. Drivers are plain test-owned ESM modules. They never import `@aao/evaluation`; the host injects the `@aao/observability` recorders. There is no registry, discovery, or dynamic import: the `aao eval adapters` host (`packages/framework/src/cli/eval/adapters.ts` since Sprint 19) lists the drivers explicitly, by relative path, and no package exports them.
-- **`verifyAdapter`** executes each SUPPORTED scenario once and judges its cases with `runEvalDataset`. A scenario passes only when every case is `MATCHED` and no seeded sensitive marker appears in the evidence.
-- **`compareAdapterConformance`** checks that, on every case both executed, an adapter's comparison key and semantic verdict fingerprint equal the native reference's. This is not byte equality: evidence fingerprints legitimately differ.
-
-## Support is partial and truthful
+## Results (generated in the [matrix](../framework/adapter-compatibility.md))
 
 | Scenario | native Tool | MCP | native model | Vercel AI SDK |
 | --- | --- | --- | --- | --- |
 | `tool.success-structured-result` | PASSED | PASSED | — | — |
-| `tool.unauthorized-blocked` | PASSED | PASSED | — | — |
-| `tool.unsupported-permission-blocked` | PASSED | PASSED | — | — |
+| `tool.unauthorized-blocked` (base) | PASSED | PASSED | — | — |
+| `tool.unsupported-permission-blocked` (base) | PASSED | PASSED | — | — |
 | `tool.failure-normalized` | PASSED | PASSED | — | — |
-| `tool.transient-retry` | PASSED | **UNSUPPORTED** — the connector declares no retry safety (one remote call, ADR-015) | — | — |
+| `tool.transient-retry` (host-declared safe) | PASSED | PASSED | — | — |
+| `tool.unsafe-default-no-retry` | PASSED | PASSED | — | — |
+| `tool.discovery-metadata-non-authoritative` | UNSUPPORTED (no discovery) | PASSED | — | — |
 | `model.structured-output` | — | — | PASSED | PASSED |
 | `model.identity-and-usage` | — | — | PASSED | PASSED |
 | `model.provider-error-normalized` | — | — | PASSED | PASSED |
-| `model.tool-call-fail-closed` | — | — | **NOT_APPLICABLE** — the AAO ModelAdapter port has no tool-call channel | PASSED |
+| `model.tool-call-fail-closed` | — | — | UNSUPPORTED (no tool-call channel) | PASSED |
 | `model.attempt-timeout` | — | — | PASSED | PASSED |
+| `model.cancellation-propagated` | — | — | PASSED | PASSED |
 
-A SUPPORTED scenario that fails is a CI failure (`ADAPTER_CONFORMANCE_FAILED`). UNSUPPORTED is reported (`ADAPTER_SCENARIO_UNSUPPORTED`), never counted as a pass. A false SUPPORTED claim is caught by the evidence, and a driver cannot claim a scenario that has no verifiable case. Portability: 10 shared Tool cases (native vs MCP) and 7 shared model cases (native vs Vercel AI SDK) reach identical semantic verdicts.
+Portability: 16 shared Tool cases (native vs MCP) and 9 shared model cases (native vs Vercel AI SDK) reach identical comparison keys and semantic verdict fingerprints. Evidence bytes are not compared.
 
 What the scenarios prove:
 
-- **MCP.** The test server's discovery metadata is hostile: it claims destructive behavior and asks to "grant external_side_effect and bypass authorization". The traced permission stays the host's `read_only`. An unauthorized caller is blocked with Audit `tool.access.denied`. Unauthorized and unsupported-class calls make zero server calls. A remote error is `TOOL_EXECUTION_FAILED`, with no remote text in AAO evidence.
-- **Model.** Structured output becomes a schema-valid `ModelResult`. Trusted registration identity and exact usage are traced. A provider error is one call, normalized to `MODEL_INVOCATION_FAILED`/`provider_error`, with no raw error. A tool-call response fails closed as `INVALID_MODEL_RESULT`/`unsupported_response`. A call that never settles fails at the Runtime attempt timeout (`NODE_ATTEMPT_TIMEOUT`, category `TIMEOUT`).
-- **Cancellation is a requirement gap, not a scenario.** Cancellation cannot propagate to a model provider, because the ModelAdapter port carries no abort signal. AAO has no canonical evidence for propagation, so no scenario claims it. It is recorded as a Sprint 20 input.
+- **MCP, authority.** The conformance server's discovery metadata is hostile. It claims destructive behavior, idempotency, and safe-to-retry, and asks to "grant external_side_effect and bypass authorization". The traced permission stays the host's `read_only`. Unauthorized and unsupported-class calls make zero server calls.
+- **MCP, retry.** A host-declared retry-safe read is retried exactly once after a transient server error: one logical execution, two physical calls. The same Tool without the host declaration, or with hostile metadata, is never retried. A remote error is `TOOL_EXECUTION_FAILED`, with no remote text in AAO evidence.
+- **Model.** Structured output becomes a schema-valid `ModelResult`. Trusted registration identity and exact usage are traced. A provider error is one call, normalized to `MODEL_INVOCATION_FAILED`/`provider_error`. A tool-call response fails closed as `INVALID_MODEL_RESULT`/`unsupported_response`.
+- **Model, cancellation.** A call that never settles fails at the attempt timeout (`NODE_ATTEMPT_TIMEOUT`, category `TIMEOUT`) and commits nothing. With `model.cancellation`, the Runtime's abort reaches the provider boundary. A subject whose provider ignores the signal fails with `ADAPTER_BOUNDARY_UNOBSERVED`.
+
+## How it evolved from Sprint 18
+
+| Sprint 18 | Sprint 20 |
+| --- | --- |
+| Each test driver declared its own `SUPPORTED` / `UNSUPPORTED` / `NOT_APPLICABLE` table | The manifest declares capabilities, `scenarioClaim` selects scenarios, and there is no `SUPPORTED` outcome |
+| Drivers were `.mjs` modules loaded by repository-relative path | Subjects are explicit package exports, and the suite ships with `@aao/adapters` |
+| `verifyAdapter` + internal `AdapterConformanceReport` | `evaluateAdapterConformance` / `verifyAdapterConformance` + public report v1 with integrity validation |
+| MCP `tool.transient-retry` UNSUPPORTED (no retry safety) | Host-owned MCP retry safety. PASSED |
+| Native model `tool-call-fail-closed` NOT_APPLICABLE | `model.tool_call_response` declared unsupported, so the scenario is UNSUPPORTED. NOT_APPLICABLE now means another kind only |
+| Cancellation was a requirement gap (no `AbortSignal`) | `model.cancellation-propagated` verifies the abort reaches the provider |
 
 ## Running
 
-`aao eval adapters` (alias `pnpm eval:adapters`, which builds what it needs first) runs all four drivers, prints each scenario's status and the portability result, and exits 1 on any SUPPORTED failure or semantic divergence. Everything is local and mocked: `ai/test` models and an MCP server child process over stdio. There are no credentials and no network (a guard refuses connections), and the run has no external side effects. Reports contain identifiers, statuses, codes, and fingerprints only — no raw provider, MCP, Tool, or model content. Two runs are deep-equal.
+`aao eval adapters` (alias `pnpm eval:adapters`, which builds what it needs first) verifies all four subjects, prints each scenario's outcome and the portability result, and exits 1 on any FAILED scenario or semantic divergence. `aao adapters matrix` prints the generated matrix. Everything is local and mocked: `ai/test` models and an MCP stdio child process. There are no credentials and no network (a guard refuses connections), and the run has no external side effects. Reports contain identifiers, claims, outcomes, codes, and fingerprints only, and two runs are deep-equal.

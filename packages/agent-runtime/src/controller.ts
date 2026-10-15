@@ -25,6 +25,12 @@ export interface ExecuteAgentParams extends AgentRuntimeDependencies {
   request: unknown;
   /** Optional observer (ADR-020). Never consulted; a throwing observer changes nothing. */
   observer?: AgentExecutionObserver;
+  /**
+   * The caller's cancellation lineage (ADR-025): the Runtime attempt's
+   * signal, handed unchanged to every model invocation. Once it is aborted,
+   * no new iteration starts.
+   */
+  signal?: AbortSignal;
 }
 
 /**
@@ -52,7 +58,10 @@ export interface AgentExecutionObserver {
  *   `MAX_AGENT_ITERATIONS_EXCEEDED` — never an extra call, never a silent
  *   reinterpretation as `COMPLETE`, never the draft returned as success;
  * - any Model Runtime failure ends the Agent: no retry, no alternate model,
- *   no restart, no backtracking, no evaluator.
+ *   no restart, no backtracking, no evaluator;
+ * - cancellation (the caller's `signal`) is checked before every iteration
+ *   and passed into every model call. An aborted Agent starts no new
+ *   iteration and runs no cleanup loop (`AGENT_CANCELLED`).
  *
  * Model selection comes only from the registered `AgentSpec.modelPolicyRef`
  * through Model Runtime's deterministic routing, identically on every
@@ -94,7 +103,8 @@ export async function executeAgent(params: ExecuteAgentParams): Promise<AgentExe
   // Bounded by construction: at most `maxIterations` passes, and every pass
   // either returns or advances `iteration` by exactly one.
   for (state.iteration = 1; state.iteration <= maxIterations; state.iteration += 1) {
-    const outcome = await executeModelRequest({ request: buildIterationModelRequest(agent, state), modelPolicyRef, policies: params.policies, models: params.models, ...(params.observer?.model ? { observer: params.observer.model } : {}) });
+    if (params.signal?.aborted) return failAt({ code: "AGENT_CANCELLED", message: `Agent was cancelled before iteration ${state.iteration}.` });
+    const outcome = await executeModelRequest({ request: buildIterationModelRequest(agent, state), modelPolicyRef, policies: params.policies, models: params.models, ...(params.signal ? { signal: params.signal } : {}), ...(params.observer?.model ? { observer: params.observer.model } : {}) });
 
     if (!outcome.ok) {
       const modelFailureCode = outcome.failure.code;

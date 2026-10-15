@@ -27,12 +27,13 @@ describe("production MCP anti-corruption boundary", () => {
   it("connector dependencies point downwards and public exports contain no SDK type or invoke API", () => {
     const root = join(packages, "mcp-connector");
     const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { dependencies: Record<string, string> };
-    expect(Object.keys(manifest.dependencies).sort()).toEqual(["@aao/contracts", "@aao/tool-runtime", "@modelcontextprotocol/sdk", "zod"]);
+    expect(Object.keys(manifest.dependencies).sort()).toEqual(["@aao/adapters", "@aao/contracts", "@aao/tool-runtime", "@modelcontextprotocol/sdk", "zod"]);
     expect(code(join(root, "src/index.ts"))).not.toMatch(/@modelcontextprotocol|resolveSessionBinding|invoke|Transport|CallToolResult|ListToolsResult|\bClient\b/);
     const files = sources(join(root, "src"));
     expect(files.filter((path) => code(path).includes("client.callTool("))).toEqual([join(root, "src/session.ts")]);
     for (const path of files) {
-      expect(code(path)).not.toMatch(/authorize\(|createToolRegistry|\.register\(|process\.env|console\.|node:fs|node:child_process|StreamableHTTP|OAuth|Promise\.race|setTimeout|retry|reconnect|sqlite|postgres|AgentDecision/);
+      // The connector may *declare* host retry safety and report a transient failure as retryable; it never retries itself.
+      expect(code(path)).not.toMatch(/authorize\(|createToolRegistry|\.register\(|process\.env|console\.|node:fs|node:child_process|StreamableHTTP|OAuth|Promise\.race|setTimeout|retry(?!Safety|able)|maxAttempts|for\s*\(.*attempt|reconnect|sqlite|postgres|AgentDecision|\.(?:idempotentHint|readOnlyHint|destructiveHint|annotations|_meta)\b/);
     }
   });
 });

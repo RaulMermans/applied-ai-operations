@@ -123,11 +123,89 @@ console.log(final.execution?.run.status); // COMPLETED — the draft ran exactly
 - **Continuing too early.** Calling `continue` before anyone decides returns `APPROVAL_STILL_PENDING`.
 - **Restarts.** Approvals live in this app's memory. For restart-safe waits, use the lower-level `@aao/durability`.
 
+## 3. A model step through an explicit adapter
+
+Models plug in through the adapter contract ([ADR-025](../decisions/ADR-025-adapter-and-portability-contract.md)). An adapter is the canonical `ModelAdapter` port plus a manifest that claims only what it implements. A binding names the adapter by exact version. The Workflow references only a model policy.
+
+```ts
+import { createAAO, defineAdapterManifest, defineGovernance, defineModelAdapter, defineModelPolicy, defineWorkflow, type ModelAdapter } from "@aao/framework";
+
+// 1. The adapter: the canonical port. Forward `signal` to your provider so a Runtime timeout really stops the call.
+const rulesClassifier: ModelAdapter = {
+  async invoke(request, { signal }) {
+    if (signal.aborted) return { status: "failed", reason: "provider_error" };
+    const text = request.messages.map((message) => message.content).join(" ");
+    return { status: "succeeded", output: { category: /market|study/i.test(text) ? "research" : "support" }, finishReason: "stop" };
+  },
+};
+
+// 2. Its manifest: a claim, never authority. Every capability is declared, and conformance verifies the claims.
+const classifier = defineModelAdapter({
+  manifest: defineAdapterManifest({
+    id: "example.rules-classifier", version: "1.0.0", kind: "model",
+    capabilities: [
+      { capability: "model.text_generation", support: "supported" },
+      { capability: "model.structured_output", support: "supported" },
+      { capability: "model.usage", support: "unsupported" },
+      { capability: "model.cancellation", support: "supported" },
+      { capability: "model.tool_call_response", support: "unsupported" },
+    ],
+  }),
+  adapter: rulesClassifier,
+});
+
+// 3. Host configuration: the binding names the exact adapter. The Workflow below never does.
+const app = createAAO({
+  governance: defineGovernance({ actors: [{ id: "svc.intake", type: "service" }], roles: [], bindings: [], policies: [] }),
+  principalForRun: () => ({ id: "svc.intake", type: "service" }),
+  modelAdapters: [classifier],
+  modelBindings: [{ id: "classifier", priority: 1, capabilities: ["model.text_generation", "model.structured_output"], adapterRef: { id: "example.rules-classifier", version: "1.0.0" } }],
+  modelPolicies: [defineModelPolicy({ schemaVersion: 1, id: "policy.classify", version: "1.0.0", name: "Classify requests" })],
+});
+
+const workflow = defineWorkflow({
+  schemaVersion: 1, id: "requests.classify", version: "1.0.0", name: "Classify a request", entryNodeId: "classify",
+  nodes: [
+    { id: "classify", kind: "model", config: { modelPolicyRef: "policy.classify", requestStateKey: "request", resultStateKey: "classification" } },
+    { id: "done", kind: "final_output", config: {} },
+  ],
+  edges: [{ sourceNodeId: "classify", targetNodeId: "done" }],
+});
+
+const request = {
+  schemaVersion: 1, invocationId: "inv-1",
+  messages: [{ role: "user", content: "Classify: quarterly market study." }],
+  output: { kind: "structured", schema: { type: "object", properties: { category: { type: "string" } }, required: ["category"] } },
+};
+const classified = await app.prepareWorkflow(workflow).execute({ runId: "run-classify-1", initialState: { runId: "run-classify-1", revision: 0, values: { request } } });
+
+console.log(classified.ok && (classified.execution.state.values.classification as { output: unknown }).output); // { category: "research" }
+```
+
+To use the Vercel AI SDK instead, change only host configuration. Import the concrete adapter from its own package, never from `@aao/framework`. The Workflow and policy stay the same:
+
+```typescript
+import { defineVercelAiModelAdapter } from "@aao/model-runtime/vercel-ai";
+
+modelAdapters: [defineVercelAiModelAdapter({ model: yourLanguageModel })],
+modelBindings: [{ ..., adapterRef: { id: "aao.vercel-ai-sdk", version: "1.0.0" } }],
+```
+
+What the adapter contract guarantees:
+
+- **Bounded construction failures.** A missing or wrong-version adapter, a wrong kind, or a binding capability the manifest does not claim fails `createAAO` before any provider call.
+- **One cancellation lineage.** The adapter receives the Runtime attempt's `AbortSignal`. A model call that outlives its attempt timeout cannot commit a late result.
+- **Canonical failures.** A provider failure stays the canonical `MODEL_INVOCATION_FAILED`.
+- **Agents.** `agent` nodes use the same adapters through the native bounded Agent Runtime (`agents: [{ spec, instructions, limits }]`).
+- **Deterministic steps.** Trusted host executors run `deterministic` nodes (`deterministicExecutors`, by exact `executorRef`).
+- **Tool providers.** MCP Tools are bound in `@aao/mcp-connector` with host-owned permission and retry safety, then registered with `defineTool`. Server metadata never grants either.
+
 ## What the framework does not do (yet)
 
-- **Node kinds.** It runs `tool`, `approval`, and `final_output` nodes. `model`, `agent`, `deterministic`, and `evaluator` nodes are refused at `prepareWorkflow` with `FRAMEWORK_FEATURE_NOT_AVAILABLE`. Model and agent execution through the framework waits for the Sprint 20 adapter contract. Until then, use `@aao/model-runtime` and `@aao/agent-runtime` directly.
-- **Tool permission classes.** Tools requiring `external_side_effect`, `destructive`, or `sensitive_data` stay unsupported, whatever the grants.
+- **Node kinds.** It runs `tool`, `approval`, `model`, `agent`, `deterministic`, and `final_output` nodes. `evaluator` nodes are refused at `prepareWorkflow` with `FRAMEWORK_FEATURE_NOT_AVAILABLE`.
+- **Adapters.** There is no LangGraph or other `agent_runtime` adapter, no adapter discovery or module loading, and no concrete adapter exported from `@aao/framework`. Verify your own adapter with `@aao/framework/conformance` ([adapter contract](../architecture/adapter-contract.md)).
+- **Tool permission classes.** Tools requiring `external_side_effect`, `destructive`, or `sensitive_data` stay unsupported, whatever the grants or an adapter's claims.
 - **Identity.** It does not authenticate anyone. `principalForRun` is your host's identity boundary.
-- **Secrets.** Keep credentials out of definitions. Your handlers own their own dependencies.
+- **Secrets.** Keep credentials out of definitions and manifests. Your handlers and adapters own their own dependencies.
 
-Next: the [CLI](cli.md) and the [framework surface](../architecture/framework-surface.md).
+Next: the [CLI](cli.md), the [framework surface](../architecture/framework-surface.md), and the [compatibility matrix](adapter-compatibility.md).

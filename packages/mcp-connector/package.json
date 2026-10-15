@@ -5,13 +5,23 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./src/index.ts",
-  "exports": { ".": { "types": "./src/index.ts", "default": "./dist/index.js" } },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./conformance": {
+      "types": "./src/conformance.ts",
+      "default": "./dist/conformance.js"
+    }
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "smoke": "node test/smoke.mjs"
   },
   "dependencies": {
+    "@aao/adapters": "workspace:*",
     "@aao/contracts": "workspace:*",
     "@aao/tool-runtime": "workspace:*",
     "@modelcontextprotocol/sdk": "1.30.0",
@@ -22,5 +32,10 @@
     "@aao/authorization": "workspace:*",
     "@aao/runtime": "workspace:*",
     "@aao/workflow-dsl": "workspace:*"
-  }
+  },
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "conformance/server.mjs"
+  ]
 }

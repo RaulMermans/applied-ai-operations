@@ -1,5 +1,7 @@
 import { generateText, jsonSchema, NoObjectGeneratedError, NoOutputGeneratedError, Output, type FinishReason, type LanguageModel, type LanguageModelUsage } from "ai";
-import type { ModelAdapter, ModelAdapterRequest, ModelAdapterResult, ModelFinishReason, ModelUsage } from "../types.js";
+import { defineAdapterManifest, type AdapterManifest } from "@aao/adapters";
+import { defineModelAdapter, type ModelAdapterDefinition } from "../adapter-definition.js";
+import type { ModelAdapter, ModelAdapterContext, ModelAdapterRequest, ModelAdapterResult, ModelFinishReason, ModelUsage } from "../types.js";
 
 /**
  * The first production `ModelAdapter`, backed by the Vercel AI SDK. This is
@@ -15,10 +17,34 @@ export interface VercelAiModelAdapterOptions {
   model: LanguageModel;
 }
 
+/**
+ * What this adapter claims (adapter contract v1, ADR-025), verified by the
+ * canonical conformance suite (`aao eval adapters`). Every capability is
+ * implemented below. Cancellation forwards the invocation `AbortSignal` to
+ * the SDK's own `abortSignal`, which reaches the provider call.
+ */
+export const VERCEL_AI_SDK_ADAPTER_MANIFEST: AdapterManifest = defineAdapterManifest({
+  id: "aao.vercel-ai-sdk",
+  version: "1.0.0",
+  kind: "model",
+  displayName: "Vercel AI SDK model adapter",
+  capabilities: [
+    { capability: "model.text_generation", support: "supported" },
+    { capability: "model.structured_output", support: "supported" },
+    { capability: "model.usage", support: "supported" },
+    { capability: "model.cancellation", support: "supported" },
+    { capability: "model.tool_call_response", support: "supported" },
+  ],
+  limitations: [
+    { code: "model.single_invocation", description: "The SDK's own retries are disabled. AAO invokes exactly once per request, and Runtime reliability policy owns retries." },
+    { code: "model.provider_injected", description: "The host injects the language model. The adapter never reads credentials or chooses a provider." },
+  ],
+});
+
 export function createVercelAiModelAdapter(options: VercelAiModelAdapterOptions): ModelAdapter {
   const { model } = options;
   return {
-    async invoke(request: ModelAdapterRequest): Promise<ModelAdapterResult> {
+    async invoke(request: ModelAdapterRequest, context: ModelAdapterContext): Promise<ModelAdapterResult> {
       try {
         const common = {
           model,
@@ -26,6 +52,8 @@ export function createVercelAiModelAdapter(options: VercelAiModelAdapterOptions)
           allowSystemInMessages: true,
           // The AI SDK retries by default; AAO V1 invokes exactly once (ADR-011).
           maxRetries: 0,
+          // The Runtime attempt's cancellation lineage, handed to the SDK's own abort mechanism (ADR-025).
+          abortSignal: context.signal,
           ...(request.maxOutputTokens !== undefined ? { maxOutputTokens: request.maxOutputTokens } : {}),
         };
 
@@ -53,6 +81,11 @@ export function createVercelAiModelAdapter(options: VercelAiModelAdapterOptions)
       }
     },
   };
+}
+
+/** The registrable definition: `VERCEL_AI_SDK_ADAPTER_MANIFEST` plus this adapter, for `createAAO({ modelAdapters })`. */
+export function defineVercelAiModelAdapter(options: VercelAiModelAdapterOptions): ModelAdapterDefinition {
+  return defineModelAdapter({ manifest: VERCEL_AI_SDK_ADAPTER_MANIFEST, adapter: createVercelAiModelAdapter(options) });
 }
 
 function normalize(finishReason: FinishReason, toolCallCount: number, usage: LanguageModelUsage, readOutput: () => unknown): ModelAdapterResult {

@@ -6,7 +6,12 @@
 //
 // The Vercel AI SDK adapter is deliberately NOT exported from here: import
 // it from "@aao/model-runtime/vercel-ai", so this entry point never loads `ai`.
-// No agents, tools, retries, fallback, memory, or prompt templating.
+// Its conformance subject is the explicit "@aao/model-runtime/vercel-ai/conformance"
+// subpath. No agents, tools, retries, fallback, memory, or prompt templating.
+//
+// Since Sprint 20 (ADR-025) `ModelAdapter` is the public `model` adapter
+// port: this package is its single owner, and `defineModelAdapter` pairs it
+// with an @aao/adapters `AdapterManifest`.
 
 export {
   MODEL_CAPABILITIES,
@@ -35,12 +40,14 @@ export type {
   ModelFailure,
   ModelExecutionResult,
   ModelAdapter,
+  ModelAdapterContext,
   ModelAdapterRequest,
   ModelAdapterResult,
   ModelAdapterFailureReason,
 } from "./types.js";
 
 export { validateModelRequest } from "./request.js";
+export { defineModelAdapter, type ModelAdapterDefinition, type ModelAdapterDefinitionInput } from "./adapter-definition.js";
 export { createModelRegistry, ModelBindingIdentitySchema, type ModelBinding, type ModelBindingIdentity, type ModelRegistry } from "./registry.js";
 export { createModelPolicyRegistry, hasUnsupportedConstraints, type ModelPolicyRegistry } from "./policy-registry.js";
 export { deriveRequiredCapabilities, selectModelBinding } from "./router.js";

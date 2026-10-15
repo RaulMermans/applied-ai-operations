@@ -1,5 +1,6 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
 import { JsonObjectSchema, type JsonValue } from "@aao/contracts";
 import type { ToolHandlerResult } from "@aao/tool-runtime";
@@ -132,7 +133,11 @@ export function createMcpSession(config: McpStdioConfig): McpSession {
         if (raw.structuredContent === undefined) return { ok: false, code: "MCP_STRUCTURED_OUTPUT_REQUIRED" };
         if (!isWireJson(raw.structuredContent) || raw.structuredContent === null || Array.isArray(raw.structuredContent) || typeof raw.structuredContent !== "object") return { ok: false, code: "MCP_INVALID_RESULT" };
         return { ok: true, output: cloneJson(raw.structuredContent) };
-      } catch {
+      } catch (error) {
+        // A server-side internal error or a request timeout is a transient dependency failure: reported as
+        // retryable, never retried here. Whether the Runtime retries is the host's retry-safety decision.
+        // Only the class and the protocol code are inspected, never the message or data.
+        if (error instanceof McpError && (error.code === ErrorCode.InternalError || error.code === ErrorCode.RequestTimeout)) return { ok: false, code: "MCP_CALL_FAILED", retryable: true };
         return { ok: false, code: "MCP_CALL_FAILED" };
       }
     },

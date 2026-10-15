@@ -20,7 +20,10 @@ function workspaceSourceAlias(packageName: string, relativeEntry: string) {
 export default defineConfig({
   resolve: {
     alias: [
+      workspaceSourceAlias("@aao/framework/conformance", "./packages/framework/src/conformance/index.ts"),
       workspaceSourceAlias("@aao/framework", "./packages/framework/src/index.ts"),
+      workspaceSourceAlias("@aao/adapters", "./packages/adapters/src/index.ts"),
+      workspaceSourceAlias("@aao/mcp-connector/conformance", "./packages/mcp-connector/src/conformance.ts"),
       workspaceSourceAlias("@aao/mcp-connector", "./packages/mcp-connector/src/index.ts"),
       workspaceSourceAlias("@aao/authorization", "./packages/authorization/src/index.ts"),
       workspaceSourceAlias("@aao/approval", "./packages/approval/src/index.ts"),
@@ -32,6 +35,7 @@ export default defineConfig({
       workspaceSourceAlias("@aao/config", "./packages/config/src/index.ts"),
       workspaceSourceAlias("@aao/contracts", "./packages/contracts/src/index.ts"),
       // Subpath first: a string alias also matches "@aao/model-runtime/..." as a prefix.
+      workspaceSourceAlias("@aao/model-runtime/vercel-ai/conformance", "./packages/model-runtime/src/adapters/vercel-ai-conformance.ts"),
       workspaceSourceAlias("@aao/model-runtime/vercel-ai", "./packages/model-runtime/src/adapters/vercel-ai.ts"),
       workspaceSourceAlias("@aao/model-runtime", "./packages/model-runtime/src/index.ts"),
       workspaceSourceAlias("@aao/runtime", "./packages/runtime/src/index.ts"),

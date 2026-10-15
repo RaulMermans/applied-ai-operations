@@ -86,6 +86,13 @@ A public surface must not freeze what Sprint 20 owns: adapter manifests, a unive
 - **The package is shaped as if it could be published.** Its `exports` has only `"."` (types from `dist/*.d.ts`, never `src/`), plus `bin.aao` and a `files` allowlist of compiled `.js`/`.d.ts` and the README.
 - **It stays `private`.** `pnpm pack` contains only those files. Nothing is published.
 
+> **Sprint 20 update ([ADR-025](ADR-025-adapter-and-portability-contract.md)).** The questions below were decided there.
+>
+> - **Root surface.** The root adds the stable adapter-contract concepts (`AAO_ADAPTER_CONTRACT_VERSION`, `defineAdapterManifest`, `defineModelAdapter`, `checkAdapterCompatibility`, `AdapterContractError`, and the related types). `AAO_FRAMEWORK_API_VERSION` stays 1, because the change is additive.
+> - **Execution scope.** `createAAO` registers model adapters, bindings, policies, Agents, deterministic executors, and an optional emit-only Trace port. `model`, `agent`, and `deterministic` nodes now execute.
+> - **Conformance and continuation.** Conformance is the `@aao/framework/conformance` subpath. Continuation is non-mutating in Core, so `prepared.continue` no longer exposes in-place updates.
+> - **The CLI.** It loads official subjects through package exports, not relative paths.
+
 ## Consequences
 
 - A developer can define Governance, a Tool, and a Workflow, create an app, prepare, execute, approve, and continue, all from one import. Every existing guarantee still holds, and tests prove it: Authorization denial, rejection, unsupported classes, forged executions, identity injection through state, input, or metadata, two-app isolation, and post-construction mutation.

@@ -24,8 +24,6 @@ export function loadDataset(file = "runtime-foundation.v2.yaml"): EvalDataset {
   return parsed.value;
 }
 
-export const loadConformanceDefinitions = () => loadDefinitions("adapter-conformance.v1.yaml");
-export const loadConformanceDataset = () => loadDataset("adapter-conformance-foundation.v1.yaml");
 
 export function loadFixture(name: string): EvalEvidenceBundle {
   return JSON.parse(readFileSync(join(evalsRoot, "fixtures", `${name}.json`), "utf8")) as EvalEvidenceBundle;
