@@ -22,6 +22,7 @@ export default defineConfig({
     alias: [
       workspaceSourceAlias("@aao/framework/conformance", "./packages/framework/src/conformance/index.ts"),
       workspaceSourceAlias("@aao/framework", "./packages/framework/src/index.ts"),
+      workspaceSourceAlias("@aao/toolbox", "./packages/toolbox/src/index.ts"),
       workspaceSourceAlias("@aao/adapters", "./packages/adapters/src/index.ts"),
       workspaceSourceAlias("@aao/mcp-connector/conformance", "./packages/mcp-connector/src/conformance.ts"),
       workspaceSourceAlias("@aao/mcp-connector", "./packages/mcp-connector/src/index.ts"),

@@ -1,0 +1,8 @@
+{
+  "extends": "../../../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "paths": { "@aao/framework": ["../../../framework/src/index.ts"], "@aao/toolbox": ["../../src/index.ts"] }
+  },
+  "include": ["app.ts"]
+}

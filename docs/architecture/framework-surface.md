@@ -23,7 +23,7 @@ existing AAO Core
 
 - **Framework ≠ Runtime.** Execution is the Runtime's `executeWorkflow` / `continueApprovedWorkflow`, and its `WorkflowExecutionResult` is returned unchanged.
 - **Framework ≠ Adapter.** The Framework exports the stable adapter *contract* (Sprint 20, [ADR-025](../decisions/ADR-025-adapter-and-portability-contract.md)), never a concrete adapter. Hosts import the Vercel AI SDK adapter or the MCP connector from their own packages.
-- **Framework ≠ Toolbox.** There is no reusable Tool catalog. That is Sprint 21.
+- **Framework ≠ Toolbox.** The reusable Tool catalog is `@aao/toolbox` (Sprint 21, [ADR-026](../decisions/ADR-026-toolbox-foundation.md)), a separate package *above* the Framework. It consumes the public root (`defineTool`), and its Tools enter `createAAO({ tools })` like any other Tool. The Framework never imports it.
 
 The dependency direction is `@aao/framework → Core`, never the reverse. No Core package or app imports or depends on it, and a static test enforces this. Core never needs the façade: it is the authority the façade calls.
 
@@ -83,7 +83,7 @@ No public type contains a Vercel AI SDK, MCP SDK, LangGraph, provider SDK, or HT
 | Durable execution | ❌ | ✅ `createDurableRuntimeHost` | Advanced, lower-level |
 | Trace / Metrics / Audit | ❌ | ✅ `@aao/observability` | Advanced, lower-level |
 | LangGraph | ❌ | research spike only | Deferred |
-| Toolbox | ❌ | ❌ | Sprint 21 |
+| Toolbox | ❌ never from the root | ✅ `@aao/toolbox` (`coreToolbox`, `selectToolboxTools`, catalog) | Stable (Sprint 21) |
 
 ## Declarative helpers
 
@@ -224,7 +224,7 @@ The framework surface does not include:
 - LangGraph support;
 - `aao run <file>` (a Workflow file carries no trusted Tool code), `aao init`, or `create-aao`;
 - plugin loading or environment discovery;
-- Toolbox, capability packs, Control Center, or UI;
+- the Toolbox (it is the separate `@aao/toolbox` package, never re-exported here), capability packs, Control Center, or UI;
 - publication or deployment;
 - new autonomy: no autonomous approval, self-registration, dynamic Tool discovery, self-modifying workflows, or Eval-driven repair.
 
@@ -241,11 +241,6 @@ Every question Sprint 19 left open was decided by [ADR-025](../decisions/ADR-025
 - **Framework registration.** The Framework registers model adapters, bindings, policies, Agents, and deterministic executors.
 - **Continuation.** It is non-mutating in Core.
 
-## Sprint 21 handoff
+## Sprint 21 handoff (resolved)
 
-The Toolbox can rely on:
-
-- a stable Framework and a stable Tool-provider boundary (host-bound canonical `ToolSpec`, Tool Runtime execution, host-owned retry safety);
-- stable adapter manifests and a stable conformance contract.
-
-Toolbox capabilities are AAO-native and need not know whether execution uses a local handler, MCP, REST, or a future provider.
+[ADR-026](../decisions/ADR-026-toolbox-foundation.md) built the Toolbox on exactly this boundary: `@aao/toolbox` defines normal Tools with `defineTool`, hosts select them by exact ref, and `createAAO` registers them into the canonical Tool Registry. The Framework root and execution path did not change. See [toolbox](toolbox.md).

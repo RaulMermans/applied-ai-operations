@@ -385,6 +385,28 @@ importers:
         specifier: workspace:*
         version: link:../workflow-dsl
 
+  packages/toolbox:
+    dependencies:
+      '@aao/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@aao/framework':
+        specifier: workspace:*
+        version: link:../framework
+      zod:
+        specifier: ^3.24.3
+        version: 3.25.76
+    devDependencies:
+      '@aao/evaluation':
+        specifier: workspace:*
+        version: link:../evaluation
+      '@aao/observability':
+        specifier: workspace:*
+        version: link:../observability
+      '@aao/tool-runtime':
+        specifier: workspace:*
+        version: link:../tool-runtime
+
   packages/workflow-dsl:
     dependencies:
       '@aao/contracts':

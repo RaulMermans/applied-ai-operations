@@ -4,3 +4,4 @@ coverage/
 .env
 .DS_Store
 packages/framework/test/consumer/.out/
+packages/toolbox/test/consumer/.out/

@@ -36,6 +36,22 @@ Developer → @aao/framework (definitions · app host · CLI) → AAO Core → R
 
 Dependencies run one way, `framework → core`, and Core never imports it. The root exports an explicit, snapshot-pinned allowlist with no vendor types. Framework errors cover preparation only, and Runtime failures stay canonical. Since Sprint 20 the Framework executes `tool`, `approval`, `model`, `agent`, `deterministic`, and `final_output` nodes, through the adapter contract below. See [framework surface](docs/architecture/framework-surface.md).
 
+## Toolbox
+
+`@aao/toolbox` (`packages/toolbox`, Sprint 21, [ADR-026](docs/decisions/ADR-026-toolbox-foundation.md)) is a curated, versioned, provider-neutral library of reusable Tools above the Framework. It is not a runtime:
+
+```text
+Toolbox (manifest · discovery metadata · normal Tool definitions) → explicit selection → createAAO → Tool Registry → Tool Runtime → Governance / Authorization
+Capability Packs (future) → Toolbox + Integration Fabric (future) → Tool Registry → Tool Runtime
+```
+
+- **Normal Tools only.** Toolbox Tools are `defineTool` definitions. Hosts select exact refs (`selectToolboxTools`) and register them with `createAAO`. Execution, the support gate, Authorization, validation, retries, Trace, and Audit are unchanged.
+- **Metadata is never authority.** `ToolboxManifest` V1 is strict, and authority fields are rejected. Discovery (list, get, deterministic lexical search) grants no permission and registers nothing.
+- **AAO Core Toolbox `aao.core@1.0.0`.** Six deterministic, bounded, `read_only` Tools for supplied text and JSON records.
+- **Boundaries.** Toolbox ≠ Integration Fabric ≠ Capability Pack ≠ Skill ≠ Memory. Dependencies run `@aao/toolbox → @aao/framework → Core`, and Core never imports it.
+
+See [toolbox](docs/architecture/toolbox.md).
+
 ## Canonical domain contracts
 
 Company configuration supplies actors, roles, bindings, and deny policies to `@aao/governance`. Its deterministic resolver turns host-attested identity into effective authority. Existing `@aao/authorization` checks requested permissions and the Agent ceiling; `@aao/tool-runtime` enforces runtime support and executes supported Tools. See [governance](docs/architecture/governance.md) and [ADR-016](docs/decisions/ADR-016-actor-role-policy-governance.md). Approval is a separate, process-local gate after Governance and Authorization (ADR-017); it never grants authority. Approver eligibility is trusted identity plus required-role membership, not possession of the action's permissions.
@@ -288,7 +304,8 @@ See [ADR-025](docs/decisions/ADR-025-adapter-and-portability-contract.md), [adap
 - [Adapter verification](docs/architecture/adapter-verification.md) — Sprint 18 verification history, now running through the public adapter contract.
 - [Adapter contract](docs/architecture/adapter-contract.md) — `@aao/adapters`: manifests, kinds, capabilities, ports, cancellation, conformance vocabulary, report integrity, and the generated matrix.
 - [Portability](docs/architecture/portability.md) — the portability invariant, where substrate choice lives, and the cross-adapter proof.
-- [Framework surface](docs/architecture/framework-surface.md) — the public `@aao/framework` façade, application host, identity ownership, model/agent/deterministic registration, and the Sprint 21 handoff; with the developer [quickstart](docs/framework/quickstart.md) and [CLI](docs/framework/cli.md).
+- [Framework surface](docs/architecture/framework-surface.md) — the public `@aao/framework` façade, application host, identity ownership, and model/agent/deterministic registration; with the developer [quickstart](docs/framework/quickstart.md) and [CLI](docs/framework/cli.md).
+- [Toolbox](docs/architecture/toolbox.md) — `@aao/toolbox`: the curated reusable Tool library, manifest contract, non-authoritative catalog and search, the AAO Core Toolbox, and its boundaries; with the generated [Core Tools catalog](docs/toolbox/core-tools.md).
 - [Governance](docs/architecture/governance.md) — host-attested actors, role bindings, deny policies, and resolved authority before Authorization.
 - [MCP connector](docs/architecture/mcp-connector.md) — isolated stdio sessions, bounded discovery, explicit Tool bindings, and normalized failures.
 - [System boundaries](docs/architecture/system-boundaries.md) — architectural layers and ownership.
@@ -306,7 +323,7 @@ Dependencies implement infrastructure; AAO defines product semantics.
 
 | Capability | AAO owns | Current substrate stance |
 | --- | --- | --- |
-| Adapter contract | Yes | `@aao/adapters`: vendor-free manifests, capabilities, conformance, matrix (Sprint 20) |
+| Adapter contract | Yes | `@aao/adapters`: vendor-free manifests, capabilities, conformance, matrix (Sprint 20); adapters own external substrate compatibility |
 | Workflow semantics | Yes | Native AAO Runtime; LangGraph.js deferred (no `agent_runtime` adapter exists) |
 | Model policy and contracts | Yes | Vercel AI SDK behind the conformance-verified `model` adapter contract |
 | MCP policy and exposure | Yes | Official MCP TypeScript SDK as a conformance-verified `tool_provider` |
@@ -317,6 +334,9 @@ Dependencies implement infrastructure; AAO defines product semantics.
 | Governance | Yes | `@aao/governance`, canonical contracts and deterministic validation (Sprint 11) |
 | Evaluation | Yes | `@aao/evaluation`: trusted deterministic graders over canonical evidence, no eval framework or vendor (Sprint 17); optional model judge only through an injected port; analytics, CI gates, and adapter verification (Sprint 18); report integrity (Sprint 19) |
 | Developer surface | Yes | `@aao/framework`: an explicit façade and the `aao` CLI over AAO Core, no framework SDK (Sprint 19) |
+| Reusable Tool package / catalog | Yes | `@aao/toolbox`: curated Tool definitions + non-authoritative catalog, no vendor SDK (Sprint 21) |
+| Callable Tool definitions | Yes | Tool Registry (`@aao/tool-runtime`): authoritative schemas, handlers, permission classes, versions |
+| Tool execution | Yes | Tool Runtime (`@aao/tool-runtime`): support gate, Authorization, validation (Sprint 8–9) |
 | Trace model | Yes | `@aao/observability`: local Trace Stores, no external dependency (Sprint 15); OTel export deferred |
 | Metrics | Yes | `@aao/observability`: pure projections of Trace, no Metrics store or metrics SDK (Sprint 16); exporters deferred |
 | Audit | Yes | `@aao/observability`: local hash-chained Audit Store, no SIEM or audit vendor (Sprint 16) |

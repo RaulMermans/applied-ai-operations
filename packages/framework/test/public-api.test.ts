@@ -91,7 +91,16 @@ describe("public API snapshot", () => {
 });
 
 describe("dependency boundaries", () => {
-  const corePackages = readdirSync(join(repositoryRoot, "packages")).filter((name) => name !== "framework" && existsSync(join(repositoryRoot, "packages", name, "package.json")));
+  // @aao/toolbox (Sprint 21, ADR-026) is a Framework *consumer* above Core, not a Core package: it depends on
+  // the public Framework root by design. Its own tests prove no Core package, app, or the Framework imports it.
+  const FRAMEWORK_CONSUMERS = ["toolbox"];
+  const corePackages = readdirSync(join(repositoryRoot, "packages")).filter((name) => name !== "framework" && !FRAMEWORK_CONSUMERS.includes(name) && existsSync(join(repositoryRoot, "packages", name, "package.json")));
+
+  it("the only Framework consumer inside packages/ is @aao/toolbox, and it uses only the public root", () => {
+    const toolboxManifest = JSON.parse(readFileSync(join(repositoryRoot, "packages", "toolbox", "package.json"), "utf8")) as { dependencies: Record<string, string> };
+    expect(toolboxManifest.dependencies).toHaveProperty("@aao/framework");
+    for (const file of sourceFiles(join(repositoryRoot, "packages", "toolbox", "src"))) expect(code(file), relative(repositoryRoot, file)).not.toMatch(/@aao\/framework\/|packages\/framework/);
+  });
 
   it("no Core package or app depends on or imports @aao/framework (framework → core only)", () => {
     expect(corePackages.length).toBeGreaterThan(10);

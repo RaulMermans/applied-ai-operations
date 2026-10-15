@@ -9,6 +9,8 @@ apps/
 
 packages/
   framework/               @aao/framework — public developer surface: define* helpers, createAAO host, the aao CLI (Sprint 19)
+  toolbox/                 @aao/toolbox — curated reusable Tools + catalog; the AAO Core Toolbox (Sprint 21; above the Framework)
+  adapters/                @aao/adapters — vendor-free adapter and portability contract (Sprint 20)
   config/                  @aao/config — deterministic runtime configuration
   contracts/               @aao/contracts — canonical domain contracts (Sprint 2)
   workflow-dsl/            @aao/workflow-dsl — workflow authoring, validation, and compiler (Sprint 3)
@@ -27,7 +29,7 @@ packages/
 
 evals/                versioned Eval definitions, datasets, evidence fixtures (Sprint 17), approved baselines and gate policies (Sprint 18)
 experiments/          research notes accompanying the substrate spikes
-docs/                  architecture contract, ADRs, engineering docs, and framework (developer) docs
+docs/                  architecture contract, ADRs, engineering docs, framework (developer) docs, Toolbox catalog, and generated artifacts
 ```
 
 ## `packages/framework` — `@aao/framework`
@@ -51,6 +53,23 @@ Production dependencies are `@aao/*` only:
 - `@aao/evaluation`, `@aao/observability`, `@aao/mcp-connector`, and `@aao/model-runtime` for the CLI's Eval and adapter-verification commands.
 
 The root's import graph never reaches the CLI or the last four packages. The framework imports no vendor or framework SDK, and its package `exports` has only `"."`, typed from `dist/`. It is `private` and unpublished; its `files` allowlist ships compiled `.js`/`.d.ts` and the README only.
+
+## `packages/toolbox` — `@aao/toolbox`
+
+The AAO Toolbox (Sprint 21, [ADR-026](../decisions/ADR-026-toolbox-foundation.md), [toolbox](../architecture/toolbox.md)): curated, versioned, provider-neutral Tool definitions plus discovery metadata. It is a *consumer* of the public Framework (`@aao/toolbox → @aao/framework → Core`), not a Core package, and it never executes Tools itself. It contains:
+
+- `src/contract.ts` — `ToolboxManifest` V1, `ToolboxEntry`, exact refs, and `defineToolbox` (strict manifest + `defineTool` re-validation + one-to-one entries, frozen, private Tool definitions, catalog fingerprint).
+- `src/catalog.ts` — the read-only catalog: `listToolboxEntries`, `getToolboxEntry`, deterministic lexical `searchToolbox`, `selectToolboxTools` (explicit exact-ref selection), and `describeToolbox`.
+- `src/core/` — the AAO Core Toolbox (`aao.core@1.0.0`): `text.normalize`, `text.chunk`, `records.dedupe`, `records.project`, `records.sort`, `records.count_by`, and `CORE_TOOL_LIMITS`.
+- `src/catalog-doc.ts` — package-internal renderers for the generated catalog, used by `scripts/generate-catalog.mjs` and the drift test.
+- `test/` — contract, catalog, Tool semantics and bounds, Framework/Tool Runtime integration, the Eval verification set, catalog drift, API snapshot and boundaries, packaging, and `test/consumer/` (imports only `@aao/framework` and `@aao/toolbox`).
+- `smoke/sprint21.mjs` — compiled smoke (`SPRINT_21_TOOLBOX_FOUNDATION_SMOKE_OK`).
+
+Production dependencies are `@aao/framework`, `@aao/contracts`, and `zod`. `@aao/evaluation`, `@aao/observability`, and `@aao/tool-runtime` are test-only. No Core package, app, or the Framework imports it. The package is `private`, exports only `"."` typed from `dist/`, and ships compiled `.js`/`.d.ts` plus the README.
+
+## `packages/adapters` — `@aao/adapters`
+
+The vendor-free adapter and portability contract (Sprint 20, [ADR-025](../decisions/ADR-025-adapter-and-portability-contract.md)): manifests, kinds, the capability catalog, compatibility, the conformance suite and report, and the generated compatibility matrix. It depends only on `@aao/contracts` and `zod`.
 
 ## `apps/control-plane` — `@aao/control-plane`
 

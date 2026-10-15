@@ -8,7 +8,7 @@ AAO is a layer, not an operating system, chatbot, agent marketplace, no-code wor
 
 ## Current status
 
-Sprint 0 architecture contract complete. Sprint 1 engineering foundation complete (`SPRINT_01_ENGINEERING_FOUNDATION_COMPLETE`). Sprint 2 canonical domain contracts complete (`SPRINT_02_CANONICAL_DOMAIN_CONTRACTS_COMPLETE`). Sprint 3 workflow DSL and compiler complete (`SPRINT_03_WORKFLOW_DSL_COMPILER_COMPLETE`). Sprint 4 Node Registry and Runtime V1 complete (`SPRINT_04_RUNTIME_V1_COMPLETE`). Sprint 5 managed runtime state and lifecycle complete (`SPRINT_05_MANAGED_RUNTIME_STATE_COMPLETE`). Sprint 6 model abstraction and capability routing complete (`SPRINT_06_MODEL_RUNTIME_COMPLETE`). Sprint 7 bounded Agent Runtime complete (`SPRINT_07_BOUNDED_AGENT_RUNTIME_COMPLETE`). Sprint 8 Tool Registry and safe Tool execution boundary complete (`SPRINT_08_TOOL_RUNTIME_COMPLETE`). Sprint 9 authorization and permission enforcement boundary complete (`SPRINT_09_AUTHORIZATION_BOUNDARY_COMPLETE`). Sprint 10 MCP integration boundary and governed Tool adapter sessions complete (`SPRINT_10_MCP_INTEGRATION_BOUNDARY_COMPLETE`). Sprint 11 Actor, Role & Policy Governance complete (`SPRINT_11_GOVERNANCE_MODEL_COMPLETE`). Sprint 12 Approval Engine complete (`SPRINT_12_APPROVAL_ENGINE_COMPLETE`). Sprint 13 Reliability Runtime complete (`SPRINT_13_RELIABILITY_RUNTIME_COMPLETE`). Sprint 14 Durable Execution complete (`SPRINT_14_DURABLE_EXECUTION_COMPLETE`). Sprint 15 Trace Runtime complete (`SPRINT_15_TRACE_RUNTIME_COMPLETE`). Sprint 16 Metrics & Audit complete (`SPRINT_16_METRICS_AUDIT_COMPLETE`). Sprint 17 Evaluation Runtime complete (`SPRINT_17_EVALUATION_RUNTIME_COMPLETE`). Sprint 18 Eval Analytics / CI Gates / Adapter Verification complete (`SPRINT_18_EVAL_ANALYTICS_CI_ADAPTER_VERIFICATION_COMPLETE`). Sprint 19 Framework Surface complete (`SPRINT_19_FRAMEWORK_SURFACE_COMPLETE`). Sprint 20 Adapter & Portability Contract complete (`SPRINT_20_ADAPTER_PORTABILITY_CONTRACT_COMPLETE`). Sprint 21 Toolbox Foundation is next.
+Sprint 0 architecture contract complete. Sprint 1 engineering foundation complete (`SPRINT_01_ENGINEERING_FOUNDATION_COMPLETE`). Sprint 2 canonical domain contracts complete (`SPRINT_02_CANONICAL_DOMAIN_CONTRACTS_COMPLETE`). Sprint 3 workflow DSL and compiler complete (`SPRINT_03_WORKFLOW_DSL_COMPILER_COMPLETE`). Sprint 4 Node Registry and Runtime V1 complete (`SPRINT_04_RUNTIME_V1_COMPLETE`). Sprint 5 managed runtime state and lifecycle complete (`SPRINT_05_MANAGED_RUNTIME_STATE_COMPLETE`). Sprint 6 model abstraction and capability routing complete (`SPRINT_06_MODEL_RUNTIME_COMPLETE`). Sprint 7 bounded Agent Runtime complete (`SPRINT_07_BOUNDED_AGENT_RUNTIME_COMPLETE`). Sprint 8 Tool Registry and safe Tool execution boundary complete (`SPRINT_08_TOOL_RUNTIME_COMPLETE`). Sprint 9 authorization and permission enforcement boundary complete (`SPRINT_09_AUTHORIZATION_BOUNDARY_COMPLETE`). Sprint 10 MCP integration boundary and governed Tool adapter sessions complete (`SPRINT_10_MCP_INTEGRATION_BOUNDARY_COMPLETE`). Sprint 11 Actor, Role & Policy Governance complete (`SPRINT_11_GOVERNANCE_MODEL_COMPLETE`). Sprint 12 Approval Engine complete (`SPRINT_12_APPROVAL_ENGINE_COMPLETE`). Sprint 13 Reliability Runtime complete (`SPRINT_13_RELIABILITY_RUNTIME_COMPLETE`). Sprint 14 Durable Execution complete (`SPRINT_14_DURABLE_EXECUTION_COMPLETE`). Sprint 15 Trace Runtime complete (`SPRINT_15_TRACE_RUNTIME_COMPLETE`). Sprint 16 Metrics & Audit complete (`SPRINT_16_METRICS_AUDIT_COMPLETE`). Sprint 17 Evaluation Runtime complete (`SPRINT_17_EVALUATION_RUNTIME_COMPLETE`). Sprint 18 Eval Analytics / CI Gates / Adapter Verification complete (`SPRINT_18_EVAL_ANALYTICS_CI_ADAPTER_VERIFICATION_COMPLETE`). Sprint 19 Framework Surface complete (`SPRINT_19_FRAMEWORK_SURFACE_COMPLETE`). Sprint 20 Adapter & Portability Contract complete (`SPRINT_20_ADAPTER_PORTABILITY_CONTRACT_COMPLETE`). Sprint 21 Toolbox Foundation complete (`SPRINT_21_TOOLBOX_FOUNDATION_COMPLETE`). Sprint 22 Company Research Proof is next.
 
 ## Start here: `@aao/framework`
 
@@ -30,14 +30,35 @@ const result = await lookup.execute({ runId: "run-001", initialState: { runId: "
 - **Truthful scope.**
   - The framework executes `tool`, `approval`, `model`, `agent` (the native bounded Agent Runtime), `deterministic` (trusted host executors by exact `executorRef`), and `final_output` nodes. `evaluator` nodes are refused at preparation.
   - Model adapters register explicitly (`defineModelAdapter` + a binding's exact `adapterRef`). Concrete adapters come from their own packages (`@aao/model-runtime/vercel-ai`, `@aao/mcp-connector`), never from the framework root.
-  - There is no LangGraph support, no third-party plugin discovery, no universal adapter compatibility, no external side-effect support, and no Toolbox.
+  - There is no LangGraph support, no third-party plugin discovery, no universal adapter compatibility, and no external side-effect support.
   - The package is local and unpublished.
 
 Read the [quickstart](docs/framework/quickstart.md) (including the Approval flow and a model adapter), the [CLI](docs/framework/cli.md), the [framework surface](docs/architecture/framework-surface.md), [ADR-024](docs/decisions/ADR-024-public-framework-surface.md), the [adapter contract](docs/architecture/adapter-contract.md), [portability](docs/architecture/portability.md), the generated [adapter compatibility matrix](docs/framework/adapter-compatibility.md), and [ADR-025](docs/decisions/ADR-025-adapter-and-portability-contract.md). The package-by-package internals below remain available for advanced use.
 
+## Reusable Tools: `@aao/toolbox`
+
+AAO Toolbox provides reusable provider-neutral Tool definitions that plug into the same governed Tool Runtime as application-specific Tools.
+
+```ts
+import { createAAO } from "@aao/framework";
+import { coreToolbox, selectToolboxTools } from "@aao/toolbox";
+
+const tools = selectToolboxTools(coreToolbox, [{ id: "text.chunk", version: "1.0.0" }, { id: "records.dedupe", version: "1.0.0" }]);
+const app = createAAO({ governance, principalForRun, tools });
+```
+
+- **The AAO Core Toolbox (`aao.core@1.0.0`)** has six deterministic, bounded, `read_only` Tools: `text.normalize`, `text.chunk`, `records.dedupe`, `records.project`, `records.sort`, and `records.count_by`. They use no model, network, filesystem, environment, or credentials.
+- **Explicit selection.** Importing the package registers nothing. Hosts pick exact Tool versions, and Authorization still decides every call.
+- **Metadata is not authority.** Discovery metadata (category, tags, when to use and when not to use, examples) feeds a read-only catalog with deterministic lexical search. A search result grants no permission.
+- **Custom Toolboxes.** `defineToolbox` validates your own manifest and Tool definitions as one versioned package.
+- **Truthful scope.** It is a small curated library. There are no integrations, marketplace, semantic Tool discovery, or automatic agent Tool selection.
+
+See the [Toolbox architecture](docs/architecture/toolbox.md), [ADR-026](docs/decisions/ADR-026-toolbox-foundation.md), and the generated [Core Tools catalog](docs/toolbox/core-tools.md).
+
 ## Available
 
 - the public framework surface (`packages/framework`, `@aao/framework`, Sprint 19): `define*` helpers, the `createAAO` application host, and the `aao` CLI — see above
+- the AAO Toolbox (`packages/toolbox`, `@aao/toolbox`, Sprint 21): curated, versioned, provider-neutral Tool definitions with a strict manifest, non-authoritative discovery metadata, a deterministic read-only catalog, explicit exact-ref selection, and the six-Tool AAO Core Toolbox, all executed only through the canonical Tool Runtime — see above, [ADR-026](docs/decisions/ADR-026-toolbox-foundation.md), and [toolbox](docs/architecture/toolbox.md)
 - the adapter and portability contract (`packages/adapters`, `@aao/adapters`, Sprint 20): a vendor-free package with `AAO_ADAPTER_CONTRACT_VERSION` 1, the `model` / `tool_provider` / `agent_runtime` kinds, a canonical capability catalog, strict `AdapterManifest` V1 (a claim, never authority), exact adapter refs, deterministic compatibility checks, the canonical conformance suite, `AdapterConformanceReport` V1 with integrity validation and a separate full-conformance check (`PASSED` / `FAILED` / `UNSUPPORTED` / `NOT_APPLICABLE`; an intact but partial report is never a PASS), and a generated compatibility matrix. `ModelAdapter` carries the Runtime attempt's `AbortSignal` to the provider. MCP retry safety is host-owned only. Third-party verification uses `@aao/framework/conformance`. See [ADR-025](docs/decisions/ADR-025-adapter-and-portability-contract.md) and [adapter contract](docs/architecture/adapter-contract.md)
 - deterministic Actor, Role, and Policy governance (`packages/governance`, `@aao/governance`): trusted host identity is resolved through explicit role bindings and deny policies into effective permission classes before the existing Authorization and Tool execution path — see [ADR-016](docs/decisions/ADR-016-actor-role-policy-governance.md) and [governance](docs/architecture/governance.md)
 - a local Control Plane (`apps/control-plane`, Fastify, `/health/live` and `/health/ready`)
@@ -83,6 +104,7 @@ Read the [quickstart](docs/framework/quickstart.md) (including the Approval flow
 - evaluator node execution
 - Tools requiring `external_side_effect`, `destructive`, or `sensitive_data` (refused by the Tool Runtime), ordinary retries of `write_draft` or side-effecting Tools, rollback, and compensation (crash replay of a `write_draft` Tool requires its explicit `execution_id` idempotency declaration)
 - general Integration Fabric, enterprise provider integrations, MCP HTTP/resources/prompts/sampling, OAuth, and credentials
+- Toolbox integrations, Capability Packs, Skills, a Toolbox CLI, remote Toolbox registries or installers, semantic (embedding) Tool discovery, and automatic agent Tool exposure
 - authentication, IAM/SSO, and durable authorization state (the host attests the principal; governance configuration is in memory)
 - a dynamic policy language and automated approval-policy exceptions
 - Agent Tool calls

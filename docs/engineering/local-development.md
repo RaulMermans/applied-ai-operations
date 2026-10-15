@@ -129,7 +129,7 @@ wait $W_PID 2>/dev/null
 
 Both processes log structured JSON lines (`started`, `shutting_down`, `stopped`) to stdout and exit `0` after a clean shutdown, with no process left behind.
 
-Built-package acceptance smokes for the MCP, Tool, Approval, Reliability, Durability, Trace, Metrics/Audit, Evaluation, Eval analytics/CI, and Framework layers use only `dist/` output:
+Built-package acceptance smokes for the MCP, Tool, Approval, Reliability, Durability, Trace, Metrics/Audit, Evaluation, Eval analytics/CI, Framework, adapter-contract, and Toolbox layers use only `dist/` output:
 
 ```sh
 node packages/mcp-connector/test/smoke.mjs               # SPRINT_10_MCP_CONNECTOR_SMOKE_OK
@@ -143,6 +143,8 @@ pnpm --filter @aao/evaluation smoke                      # SPRINT_17_EVALUATION_
 pnpm --filter @aao/evaluation smoke:sprint18             # SPRINT_18_EVAL_ANALYTICS_CI_ADAPTER_VERIFICATION_SMOKE_OK
 pnpm --filter @aao/framework smoke                       # SPRINT_19_FRAMEWORK_SURFACE_SMOKE_OK
 pnpm --filter @aao/framework smoke:no-build              # SPRINT_19_NO_BUILD_EVAL_ALIASES_OK (deletes the framework closure's dist/, then runs pnpm eval:ci / eval:adapters)
+pnpm --filter @aao/framework smoke:sprint20              # SPRINT_20_ADAPTER_PORTABILITY_CONTRACT_SMOKE_OK
+pnpm --filter @aao/toolbox smoke:sprint21                # SPRINT_21_TOOLBOX_FOUNDATION_SMOKE_OK (dist-only consumer, Trace, Tool-usage Eval, catalog drift, pack contents)
 ```
 
 The durability smoke runs three separate Node processes over one temporary directory, which it deletes afterward:
@@ -173,3 +175,5 @@ The Evaluation Runtime smoke runs entirely from compiled `dist/` output in three
 3. **Runtime.** It runs a real compiled flagship Run (approval, retry-safe Tool, completion with Trace and Audit) and evaluates it in `RUNTIME` mode after the Runtime returned. It checks that execution evidence is unchanged.
 
 Eval fixtures regenerate deterministically under `pnpm test`; see [`evals/README.md`](../../evals/README.md).
+
+The Core Toolbox catalog (`docs/generated/toolbox-core.json`, `docs/toolbox/core-tools.md`) is generated from the canonical Toolbox with `pnpm build && pnpm --filter @aao/toolbox catalog:generate`. After a Toolbox change, `test/generated-catalog.test.ts` fails until the regenerated files are committed.

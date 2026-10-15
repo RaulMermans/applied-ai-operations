@@ -67,5 +67,8 @@ jobs:
       - name: Sprint 19 framework surface smoke (compiled consumer, CLI, pack contents — never published)
         run: pnpm --filter @aao/framework smoke
 
+      - name: Sprint 21 Toolbox smoke (compiled consumer, Tool-usage Eval, catalog drift, pack contents — never published)
+        run: pnpm --filter @aao/toolbox smoke:sprint21
+
       - name: Eval aliases without a prior build (deletes the framework closure's dist/)
         run: pnpm --filter @aao/framework smoke:no-build

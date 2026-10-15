@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // Typecheck without a prior build: @aao/framework is typed from its dist/
+    // declarations once built, so typecheck resolves it (and this package's
+    // own self-reference, used by the consumer fixture) to source instead.
+    // The compiled smoke compiles the consumer against dist/ declarations.
+    "paths": { "@aao/framework": ["../framework/src/index.ts"], "@aao/toolbox": ["./src/index.ts"] }
+  },
+  "include": ["src", "test"],
+  "exclude": ["test/consumer/.out/**"]
+}
