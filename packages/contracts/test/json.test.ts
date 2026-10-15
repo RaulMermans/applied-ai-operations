@@ -26,4 +26,12 @@ describe("canonicalJsonStringify", () => {
   it("distinguishes objects with different values", () => {
     expect(canonicalJsonStringify({ a: 1, b: 2 })).not.toBe(canonicalJsonStringify({ a: 1, b: 3 }));
   });
+
+  it("keeps an own __proto__ key instead of dropping it (no collision, no prototype change)", () => {
+    const withProto = JSON.parse('{"b":2,"__proto__":{"x":1}}') as { [key: string]: number | { x: number } };
+    expect(canonicalJsonStringify(withProto)).toBe('{"__proto__":{"x":1},"b":2}');
+    expect(canonicalJsonStringify(withProto)).not.toBe(canonicalJsonStringify({ b: 2 }));
+    expect(canonicalJsonStringify(JSON.parse('{"__proto__":1}') as { [key: string]: number })).not.toBe(canonicalJsonStringify(JSON.parse('{"__proto__":2}') as { [key: string]: number }));
+    expect(({} as { x?: unknown }).x).toBeUndefined();
+  });
 });

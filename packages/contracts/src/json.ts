@@ -21,9 +21,8 @@ function canonicalize(value: JsonValue): JsonValue {
   if (value === null || typeof value !== "object") return value;
   if (Array.isArray(value)) return value.map(canonicalize);
 
-  const sorted: Record<string, JsonValue> = {};
-  for (const key of Object.keys(value).sort()) {
-    sorted[key] = canonicalize(value[key] as JsonValue);
-  }
-  return sorted;
+  // Object.fromEntries defines own data properties. Plain assignment would
+  // treat an own "__proto__" key (legal JSON, e.g. from JSON.parse) as the
+  // prototype setter and silently drop it from the canonical form.
+  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonicalize(value[key] as JsonValue)]));
 }
