@@ -1,0 +1,37 @@
+{
+  "name": "@aao/integration-documents",
+  "private": true,
+  "version": "0.0.0",
+  "description": "AAO Integration Fabric: bounded document ingestion and canonical page text extraction as normal governed read_only AAO Tools around a host-supplied provider.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20.20.0 <21.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@aao/framework": "workspace:*",
+    "unpdf": "^1.9.0"
+  },
+  "devDependencies": {
+    "@aao/contracts": "workspace:*",
+    "@aao/observability": "workspace:*",
+    "@aao/tool-runtime": "workspace:*"
+  }
+}

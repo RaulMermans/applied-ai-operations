@@ -94,10 +94,11 @@ describe("dependency boundaries", () => {
   // @aao/toolbox (Sprint 21, ADR-026) is a Framework *consumer* above Core, not a Core package: it depends on
   // the public Framework root by design. Its own tests prove no Core package, app, or the Framework imports it.
   // @aao/integration-public-web (Sprint 22, ADR-027) is the Integration Fabric's first capability, likewise above Core.
-  const FRAMEWORK_CONSUMERS = ["toolbox", "integration-public-web"];
+  // @aao/integration-documents (Sprint 23, ADR-028) is the Integration Fabric's second capability, likewise above Core.
+  const FRAMEWORK_CONSUMERS = ["toolbox", "integration-public-web", "integration-documents"];
   const corePackages = readdirSync(join(repositoryRoot, "packages")).filter((name) => name !== "framework" && !FRAMEWORK_CONSUMERS.includes(name) && existsSync(join(repositoryRoot, "packages", name, "package.json")));
 
-  it("the Framework consumers inside packages/ (@aao/toolbox, @aao/integration-public-web) use only the public root", () => {
+  it("the Framework consumers inside packages/ (@aao/toolbox, @aao/integration-public-web, @aao/integration-documents) use only the public root", () => {
     for (const consumer of FRAMEWORK_CONSUMERS.filter((name) => name !== "toolbox")) {
       const consumerManifest = JSON.parse(readFileSync(join(repositoryRoot, "packages", consumer, "package.json"), "utf8")) as { dependencies: Record<string, string> };
       expect(consumerManifest.dependencies).toHaveProperty("@aao/framework");
