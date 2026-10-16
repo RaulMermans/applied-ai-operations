@@ -244,3 +244,7 @@ Every question Sprint 19 left open was decided by [ADR-025](../decisions/ADR-025
 ## Sprint 21 handoff (resolved)
 
 [ADR-026](../decisions/ADR-026-toolbox-foundation.md) built the Toolbox on exactly this boundary: `@aao/toolbox` defines normal Tools with `defineTool`, hosts select them by exact ref, and `createAAO` registers them into the canonical Tool Registry. The Framework root and execution path did not change. See [toolbox](toolbox.md).
+
+## Sprint 22 consumer evidence
+
+The Company Research proof ([ADR-027](../decisions/ADR-027-company-research-proof.md)) is an application built on the public root alone. It uses `createAAO` with Tools from `@aao/integration-public-web` and `@aao/toolbox`, model adapters and bindings, two Model Policies, and nine deterministic executors. It needed no deep import and no Framework change. Two gaps are recorded, not fixed: there is no conditional routing (zero evidence still reaches the synthesis call), and `createAAO` has no Audit port (the read-only proof relies on Trace and Eval evidence).

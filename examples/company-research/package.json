@@ -1,0 +1,37 @@
+{
+  "name": "@aao/example-company-research",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Sprint 22 proof application: grounded company research as a governed AAO Workflow over public-web integration Tools, Toolbox Tools, two bounded model calls, and deterministic citation validation.",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": ">=20.20.0 <21.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "proof": "node dist/demo/run.js",
+    "smoke:sprint22": "node smoke/sprint22.mjs"
+  },
+  "dependencies": {
+    "@aao/framework": "workspace:*",
+    "@aao/integration-public-web": "workspace:*",
+    "@aao/toolbox": "workspace:*"
+  },
+  "devDependencies": {
+    "@aao/contracts": "workspace:*",
+    "@aao/evaluation": "workspace:*",
+    "@aao/model-runtime": "workspace:*",
+    "@aao/observability": "workspace:*",
+    "ai": "^7.0.107"
+  }
+}

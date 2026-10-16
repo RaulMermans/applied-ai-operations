@@ -8,7 +8,7 @@ AAO is a layer, not an operating system, chatbot, agent marketplace, no-code wor
 
 ## Current status
 
-Sprint 0 architecture contract complete. Sprint 1 engineering foundation complete (`SPRINT_01_ENGINEERING_FOUNDATION_COMPLETE`). Sprint 2 canonical domain contracts complete (`SPRINT_02_CANONICAL_DOMAIN_CONTRACTS_COMPLETE`). Sprint 3 workflow DSL and compiler complete (`SPRINT_03_WORKFLOW_DSL_COMPILER_COMPLETE`). Sprint 4 Node Registry and Runtime V1 complete (`SPRINT_04_RUNTIME_V1_COMPLETE`). Sprint 5 managed runtime state and lifecycle complete (`SPRINT_05_MANAGED_RUNTIME_STATE_COMPLETE`). Sprint 6 model abstraction and capability routing complete (`SPRINT_06_MODEL_RUNTIME_COMPLETE`). Sprint 7 bounded Agent Runtime complete (`SPRINT_07_BOUNDED_AGENT_RUNTIME_COMPLETE`). Sprint 8 Tool Registry and safe Tool execution boundary complete (`SPRINT_08_TOOL_RUNTIME_COMPLETE`). Sprint 9 authorization and permission enforcement boundary complete (`SPRINT_09_AUTHORIZATION_BOUNDARY_COMPLETE`). Sprint 10 MCP integration boundary and governed Tool adapter sessions complete (`SPRINT_10_MCP_INTEGRATION_BOUNDARY_COMPLETE`). Sprint 11 Actor, Role & Policy Governance complete (`SPRINT_11_GOVERNANCE_MODEL_COMPLETE`). Sprint 12 Approval Engine complete (`SPRINT_12_APPROVAL_ENGINE_COMPLETE`). Sprint 13 Reliability Runtime complete (`SPRINT_13_RELIABILITY_RUNTIME_COMPLETE`). Sprint 14 Durable Execution complete (`SPRINT_14_DURABLE_EXECUTION_COMPLETE`). Sprint 15 Trace Runtime complete (`SPRINT_15_TRACE_RUNTIME_COMPLETE`). Sprint 16 Metrics & Audit complete (`SPRINT_16_METRICS_AUDIT_COMPLETE`). Sprint 17 Evaluation Runtime complete (`SPRINT_17_EVALUATION_RUNTIME_COMPLETE`). Sprint 18 Eval Analytics / CI Gates / Adapter Verification complete (`SPRINT_18_EVAL_ANALYTICS_CI_ADAPTER_VERIFICATION_COMPLETE`). Sprint 19 Framework Surface complete (`SPRINT_19_FRAMEWORK_SURFACE_COMPLETE`). Sprint 20 Adapter & Portability Contract complete (`SPRINT_20_ADAPTER_PORTABILITY_CONTRACT_COMPLETE`). Sprint 21 Toolbox Foundation complete (`SPRINT_21_TOOLBOX_FOUNDATION_COMPLETE`). Sprint 22 Company Research Proof is next.
+Sprint 0 architecture contract complete. Sprint 1 engineering foundation complete (`SPRINT_01_ENGINEERING_FOUNDATION_COMPLETE`). Sprint 2 canonical domain contracts complete (`SPRINT_02_CANONICAL_DOMAIN_CONTRACTS_COMPLETE`). Sprint 3 workflow DSL and compiler complete (`SPRINT_03_WORKFLOW_DSL_COMPILER_COMPLETE`). Sprint 4 Node Registry and Runtime V1 complete (`SPRINT_04_RUNTIME_V1_COMPLETE`). Sprint 5 managed runtime state and lifecycle complete (`SPRINT_05_MANAGED_RUNTIME_STATE_COMPLETE`). Sprint 6 model abstraction and capability routing complete (`SPRINT_06_MODEL_RUNTIME_COMPLETE`). Sprint 7 bounded Agent Runtime complete (`SPRINT_07_BOUNDED_AGENT_RUNTIME_COMPLETE`). Sprint 8 Tool Registry and safe Tool execution boundary complete (`SPRINT_08_TOOL_RUNTIME_COMPLETE`). Sprint 9 authorization and permission enforcement boundary complete (`SPRINT_09_AUTHORIZATION_BOUNDARY_COMPLETE`). Sprint 10 MCP integration boundary and governed Tool adapter sessions complete (`SPRINT_10_MCP_INTEGRATION_BOUNDARY_COMPLETE`). Sprint 11 Actor, Role & Policy Governance complete (`SPRINT_11_GOVERNANCE_MODEL_COMPLETE`). Sprint 12 Approval Engine complete (`SPRINT_12_APPROVAL_ENGINE_COMPLETE`). Sprint 13 Reliability Runtime complete (`SPRINT_13_RELIABILITY_RUNTIME_COMPLETE`). Sprint 14 Durable Execution complete (`SPRINT_14_DURABLE_EXECUTION_COMPLETE`). Sprint 15 Trace Runtime complete (`SPRINT_15_TRACE_RUNTIME_COMPLETE`). Sprint 16 Metrics & Audit complete (`SPRINT_16_METRICS_AUDIT_COMPLETE`). Sprint 17 Evaluation Runtime complete (`SPRINT_17_EVALUATION_RUNTIME_COMPLETE`). Sprint 18 Eval Analytics / CI Gates / Adapter Verification complete (`SPRINT_18_EVAL_ANALYTICS_CI_ADAPTER_VERIFICATION_COMPLETE`). Sprint 19 Framework Surface complete (`SPRINT_19_FRAMEWORK_SURFACE_COMPLETE`). Sprint 20 Adapter & Portability Contract complete (`SPRINT_20_ADAPTER_PORTABILITY_CONTRACT_COMPLETE`). Sprint 21 Toolbox Foundation complete (`SPRINT_21_TOOLBOX_FOUNDATION_COMPLETE`). Sprint 22 Company Research Proof complete (`SPRINT_22_COMPANY_RESEARCH_PROOF_COMPLETE`). Sprint 23 Document Intelligence Proof is next.
 
 ## Start here: `@aao/framework`
 
@@ -54,6 +54,20 @@ const app = createAAO({ governance, principalForRun, tools });
 - **Truthful scope.** It is a small curated library. There are no integrations, marketplace, semantic Tool discovery, or automatic agent Tool selection.
 
 See the [Toolbox architecture](docs/architecture/toolbox.md), [ADR-026](docs/decisions/ADR-026-toolbox-foundation.md), and the generated [Core Tools catalog](docs/toolbox/core-tools.md).
+
+## Proof application: Company Research
+
+AAO includes an end-to-end Company Research proof. It combines model planning, governed public-web integration Tools, reusable Toolbox utilities, structured synthesis, deterministic citation validation, and the existing Evaluation and Trace infrastructure.
+
+```sh
+pnpm proof:company-research   # deterministic fixture demo: no credentials, no network
+```
+
+- **Workflow plus Tools, not an Agent.** It is one linear Workflow with two bounded model calls (plan, synthesis) and four `read_only` Tools: `public_web.search`, `records.dedupe`, `public_web.fetch_pages`, and `records.project`.
+- **Integration Fabric.** `@aao/integration-public-web` exposes public-web search and fetch as normal governed Tools around a host-injected provider. No search vendor ships, and CI uses fixtures.
+- **Citation integrity.** Every cited source id must exist in the admitted evidence. This proves the reference exists, not that the claim is true.
+
+It is not a production search provider, an autonomous research agent, semantic claim verification, browser automation, or a company-intelligence product. See [the proof](docs/proofs/company-research.md), [ADR-027](docs/decisions/ADR-027-company-research-proof.md), and [Integration Fabric](docs/architecture/integration-fabric.md).
 
 ## Available
 
@@ -103,14 +117,13 @@ See the [Toolbox architecture](docs/architecture/toolbox.md), [ADR-026](docs/dec
 - Agent capabilities beyond bounded reasoning. Agents have NO tool use, NO external actions, NO MCP, NO delegation, NO long-term memory, NO Agent-internal checkpoints (a crashed `agent` node is replayed whole), NO automatic retries, and NO Reflexion — they are bounded reasoning components, not autonomous workers
 - evaluator node execution
 - Tools requiring `external_side_effect`, `destructive`, or `sensitive_data` (refused by the Tool Runtime), ordinary retries of `write_draft` or side-effecting Tools, rollback, and compensation (crash replay of a `write_draft` Tool requires its explicit `execution_id` idempotency declaration)
-- general Integration Fabric, enterprise provider integrations, MCP HTTP/resources/prompts/sampling, OAuth, and credentials
+- a general Integration Fabric beyond the public-web capability (`@aao/integration-public-web`, host-supplied provider only), a shipped live search provider, enterprise provider integrations, MCP HTTP/resources/prompts/sampling, OAuth, and credentials
 - Toolbox integrations, Capability Packs, Skills, a Toolbox CLI, remote Toolbox registries or installers, semantic (embedding) Tool discovery, and automatic agent Tool exposure
 - authentication, IAM/SSO, and durable authorization state (the host attests the principal; governance configuration is in memory)
 - a dynamic policy language and automated approval-policy exceptions
 - Agent Tool calls
 - model or Agent retries, fallback, adaptive/cost routing, streaming, prompt templating, or any configured live model provider/credentials
 - conditional routing evaluation
-- integrations (Integration Fabric)
 - exactly-once execution, distributed or multi-host durability, high availability, production queues or worker coordination, durable cloud deployment, automatic compensation, operator recovery tooling for refused ambiguous operations, or circuit breakers
 - an OpenTelemetry or Prometheus exporter, Langfuse/Phoenix or other vendor integrations, provider billing reconciliation, signed or distributed Audit, SIEM integration, Audit retention policy, alerting or SLOs, and a Trace, Metrics, or Audit UI
 - an Eval result database or dashboards, release gates beyond the offline merge gate, a model-judge merge gate, automated regression-case creation, a model/provider benchmarking platform, universal adapter compatibility certification, Eval-driven self-improvement or autonomous optimization (Evaluation judges; it never revises or gates execution)

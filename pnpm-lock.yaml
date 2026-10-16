@@ -45,6 +45,34 @@ importers:
         specifier: workspace:*
         version: link:../../packages/config
 
+  examples/company-research:
+    dependencies:
+      '@aao/framework':
+        specifier: workspace:*
+        version: link:../../packages/framework
+      '@aao/integration-public-web':
+        specifier: workspace:*
+        version: link:../../packages/integration-public-web
+      '@aao/toolbox':
+        specifier: workspace:*
+        version: link:../../packages/toolbox
+    devDependencies:
+      '@aao/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@aao/evaluation':
+        specifier: workspace:*
+        version: link:../../packages/evaluation
+      '@aao/model-runtime':
+        specifier: workspace:*
+        version: link:../../packages/model-runtime
+      '@aao/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
+      ai:
+        specifier: ^7.0.107
+        version: 7.0.107(zod@3.25.76)
+
   packages/adapters:
     dependencies:
       '@aao/contracts':
