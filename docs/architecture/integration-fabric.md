@@ -31,5 +31,6 @@ Workflow tool node → Tool Registry → Tool Runtime (support gate → Authoriz
 | Package | Tools | Since |
 | --- | --- | --- |
 | [`@aao/integration-public-web`](../../packages/integration-public-web/README.md) | `public_web.search@1.0.0`, `public_web.fetch_pages@1.0.0` (`read_only`) | Sprint 22, [ADR-027](../decisions/ADR-027-company-research-proof.md) |
+| [`@aao/integration-documents`](../../packages/integration-documents/README.md) | `document.extract_text@1.0.0` (`read_only`) | Sprint 23, [ADR-028](../decisions/ADR-028-document-intelligence-proof.md) |
 
 MCP Tools ([MCP connector](mcp-connector.md)) follow the same principle through `createMcpToolBinding`. Future connectors start narrow, one capability at a time; there is no generic `@aao/integrations` framework.
