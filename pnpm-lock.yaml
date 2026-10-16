@@ -238,6 +238,22 @@ importers:
         specifier: ^3.24.3
         version: 3.25.76
 
+  packages/integration-public-web:
+    dependencies:
+      '@aao/framework':
+        specifier: workspace:*
+        version: link:../framework
+    devDependencies:
+      '@aao/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@aao/observability':
+        specifier: workspace:*
+        version: link:../observability
+      '@aao/tool-runtime':
+        specifier: workspace:*
+        version: link:../tool-runtime
+
   packages/mcp-connector:
     dependencies:
       '@aao/adapters':

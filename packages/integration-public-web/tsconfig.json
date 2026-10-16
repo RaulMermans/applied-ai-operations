@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // Typecheck without a prior build: @aao/framework is typed from its dist/
+    // declarations once built, so typecheck resolves it to source instead.
+    "paths": { "@aao/framework": ["../framework/src/index.ts"], "@aao/integration-public-web": ["./src/index.ts"] }
+  },
+  "include": ["src", "test"]
+}

@@ -1,0 +1,36 @@
+{
+  "name": "@aao/integration-public-web",
+  "private": true,
+  "version": "0.0.0",
+  "description": "AAO Integration Fabric: public-web search and page fetch as normal governed read_only AAO Tools around a host-supplied provider.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20.20.0 <21.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@aao/framework": "workspace:*"
+  },
+  "devDependencies": {
+    "@aao/contracts": "workspace:*",
+    "@aao/observability": "workspace:*",
+    "@aao/tool-runtime": "workspace:*"
+  }
+}
