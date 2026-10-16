@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // Typecheck without a prior build: the public packages are typed from
+    // their dist/ declarations once built, so typecheck resolves them to
+    // source instead. The build (and the compiled Sprint 23 smoke) resolves
+    // them through package exports to dist/.
+    "paths": {
+      "@aao/framework": ["../../packages/framework/src/index.ts"],
+      "@aao/integration-documents": ["../../packages/integration-documents/src/index.ts"]
+    }
+  },
+  "include": ["src", "fixtures", "demo", "test"]
+}
