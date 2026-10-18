@@ -21,7 +21,7 @@ A key mandate of Sprint 23 is to prove that AAO can operate on uploaded or enter
 
 ### 1. Workflow plus Governed Tools, Not a Document Agent or RAG Pipeline
 
-Document intelligence follows an established, bounded pipeline: intake, text extraction, document validation, page segmentation, evidence admission, structured synthesis, grounding validation, and rendering. An open-ended agent or vector-retrieval loop adds non-determinism, cost, and hallucinated provenance.
+Document intelligence follows an established, bounded pipeline: intake, text extraction, document validation, deterministic page-local segmentation with overlap, evidence admission, structured synthesis, grounding validation, and rendering. An open-ended agent or vector-retrieval loop adds non-determinism, cost, and hallucinated provenance.
 
 Therefore, Document Intelligence is a single deterministic 9-node Workflow (`document_intelligence.proof@1.0.0`):
 - **1 governed Tool call**: `document.extract_text@1.0.0` (Integration Fabric).
@@ -46,7 +46,7 @@ The Workflow receives an opaque `documentRef` (e.g. `doc://legal/contract.pdf`),
 Document citations resolve to deterministic evidence-span IDs:
 `ev.` + 16 lowercase hex characters of `SHA-256(fingerprint + ":" + pageNumber + ":" + startOffset + ":" + endOffset + ":" + SHA-256(text))`.
 - The model **never** authors page numbers, UTF-16 offsets, URLs, or document IDs.
-- The model cites precomputed `evidenceId`s from the admitted evidence packet.
+- The model cites precomputed `evidenceId`s from the admitted evidence packet generated via **deterministic page-local segmentation with overlap** (target 1,500 UTF-16 units, 200 unit overlap).
 - Offsets are JavaScript UTF-16 code units into canonical normalized page text, guaranteeing that `page.text.slice(startOffset, endOffset)` reconstructs the exact evidence span identically across all runtimes.
 - Evidence spans never cross page boundaries and never split Unicode surrogate pairs.
 
@@ -55,11 +55,16 @@ Document citations resolve to deterministic evidence-span IDs:
 The package `@aao/integration-documents` implements the document extraction capability:
 - **No new adapter kind**: Document access is an integration capability, not a model or runtime substrate.
 - **Tool**: `document.extract_text@1.0.0` with `permissionClasses: ["read_only"]` and `retrySafety: "safe"`.
-- **Supported formats**: `application/pdf` and `text/plain` only (V1). DOCX, XLSX, images, and scanned PDFs requiring OCR are explicitly rejected.
-- **Node-compatible local parser**: `unpdf` (pure ESM, zero external dependencies, no canvas/native binaries, no remote asset fetching, no script execution). Defensive buffer copying is implemented to prevent PDF.js from detaching the host's ArrayBuffer. A minimal `Iterator` safeguard ensures compatibility with Node 20.
+- **Supported formats**: `application/pdf` and `text/plain` only (V1). DOCX, XLSX, images, and scanned PDFs requiring OCR are explicitly rejected. Plain-text extraction executes directly in the host process without spawning workers or loading third-party libraries.
+- **Isolated worker PDF extraction (Sprint 23C)**:
+  - *Root Cause*: The PDF extraction dependency (`unpdf@1.9.0` bundling `pdfjs-dist@~6.4.299`) targets Node >= 22. Under Node 20, PDF.js accesses `Iterator.prototype.join` at module evaluation time, which throws `ReferenceError: Iterator is not defined` because the standard `Iterator` interface was introduced natively in Node 22. Additionally, PDF.js injects browser global stubs (`DOMMatrix`, `navigator`, `pdfjsLib`, etc.) into `globalThis`.
+  - *Host-Global Isolation*: Mutating host globals via an import-time shim (`globalThis.Iterator = ...`) is prohibited in AAO. Importing `@aao/integration-documents` must never mutate the host application's global environment or falsely advertise an incomplete Iterator implementation.
+  - *Worker Thread Boundary*: PDF parsing is isolated in a dedicated Node worker thread (`node:worker_threads`). The worker executes inside an isolated V8 isolate with its own global scope. The Node 20 `Iterator` compatibility shim and PDF.js browser stubs live strictly inside the worker thread context. The host process `globalThis`, `process.env`, and prototype descriptors remain completely untouched (`before import == after import`, `before parsing == after parsing`).
+  - *Verification & Safety*: A fresh Node 20 sub-process test verifies property descriptors before and after import and extraction. A static boundary AST test verifies that production integration modules never assign to `globalThis.*`, allowlisting only `pdf-worker.ts` with an explicit `!isMainThread && parentPort` execution guard.
+  - *Resource Bounds & Lifecycle*: PDF parsing is bounded by `AbortSignal.timeout(15_000)` and caller `AbortSignal` cancellation. Defensive buffer copies prevent `ArrayBuffer` detachment. On completion, error, or cancellation, `worker.terminate()` is awaited to guarantee bounded execution with zero worker or memory leaks. Parser errors are strictly normalized (`DOCUMENT_PARSE_FAILED`) with zero stack trace, host path, or credential disclosure.
 - **Resource bounds**: Hard limits of 10 MiB source bytes, 100 pages, 50,000 chars per page, and 200,000 total extracted characters.
 - **Canonical text normalization**: CRLF and CR become LF; NUL characters are stripped. Whitespace is not collapsed, tables are not guessed, and text is not reordered.
-- **Document identity**: `doc.` + 16 lowercase hex characters of `SHA-256(rawBytes)`.
+- **Document identity**: `doc.` + 16 lowercase hex characters of `SHA-256(rawBytes)`. Unchanged before and after worker isolation.
 
 ### 4. Strict Grounding Validation: Reference Integrity vs Entailment
 

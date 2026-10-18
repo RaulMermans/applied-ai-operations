@@ -195,7 +195,7 @@ async function extractTextHandler(
   const documentId = computeDocumentId(documentFingerprint);
 
   // Parse document bytes
-  const parsed = await parseDocumentBytes(bytes, mimeType);
+  const parsed = await parseDocumentBytes(bytes, mimeType, { signal: context.signal });
   if (!parsed.ok) {
     return { ok: false, code: parsed.code };
   }

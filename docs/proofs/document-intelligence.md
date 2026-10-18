@@ -1,6 +1,6 @@
 # Document Intelligence proof
 
-Sprint 23 ([ADR-028](../decisions/ADR-028-document-intelligence-proof.md)) establishes AAO's second end-to-end proof application: **Document Intelligence**. Given an opaque document reference and a bounded set of questions, AAO ingests the document through a governed document integration, segments canonical page text into deterministic evidence spans, produces structured answers through a bounded model call, strictly validates every citation against exact precomputed document spans, and deterministically renders an evidence-anchored result.
+Sprint 23 ([ADR-028](../decisions/ADR-028-document-intelligence-proof.md)) establishes AAO's second end-to-end proof application: **Document Intelligence**. Given an opaque document reference and a bounded set of questions, AAO ingests the document through a governed document integration, segments canonical page text via deterministic page-local segmentation with overlap, produces structured answers through a bounded model call, strictly validates every citation against exact precomputed document spans, and deterministically renders an evidence-anchored result.
 
 Code: [`examples/document-intelligence`](../../examples/document-intelligence/README.md) (`@aao/example-document-intelligence`, private). It consumes only public surfaces: `@aao/framework` and `@aao/integration-documents`.
 
@@ -14,7 +14,7 @@ Document Reference
 Validate Extracted Document
   ↓  validate_document   deterministic  verify 1..N page numbering, char counts, and deterministic doc.<16-hex> identity
 Segmentation
-  ↓  segment_document    deterministic  segment canonical text into bounded spans (target 1,500 chars, 200 overlap)
+  ↓  segment_document    deterministic  deterministic page-local segmentation with overlap (target 1,500 chars, 200 overlap)
 Admission
   ↓  admit_evidence      deterministic  cap context budget (≤ 60 spans, ≤ 60k chars); build synthesis ModelRequest
 Synthesis

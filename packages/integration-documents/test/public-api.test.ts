@@ -103,7 +103,7 @@ describe("public API snapshot", () => {
 });
 
 describe("Integration Fabric boundary (static)", () => {
-  it("depends only on @aao/framework and unpdf at runtime and imports nothing else but node:crypto and internal modules", () => {
+  it("depends only on @aao/framework and unpdf at runtime and imports nothing else but node standard modules and internal modules", () => {
     expect(manifest.dependencies).toEqual({
       "@aao/framework": "workspace:*",
       "unpdf": "^1.9.0",
@@ -111,7 +111,14 @@ describe("Integration Fabric boundary (static)", () => {
     const external = new Set(
       sources.flatMap((file) => importsOf(code(file))).filter((specifier) => !specifier.startsWith("."))
     );
-    expect([...external].sort()).toEqual(["@aao/framework", "node:crypto", "unpdf"]);
+    expect([...external].sort()).toEqual([
+      "@aao/framework",
+      "node:crypto",
+      "node:module",
+      "node:url",
+      "node:worker_threads",
+      "unpdf",
+    ]);
   });
 
   it("names no cloud storage vendor or concrete provider anywhere in code or dependencies", () => {
