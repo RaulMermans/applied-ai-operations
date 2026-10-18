@@ -208,8 +208,8 @@ console.log("FRESH_PROCESS_ISOLATION_OK");
     const app1Tools = createDocumentTools({ provider: provider1 });
     const app2Tools = createDocumentTools({ provider: provider2 });
 
-    // Execute concurrently across 6 parallel tasks
-    const tasks = [
+    // Execute concurrently across independent tool instances within capacity limit (2 workers)
+    const [r1, r2] = await Promise.all([
       app1Tools.extractText.handler.execute({
         toolExecutionId: "exec.app1.1",
         tool: DOCUMENT_EXTRACT_TEXT_TOOL_REF,
@@ -220,6 +220,10 @@ console.log("FRESH_PROCESS_ISOLATION_OK");
         tool: DOCUMENT_EXTRACT_TEXT_TOOL_REF,
         input: { documentRef: "ref-2" },
       }),
+    ]);
+
+    // Second wave executes after first wave completes, proving capacity release and determinism
+    const [r3, r4] = await Promise.all([
       app1Tools.extractText.handler.execute({
         toolExecutionId: "exec.app1.2",
         tool: DOCUMENT_EXTRACT_TEXT_TOOL_REF,
@@ -230,11 +234,7 @@ console.log("FRESH_PROCESS_ISOLATION_OK");
         tool: DOCUMENT_EXTRACT_TEXT_TOOL_REF,
         input: { documentRef: "ref-2" },
       }),
-    ];
-
-    const results = await Promise.all(tasks);
-
-    const [r1, r2, r3, r4] = results;
+    ]);
     expect(r1?.ok).toBe(true);
     expect(r2?.ok).toBe(true);
     expect(r3?.ok).toBe(true);

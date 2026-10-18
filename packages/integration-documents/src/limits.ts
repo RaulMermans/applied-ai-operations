@@ -18,4 +18,18 @@ export const DOCUMENT_LIMITS = Object.freeze({
   maxFilenameLength: 256,
   /** Maximum length of a MIME type string. */
   maxMimeTypeLength: 128,
+  /** Process-wide maximum number of active PDF worker threads (Sprint 23D). */
+  maxConcurrentPdfWorkers: 2,
+  /** Default worker execution timeout in milliseconds. */
+  defaultParserTimeoutMs: 15_000,
+  /**
+   * Per-worker V8 resource limits (Sprint 23D).
+   * Constrains V8-managed heap and stack allocations per worker.
+   * Note: This bounds V8 JS heap/stack, not external ArrayBuffers or native allocations (deferred to Sprint 29).
+   */
+  workerResourceLimits: Object.freeze({
+    maxOldGenerationSizeMb: 128,
+    maxYoungGenerationSizeMb: 32,
+    stackSizeMb: 4,
+  }),
 });

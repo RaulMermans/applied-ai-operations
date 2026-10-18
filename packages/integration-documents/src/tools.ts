@@ -1,7 +1,7 @@
 import { defineTool, type JsonValue, type ToolDefinition, type ToolHandlerResult } from "@aao/framework";
 import { computeDocumentFingerprint, computeDocumentId } from "./identity.js";
 import { DOCUMENT_LIMITS } from "./limits.js";
-import { parseDocumentBytes, type ExtractedDocumentPage } from "./parser.js";
+import { parseDocumentBytes, type ExtractedDocumentPage, type PdfWorkerFactory } from "./parser.js";
 import type { DocumentSourceFailureReason, DocumentSourceProvider, DocumentSourceProviderContext, DocumentSourceReadResponse } from "./provider.js";
 import { safeSliceUtf16 } from "./text.js";
 
@@ -25,7 +25,8 @@ export type DocumentFailureCode =
   | "DOCUMENT_SOURCE_ERROR"
   | "MALFORMED_PROVIDER_RESPONSE"
   | "CANCELLED"
-  | "INVALID_DOCUMENT_REF";
+  | "INVALID_DOCUMENT_REF"
+  | "DOCUMENT_PARSER_BUSY";
 
 const REASON_CODES: Readonly<Record<DocumentSourceFailureReason, DocumentFailureCode>> = Object.freeze({
   not_found: "DOCUMENT_NOT_FOUND",
@@ -63,6 +64,8 @@ export interface ExtractDocumentOutput {
 export interface DocumentToolsOptions {
   /** Trusted host-supplied provider that resolves document references to raw bytes. */
   readonly provider: DocumentSourceProvider;
+  /** @internal Private test seam for worker lifecycle testing. */
+  readonly _workerFactory?: PdfWorkerFactory;
 }
 
 export interface DocumentTools {
@@ -134,14 +137,15 @@ const EXTRACT_OUTPUT_SCHEMA = {
 };
 
 const NO_SIDE_EFFECTS = "Read-only: reads document content through the host-supplied provider and performs no mutation, network call, or external side effect.";
-const FAILURE_DOCS = "Provider or parser failures are normalized into safe uppercase codes. When the source is unavailable, the Tool fails with retryable code DOCUMENT_SOURCE_UNAVAILABLE; Runtime reliability policy decides whether to retry.";
+const FAILURE_DOCS = "Provider or parser failures are normalized into safe uppercase codes. When the source is unavailable, the Tool fails with retryable code DOCUMENT_SOURCE_UNAVAILABLE; Runtime reliability policy decides whether to retry. When PDF parser capacity is exhausted, the Tool fails with non-retryable code DOCUMENT_PARSER_BUSY.";
 
 // --- Tool handler ------------------------------------------------------------
 
 async function extractTextHandler(
   provider: DocumentSourceProvider["read"],
   input: ExtractDocumentInput,
-  context: DocumentSourceProviderContext
+  context: DocumentSourceProviderContext,
+  workerFactory?: PdfWorkerFactory
 ): Promise<ToolHandlerResult> {
   const documentRef = typeof input?.documentRef === "string" ? input.documentRef.trim() : "";
   if (documentRef.length === 0 || documentRef.length > DOCUMENT_LIMITS.maxDocumentRefLength) {
@@ -195,7 +199,10 @@ async function extractTextHandler(
   const documentId = computeDocumentId(documentFingerprint);
 
   // Parse document bytes
-  const parsed = await parseDocumentBytes(bytes, mimeType, { signal: context.signal });
+  const parsed = await parseDocumentBytes(bytes, mimeType, {
+    signal: context.signal,
+    ...(workerFactory !== undefined ? { _workerFactory: workerFactory } : {}),
+  });
   if (!parsed.ok) {
     return { ok: false, code: parsed.code };
   }
@@ -244,6 +251,7 @@ export function createDocumentTools(options: DocumentToolsOptions): DocumentTool
     throw new TypeError("createDocumentTools requires a provider with a read() function");
   }
 
+  const workerFactory = options?._workerFactory;
   const boundRead: DocumentSourceProvider["read"] = (request, context) => readFn.call(provider, request, context);
   const contextOf = (signal: AbortSignal | undefined): DocumentSourceProviderContext =>
     Object.freeze(signal ? { signal } : {});
@@ -260,7 +268,7 @@ export function createDocumentTools(options: DocumentToolsOptions): DocumentTool
     },
     handler: {
       execute: async ({ input, signal }) =>
-        extractTextHandler(boundRead, input as unknown as ExtractDocumentInput, contextOf(signal)),
+        extractTextHandler(boundRead, input as unknown as ExtractDocumentInput, contextOf(signal), workerFactory),
     },
     retrySafety: "safe",
   });
