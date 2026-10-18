@@ -151,10 +151,9 @@ export const buildApprovalSubject = executor("operational_request.build_approval
  */
 export const prepareDraft = executor("operational_request.prepare_draft", (context) => {
   const values = context.state.values;
-  const normalized = values[STATE_KEYS.normalizedRequest] as unknown as OperationalRequest | undefined;
   const subject = values[STATE_KEYS.approvalSubject] as unknown as OperationalApprovalSubject | undefined;
 
-  if (!normalized || !subject) {
+  if (!subject) {
     return fail("MISSING_APPROVAL_SUBJECT");
   }
 
@@ -172,7 +171,7 @@ export const prepareDraft = executor("operational_request.prepare_draft", (conte
   );
 
   const draftInput: CreateChangeDraftToolInput = {
-    requestId: normalized.requestId,
+    requestId: subject.requestId,
     accountId: subject.accountId,
     operation: subject.operation,
     proposedChanges: {
@@ -181,11 +180,12 @@ export const prepareDraft = executor("operational_request.prepare_draft", (conte
     approvalBinding: {
       approvalId,
       requestFingerprint,
+      runId: context.runId,
     },
   };
 
   return ok({
-    [STATE_KEYS.approvalBinding]: { approvalId, requestFingerprint } as unknown as JsonValue,
+    [STATE_KEYS.approvalBinding]: { approvalId, requestFingerprint, runId: context.runId } as unknown as JsonValue,
     [STATE_KEYS.draftToolInput]: draftInput as unknown as JsonValue,
   });
 });
@@ -197,17 +197,16 @@ export const prepareDraft = executor("operational_request.prepare_draft", (conte
  */
 export const renderResult = executor("operational_request.render_result", (context) => {
   const values = context.state.values;
-  const normalized = values[STATE_KEYS.normalizedRequest] as unknown as OperationalRequest | undefined;
   const subject = values[STATE_KEYS.approvalSubject] as unknown as OperationalApprovalSubject | undefined;
   const binding = values[STATE_KEYS.approvalBinding] as unknown as { approvalId: string; requestFingerprint: string } | undefined;
   const toolOutput = outputOf(values, STATE_KEYS.draftToolResult) as unknown as CreateChangeDraftToolOutput | undefined;
 
-  if (!normalized || !subject || !binding || !toolOutput) {
+  if (!subject || !binding || !toolOutput) {
     return fail("MISSING_RESULT_CONTEXT");
   }
 
   const renderedMarkdown = renderOperationalMarkdown({
-    requestId: normalized.requestId,
+    requestId: subject.requestId,
     operation: subject.operation,
     accountId: subject.accountId,
     displayName: subject.proposedChanges.displayName,
@@ -219,7 +218,7 @@ export const renderResult = executor("operational_request.render_result", (conte
 
   const finalResult: OperationalRequestResult = {
     schemaVersion: 1,
-    requestId: normalized.requestId,
+    requestId: subject.requestId,
     operation: subject.operation,
     accountId: subject.accountId,
     draftId: toolOutput.draftId,

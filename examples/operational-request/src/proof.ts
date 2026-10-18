@@ -20,7 +20,7 @@ import {
 import { OPERATIONAL_REQUEST_EXECUTORS, STATE_KEYS } from "./executors.js";
 import { INTERPRET_POLICY_REF } from "./model-requests.js";
 import { createInMemoryDraftRepository, type OperationalDraftRepository } from "./repository.js";
-import { createOperationalDraftTool } from "./tool.js";
+import { createOperationalApprovalVerifier, createOperationalDraftTool } from "./tool.js";
 import { operationalRequestWorkflow } from "./workflow.js";
 import type { OperationalRequestInput } from "./contracts.js";
 
@@ -69,7 +69,13 @@ export function createOperationalRequestProof(
   options: OperationalRequestProofOptions
 ): OperationalRequestProof {
   const draftRepository = options.draftRepository ?? createInMemoryDraftRepository();
-  const draftTool = createOperationalDraftTool({ repository: draftRepository });
+  const approvalsHolder: { current?: AAOApprovals } = {};
+  const draftTool = createOperationalDraftTool({
+    repository: draftRepository,
+    approvalVerifier: createOperationalApprovalVerifier({
+      getApproval: (id) => approvalsHolder.current?.get(id),
+    }),
+  });
   const tools = options.tools ? [...options.tools] : [draftTool];
 
   const app = createAAO({
@@ -83,6 +89,8 @@ export function createOperationalRequestProof(
     ...(options.trace !== undefined ? { trace: options.trace } : {}),
     ...(options.clock !== undefined ? { clock: options.clock } : {}),
   });
+
+  approvalsHolder.current = app.approvals;
 
   const prepared = app.prepareWorkflow(
     operationalRequestWorkflow,

@@ -32,8 +32,11 @@ export {
 export {
   CREATE_CHANGE_DRAFT_TOOL_REF,
   createOperationalDraftTool,
+  createOperationalApprovalVerifier,
   type CreateChangeDraftToolInput,
   type CreateChangeDraftToolOutput,
+  type CreateOperationalDraftToolOptions,
+  type OperationalApprovalVerifier,
 } from "./tool.js";
 
 export {
@@ -45,7 +48,8 @@ export {
 
 export {
   renderOperationalMarkdown,
-  buildOperationalResult,
+  escapeMarkdownText,
+  escapeCodeSpan,
 } from "./render.js";
 
 export {

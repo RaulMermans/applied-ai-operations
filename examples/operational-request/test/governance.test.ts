@@ -16,11 +16,10 @@ import { createOperationalRequestProof } from "../src/proof.js";
 import { fixtureBinding, nativeModelAdapter } from "../fixtures/models.js";
 import { fixtureGovernance } from "../fixtures/governance.js";
 import { failureCode, failureNodeId } from "./support.js";
-import { createApprovalEngine } from "@aao/approval";
+import { continueApprovedWorkflow, createApprovalEngine } from "@aao/approval";
 import { createGovernanceRegistry } from "@aao/governance";
-
-
-
+import { compileWorkflow } from "@aao/workflow-dsl";
+import { operationalRequestWorkflow } from "../src/workflow.js";
 
 describe("Separation of Duties & Governance Enforcement", () => {
   it("eligible human manager in operations.approver role successfully approves", async () => {
@@ -158,7 +157,7 @@ describe("Separation of Duties & Governance Enforcement", () => {
   });
 
   it("revalidates and refuses continuation if requester authority was revoked before continuation", async () => {
-    // 1. Initial run under valid governance
+    // 1. Initial run under valid governance reaches WAITING_FOR_APPROVAL
     const { proof } = createFixtureProof();
     const initial = await proof.execute({
       runId: "run.gov.revoked-requester-continuation",
@@ -167,19 +166,38 @@ describe("Separation of Duties & Governance Enforcement", () => {
     const approvalId = initial.execution?.wait?.referenceId;
     if (!approvalId) throw new Error("Expected approval waitpoint");
     const approvedRecord = proof.approvals.approve(approvalId, manager);
+    expect(approvedRecord.status).toBe("approved");
 
-    // 2. An engine under revoked requester governance revalidates the approved record
+    // 2. Revalidation under revoked requester governance halts continuation
     const revokedGovRegistry = createGovernanceRegistry(governanceWithRevokedRequester());
     const revokedEngine = createApprovalEngine({
       governance: revokedGovRegistry,
       clock: fixedClock(),
+      repository: {
+        get: (id) => (id === approvedRecord.approvalId ? approvedRecord : undefined),
+        create: (r) => r,
+        compareAndSetResolution: () => true,
+      },
     });
-    const reason = revokedEngine.revalidateApproved(approvedRecord);
-    expect(reason).toBe("APPROVAL_REQUESTER_NOT_AUTHORIZED");
+
+    expect(revokedEngine.revalidateApproved(approvedRecord)).toBe("APPROVAL_REQUESTER_NOT_AUTHORIZED");
+    const compiled = compileWorkflow(operationalRequestWorkflow);
+    if (!compiled.ok) throw new Error("Workflow compilation failed");
+
+    const continuationResult = await continueApprovedWorkflow(revokedEngine, {
+      plan: compiled.plan,
+      registry: { get: () => undefined } as never,
+      execution: initial.execution!,
+      options: { clock: fixedClock() },
+    });
+
+    expect(continuationResult.ok).toBe(false);
+    expect(failureCode(continuationResult)).toBe("APPROVAL_REQUESTER_NOT_AUTHORIZED");
     expect(proof.draftRepository.getAllDrafts().length).toBe(0);
   });
 
   it("revalidates and refuses continuation if approver role was revoked before continuation", async () => {
+    // 1. Initial run under valid governance reaches WAITING_FOR_APPROVAL
     const { proof } = createFixtureProof();
     const initial = await proof.execute({
       runId: "run.gov.revoked-approver-continuation",
@@ -188,15 +206,64 @@ describe("Separation of Duties & Governance Enforcement", () => {
     const approvalId = initial.execution?.wait?.referenceId;
     if (!approvalId) throw new Error("Expected approval waitpoint");
     const approvedRecord = proof.approvals.approve(approvalId, manager);
+    expect(approvedRecord.status).toBe("approved");
 
-    // 2. An engine under revoked approver governance revalidates the approved record
+    // 2. Revalidation under revoked approver governance halts continuation
     const revokedGovRegistry = createGovernanceRegistry(governanceWithRevokedApprover());
     const revokedEngine = createApprovalEngine({
       governance: revokedGovRegistry,
       clock: fixedClock(),
+      repository: {
+        get: (id) => (id === approvedRecord.approvalId ? approvedRecord : undefined),
+        create: (r) => r,
+        compareAndSetResolution: () => true,
+      },
     });
-    const reason = revokedEngine.revalidateApproved(approvedRecord);
-    expect(reason).toBe("APPROVAL_RESOLVER_NOT_ELIGIBLE");
+
+    expect(revokedEngine.revalidateApproved(approvedRecord)).toBe("APPROVAL_RESOLVER_NOT_ELIGIBLE");
+    const compiled = compileWorkflow(operationalRequestWorkflow);
+    if (!compiled.ok) throw new Error("Workflow compilation failed");
+
+    const continuationResult = await continueApprovedWorkflow(revokedEngine, {
+      plan: compiled.plan,
+      registry: { get: () => undefined } as never,
+      execution: initial.execution!,
+      options: { clock: fixedClock() },
+    });
+
+    expect(continuationResult.ok).toBe(false);
+    expect(failureCode(continuationResult)).toBe("APPROVAL_RESOLVER_NOT_ELIGIBLE");
+    expect(proof.draftRepository.getAllDrafts().length).toBe(0);
+  });
+
+  it("fails closed when approver role is revoked prior to approval (attempting approval or continuation)", async () => {
+    // 1. Setup proof with revoked approver role
+    const model = nativeModelAdapter();
+    const proof = createOperationalRequestProof({
+      modelAdapters: [model],
+      modelBindings: [fixtureBinding(model.manifest)],
+      governance: governanceWithRevokedApprover(),
+      principalForRun: () => operator,
+    });
+
+    // 2. Start request -> reaches WAITING_FOR_APPROVAL
+    const initial = await proof.execute({
+      runId: "run.gov.revoked-approver-pre-approval",
+      request: VALID_OPERATIONAL_REQUEST,
+    });
+    expect(initial.execution?.run.status).toBe("WAITING_FOR_APPROVAL");
+    const approvalId = initial.execution?.wait?.referenceId;
+    if (!approvalId) throw new Error("Expected approval waitpoint");
+
+    // 3. Attempting approval by manager with revoked role throws APPROVAL_RESOLVER_NOT_ELIGIBLE
+    expect(() => {
+      proof.approvals.approve(approvalId, manager);
+    }).toThrowError(/APPROVAL_RESOLVER_NOT_ELIGIBLE/);
+
+    // 4. Attempting continuation fails because approval remains pending
+    const resumed = await proof.continue(initial.execution!);
+    expect(resumed.ok).toBe(false);
+    expect(failureCode(resumed)).toBe("APPROVAL_STILL_PENDING");
     expect(proof.draftRepository.getAllDrafts().length).toBe(0);
   });
 });

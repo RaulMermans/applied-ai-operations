@@ -35,6 +35,7 @@
     "@aao/model-runtime": "workspace:*",
     "@aao/observability": "workspace:*",
     "@aao/tool-runtime": "workspace:*",
+    "@aao/workflow-dsl": "workspace:*",
     "ai": "^7.0.107"
   }
 }
