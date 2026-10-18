@@ -54,20 +54,22 @@ See [toolbox](docs/architecture/toolbox.md).
 
 ## Integration Fabric and Proof Applications
 
-The Integration Fabric is externally connected capabilities exposed as normal governed AAO Tools (Sprint 22, [ADR-027](docs/decisions/ADR-027-company-research-proof.md); Sprint 23, [ADR-028](docs/decisions/ADR-028-document-intelligence-proof.md)). Its capabilities include:
+The Integration Fabric is externally connected capabilities exposed as normal governed AAO Tools (Sprint 22, [ADR-027](docs/decisions/ADR-027-company-research-proof.md); Sprint 23, [ADR-028](docs/decisions/ADR-028-document-intelligence-proof.md); Sprint 24, [ADR-029](docs/decisions/ADR-029-operational-request-proof.md)). Its capabilities and flagship proofs include:
 - `@aao/integration-public-web`: `public_web.search` and `public_web.fetch_pages` (`read_only`).
 - `@aao/integration-documents`: `document.extract_text` (`read_only`), ingesting opaque document references through host-supplied `DocumentSourceProvider` with safe local extraction (`unpdf`, plain text). Raw document bytes never enter Run state or Trace.
 
 ```text
 Company Research (example)      → @aao/integration-public-web + @aao/toolbox → @aao/framework → Core
 Document Intelligence (example) → @aao/integration-documents                 → @aao/framework → Core
+Operational Request (example)   → @aao/framework + @aao/approval             → Core
 ```
 
 - **Integration ≠ Tool Runtime ≠ adapter contract ≠ Toolbox ≠ Capability Pack.** The Toolbox never depends on an integration, and no Core package depends on either.
 - **The Company Research proof** (`examples/company-research`) is a linear Workflow of 16 nodes planning and synthesizing public-web research.
 - **The Document Intelligence proof** (`examples/document-intelligence`) is a linear 9-node Workflow: intake → extract_document → validate_document → segment_document → admit_evidence → synthesize (model) → validate_grounding → render → final. Offsets are UTF-16 code units into canonical normalized page text; citations resolve to precomputed evidence-span IDs (`ev.<16-hex>`). It uses no vector database, RAG framework, OCR, or branching DSL.
+- **The Operational Request proof** (`examples/operational-request`) is a linear 9-node Workflow: intake → interpret (model) → validate_proposal → bind_approval_subject → require_approval (waitpoint) → revalidate_authority → execute_draft (governed tool) → render → final. It demonstrates governed action proposals, human approval waitpoints, separation of duties, authority revalidation, and safe draft execution. External side effects remain refused at the Tool Runtime preflight gate.
 
-See [Integration Fabric](docs/architecture/integration-fabric.md), [Company Research proof](docs/proofs/company-research.md), and [Document Intelligence proof](docs/proofs/document-intelligence.md).
+See [Integration Fabric](docs/architecture/integration-fabric.md), [Company Research proof](docs/proofs/company-research.md), [Document Intelligence proof](docs/proofs/document-intelligence.md), and [Operational Request proof](docs/proofs/operational-request.md).
 
 ## Canonical domain contracts
 
@@ -357,6 +359,7 @@ Dependencies implement infrastructure; AAO defines product semantics.
 | Reusable Tool package / catalog (generic reusable computation) | Yes | `@aao/toolbox`: curated Tool definitions + non-authoritative catalog, no vendor SDK (Sprint 21) |
 | Company Research proof (example application) | Yes | `examples/company-research`, private; consumes public packages only; nothing depends on it (Sprint 22) |
 | Document Intelligence proof (example application) | Yes | `examples/document-intelligence`, private; consumes public packages only; nothing depends on it (Sprint 23) |
+| Operational Request proof (example application) | Yes | `examples/operational-request`, private; consumes public packages only; nothing depends on it (Sprint 24) |
 | Callable Tool definitions | Yes | Tool Registry (`@aao/tool-runtime`): authoritative schemas, handlers, permission classes, versions |
 | Tool execution | Yes | Tool Runtime (`@aao/tool-runtime`): support gate, Authorization, validation (Sprint 8–9) |
 | Trace model | Yes | `@aao/observability`: local Trace Stores, no external dependency (Sprint 15); OTel export deferred |

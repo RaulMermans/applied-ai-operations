@@ -101,6 +101,40 @@ importers:
         specifier: ^7.0.107
         version: 7.0.107(zod@3.25.76)
 
+  examples/operational-request:
+    dependencies:
+      '@aao/approval':
+        specifier: workspace:*
+        version: link:../../packages/approval
+      '@aao/framework':
+        specifier: workspace:*
+        version: link:../../packages/framework
+      zod:
+        specifier: ^3.24.3
+        version: 3.25.76
+    devDependencies:
+      '@aao/adapters':
+        specifier: workspace:*
+        version: link:../../packages/adapters
+      '@aao/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@aao/evaluation':
+        specifier: workspace:*
+        version: link:../../packages/evaluation
+      '@aao/model-runtime':
+        specifier: workspace:*
+        version: link:../../packages/model-runtime
+      '@aao/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
+      '@aao/tool-runtime':
+        specifier: workspace:*
+        version: link:../../packages/tool-runtime
+      ai:
+        specifier: ^7.0.107
+        version: 7.0.107(zod@3.25.76)
+
   packages/adapters:
     dependencies:
       '@aao/contracts':

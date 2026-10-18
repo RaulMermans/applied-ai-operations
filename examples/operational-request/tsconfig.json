@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "paths": {
+      "@aao/framework": ["../../packages/framework/src/index.ts"],
+      "@aao/approval": ["../../packages/approval/src/index.ts"],
+      "@aao/governance": ["../../packages/governance/src/index.ts"],
+      "@aao/contracts": ["../../packages/contracts/src/index.ts"],
+      "@aao/evaluation": ["../../packages/evaluation/src/index.ts"],
+      "@aao/adapters": ["../../packages/adapters/src/index.ts"],
+      "@aao/model-runtime": ["../../packages/model-runtime/src/index.ts"],
+      "@aao/tool-runtime": ["../../packages/tool-runtime/src/index.ts"],
+      "@aao/observability": ["../../packages/observability/src/index.ts"]
+    }
+  },
+  "include": ["src", "fixtures", "demo", "test"]
+}

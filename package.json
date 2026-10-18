@@ -21,6 +21,7 @@
     "eval:baseline:propose": "pnpm run --silent build:framework && node packages/framework/dist/cli/main.js eval baseline propose",
     "proof:company-research": "pnpm --silent --filter \"@aao/example-company-research...\" run build 1>&2 && node examples/company-research/dist/demo/run.js",
     "proof:document-intelligence": "pnpm --silent --filter \"@aao/example-document-intelligence...\" run build 1>&2 && node examples/document-intelligence/dist/demo/run.js",
+    "proof:operational-request": "pnpm --silent --filter \"@aao/example-operational-request...\" run build 1>&2 && node examples/operational-request/dist/demo/run.js",
     "check": "pnpm run typecheck && pnpm run lint && pnpm run build && pnpm run test && node packages/framework/dist/cli/main.js eval ci && node packages/framework/dist/cli/main.js eval adapters"
   },
   "devDependencies": {

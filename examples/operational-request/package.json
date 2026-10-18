@@ -1,0 +1,40 @@
+{
+  "name": "@aao/example-operational-request",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Sprint 24 proof application: governed action proposals, human approval, and safe draft execution as an AAO Workflow.",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": ">=20.20.0 <21.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "proof": "node dist/demo/run.js",
+    "smoke:sprint24": "node smoke/sprint24.mjs"
+  },
+  "dependencies": {
+    "@aao/approval": "workspace:*",
+    "@aao/framework": "workspace:*",
+    "zod": "^3.24.3"
+  },
+  "devDependencies": {
+    "@aao/adapters": "workspace:*",
+    "@aao/contracts": "workspace:*",
+    "@aao/evaluation": "workspace:*",
+    "@aao/governance": "workspace:*",
+    "@aao/model-runtime": "workspace:*",
+    "@aao/observability": "workspace:*",
+    "@aao/tool-runtime": "workspace:*",
+    "ai": "^7.0.107"
+  }
+}

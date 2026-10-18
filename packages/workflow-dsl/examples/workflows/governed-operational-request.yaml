@@ -3,7 +3,9 @@
 # final output. Node config is opaque JSON (deferred to the future Node
 # Registry) and capability/tool references are provider-neutral identifiers
 # (e.g. "crm.accounts.update"), never a vendor SDK call. Nothing here
-# executes; this is a structural example, not a runnable workflow.
+# executes; this is a historical structural example, not a runnable workflow.
+# For the executable proof application, see examples/operational-request
+# (@aao/example-operational-request, Sprint 24, ADR-029).
 schemaVersion: 1
 id: examples.governed-operational-request
 version: "1.0.0"
