@@ -42,35 +42,35 @@ An operator submits a request to update an account display name:
 Operational Request
         |
         v
-Deterministic Intake
+Deterministic Intake (intake)
         |
         v
-Bounded Model Interpretation
+Bounded Model Interpretation (interpret)
         |
         v
-Strict Proposal Validation
+Strict Proposal Validation (validate_proposal)
         |
         v
-Canonical Approval Subject
+Canonical Approval Subject (build_approval_subject)
         |
         v
-Human Approval Waitpoint
+Human Approval Waitpoint (require_approval)
         |
    +----+----+
    |         |
 Rejected   Approved
    |         |
    v         v
-Terminate  Revalidate Authority
+Terminate  Prepare Draft Input (prepare_draft)
              |
              v
-       Governed Draft Tool
+       Governed Draft Tool (create_draft)
              |
              v
        Local Draft Artifact
              |
              v
-       Final Operational Result
+       Final Operational Result (render_result -> final)
 ```
 
 ## Running the Demo

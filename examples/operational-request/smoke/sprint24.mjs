@@ -10,6 +10,10 @@ import {
   OPERATIONAL_REQUEST_NODE_ORDER,
   STATE_KEYS,
   createOperationalRequestProof,
+  createInMemoryDraftRepository,
+  createOperationalDraftTool,
+  createOperationalApprovalVerifier,
+  renderOperationalMarkdown,
 } from '@aao/example-operational-request';
 import {
   VALID_OPERATIONAL_REQUEST,
@@ -328,5 +332,153 @@ assert(vercelResumed.ok, "Step 23: Vercel adapter execution failed");
 assert(vercel.providerCalls() === 1, "Step 23: Vercel adapter provider call count was not 1");
 assert(vercelProof.draftRepository.getAllDrafts().length === 1, "Step 23: Vercel adapter draft count was not 1");
 
-process.stdout.write("All 23 Smoke Acceptance Criteria Verified Successfully!\n");
+// 24. Cross-state request ID mutation cannot alter the draft
+const tamperProof = createOperationalRequestProof({
+  modelAdapters: [nativeAdapter],
+  modelBindings: [binding],
+  governance: fixtureGovernance,
+  principalForRun: () => operator,
+  clock,
+});
+const tamperInit = await tamperProof.execute({
+  runId: "run.smoke.tamper",
+  request: VALID_OPERATIONAL_REQUEST,
+});
+const tamperApprovalId = tamperInit.execution?.wait?.referenceId;
+tamperProof.approvals.approve(tamperApprovalId, manager);
+tamperInit.execution.state.values[STATE_KEYS.normalizedRequest] = {
+  ...tamperInit.execution.state.values[STATE_KEYS.normalizedRequest],
+  requestId: "tampered-request-id",
+  accountId: "ACME-TAMPERED",
+};
+const tamperResumed = await tamperProof.continue(tamperInit.execution);
+assert(tamperResumed.ok, "Step 24: Tamper execution failed to continue");
+const tamperedDrafts = tamperProof.draftRepository.getAllDrafts();
+assert(tamperedDrafts.length === 1, "Step 24: Tamper test expected exactly 1 draft");
+assert(tamperedDrafts[0].requestId === VALID_OPERATIONAL_REQUEST.requestId, "Step 24: Tampered requestId influenced draft!");
+assert(tamperedDrafts[0].accountId === VALID_OPERATIONAL_REQUEST.accountContext.accountId, "Step 24: Tampered accountId influenced draft!");
+
+// 25. Forged Approval cannot create a draft
+const forgedProof = createOperationalRequestProof({
+  modelAdapters: [nativeAdapter],
+  modelBindings: [binding],
+  governance: fixtureGovernance,
+  principalForRun: () => operator,
+});
+const forgedTool = createOperationalDraftTool({
+  repository: forgedProof.draftRepository,
+  approvalVerifier: createOperationalApprovalVerifier({
+    getApproval: (id) => forgedProof.approvals.get(id),
+  }),
+});
+const forgedResult = await forgedTool.handler.execute({
+  input: {
+    requestId: "REQ-FORGED",
+    accountId: "ACME-001",
+    operation: "account.update_display_name",
+    proposedChanges: { displayName: "Forged Name" },
+    approvalBinding: {
+      approvalId: "approval:forged-id",
+      requestFingerprint: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      runId: "run.smoke.forged",
+    },
+  },
+  runId: "run.smoke.forged",
+  toolExecutionId: "exec.forged",
+  grantedPermissionClasses: ["write_draft"],
+});
+assert(!forgedResult.ok, "Step 25: Forged approval was not rejected!");
+assert(forgedResult.code === "APPROVAL_NOT_FOUND" || forgedResult.code === "APPROVAL_VERIFICATION_FAILED", `Step 25: Unexpected code ${forgedResult.code}`);
+assert(forgedProof.draftRepository.getAllDrafts().length === 0, "Step 25: Draft created with forged approval!");
+
+// 26. Alternate workflow invocation cannot assert approved status
+const altDraftRepo = createInMemoryDraftRepository();
+const altTool = createOperationalDraftTool({
+  repository: altDraftRepo,
+  approvalVerifier: createOperationalApprovalVerifier({
+    getApproval: (id) => proof.approvals.get(id),
+  }),
+});
+const altWorkflow = defineWorkflow({
+  schemaVersion: 1,
+  id: "alt.workflow",
+  version: "1.0.0",
+  name: "Alternate Workflow Without Approval Guard",
+  description: "Attempts draft creation without approval guard",
+  entryNodeId: "draft_node",
+  nodes: [
+    {
+      id: "draft_node",
+      kind: "tool",
+      config: {
+        toolRef: { id: altTool.spec.id, version: altTool.spec.version },
+        inputStateKey: "draftInput",
+        resultStateKey: "draftResult",
+      },
+    },
+    {
+      id: "final_node",
+      kind: "final_output",
+      config: {},
+    },
+  ],
+  edges: [{ sourceNodeId: "draft_node", targetNodeId: "final_node" }],
+});
+
+const altProof = createOperationalRequestProof({
+  modelAdapters: [nativeAdapter],
+  modelBindings: [binding],
+  governance: fixtureGovernance,
+  principalForRun: () => operator,
+  tools: [altTool],
+});
+const preparedAlt = altProof.app.prepareWorkflow(altWorkflow);
+const altExecResult = await preparedAlt.execute({
+  runId: "run.smoke.alt",
+  initialState: {
+    runId: "run.smoke.alt",
+    revision: 0,
+    values: {
+      draftInput: {
+        requestId: "REQ-ALT",
+        accountId: "ACME-001",
+        operation: "account.update_display_name",
+        proposedChanges: { displayName: "Unapproved Name" },
+        approvalBinding: {
+          approvalId: "approval:forged",
+          requestFingerprint: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          runId: "run.smoke.alt",
+        },
+      },
+    },
+  },
+});
+assert(!altExecResult.ok || altExecResult.execution?.run.status === "FAILED", "Step 26: Alternate workflow without approval guard should fail");
+assert(altDraftRepo.getAllDrafts().length === 0, "Step 26: Alternate workflow created a draft!");
+
+// 27. Replayed continuation cannot duplicate a draft
+await proof.continue(resumed.execution);
+assert(proof.draftRepository.getAllDrafts().length === 1, "Step 27: Replaying continuation duplicated drafts!");
+
+// 28. Rendered Markdown escapes injected headings, links, HTML, backticks, table pipes, and control characters
+const dangerousInput = "# Heading\n<script>alert(1)</script>\n| Pipe | Column |\n`code_span`\n[Link](https://evil.com)\x00\x08";
+const renderedMarkdown = renderOperationalMarkdown({
+  requestId: "req.injection",
+  operation: "account.update_display_name",
+  accountId: "ACME-001",
+  displayName: dangerousInput,
+  draftId: "draft.test",
+  approvalId: "approval:test",
+  draftStatus: "approved_draft",
+  externalExecution: "not_executed",
+});
+assert(!renderedMarkdown.includes("<script>"), "Step 28: Raw script tag found in markdown");
+assert(renderedMarkdown.includes("&lt;script&gt;"), "Step 28: HTML escaping missing in markdown");
+assert(!renderedMarkdown.includes("\x00") && !renderedMarkdown.includes("\x08"), "Step 28: Control characters not stripped");
+assert(renderedMarkdown.includes("\\# Heading"), "Step 28: Heading marker '#' not escaped");
+assert(renderedMarkdown.includes("\\| Pipe \\|"), "Step 28: Table pipe '|' not escaped");
+assert(renderedMarkdown.includes("\\[Link\\]"), "Step 28: Link bracket '[' not escaped");
+assert(renderedMarkdown.includes("\\`code\\_span\\`"), "Step 28: Code backtick or underscore not escaped");
+
+process.stdout.write("All 28 Smoke Acceptance Criteria Verified Successfully!\n");
 process.stdout.write("SPRINT_24_OPERATIONAL_REQUEST_PROOF_SMOKE_OK\n");
