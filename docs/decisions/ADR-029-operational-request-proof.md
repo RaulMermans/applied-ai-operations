@@ -208,10 +208,47 @@ The proof application (`@aao/example-operational-request`) consumes public `@aao
 - native deterministic model adapters;
 - production Vercel AI SDK mock adapters.
 
-The test suite includes 36 automated evaluation cases covering happy path, rejection, governance violations, schema violations, prompt injection, fingerprint tampering, and external side-effect refusal across 10 canonical evaluation categories.
+The test suite includes automated evaluation cases covering happy path, rejection, governance violations, schema violations, prompt injection, fingerprint tampering, external side-effect refusal, cross-run approval isolation, spoofed execution refusal, and atomic persistence safety across canonical evaluation categories.
+
+### 9. Cross-Run Approval Isolation, Trusted Execution Origin & Atomic Draft Commitment (Sprint 24D)
+
+#### Cross-Run Approval Isolation & Untrusted Tool Input
+In Sprint 24D, we resolve cross-run approval reuse. Prior revisions accepted `approvalBinding.runId` from tool input to resolve the expected execution context. Because tool input is caller-controlled and untrusted, a caller in Run B could supply the Run ID of a genuine, approved Run A, enabling unauthorized execution in Run B.
+
+We enforce that **an Approval created for Run A can never authorize draft execution within Run B**.
+The verifier never uses caller-supplied input to select or establish the expected Run ID. If `approvalBinding.runId` is supplied by the caller, it is strictly validated against the canonical approval record; any discrepancy fails closed (`INVALID_APPROVAL_CONTEXT`).
+
+#### Canonical Execution Identity vs Unforgeable Authority
+The Tool Runtime deterministically derives execution IDs via `deriveToolExecutionId(runId, nodeId)`. For the authorized draft node, the expected ID is `deriveToolExecutionId(record.runId, "create_draft")`.
+
+However, deterministic execution identity is **not a cryptographic authorization credential** on its own: because `deriveToolExecutionId` is an open, deterministic function, an untrusted direct caller of `executeTool()` can recompute the expected ID for Run A. Therefore, deterministic execution identity alone cannot prove that an invocation originated from trusted workflow execution.
+
+To prevent spoofed direct invocations from consuming genuine Approvals:
+1. **Trusted Execution Origin Attestation**: The proof host's trusted workflow runner attests execution origin (`attestExecutionOrigin(runId, toolExecutionId)`) at the workflow continuation boundary before invoking the tool node.
+2. **Direct Invocation Trust Limitations**: Untrusted direct `executeTool()` invocations that supply a computed or spoofed execution ID without trusted host attestation fail closed unconditionally with `UNTRUSTED_EXECUTION_ORIGIN`. We explicitly recognize that without host-level attestation, direct Tool Runtime callers cannot be granted unforgeable execution authority over previously approved workflow runs.
+
+#### Atomic Approval Reservation and Consumption Lifecycle
+Prior to Sprint 24D, the verifier marked an Approval as consumed immediately upon verification, before persisting the draft to repository storage. If repository persistence failed, the Approval remained permanently consumed, rendering recovery impossible.
+
+Sprint 24D introduces an atomic application-local consumption lifecycle:
+```text
+AVAILABLE
+   ↓ (verifyApproval)
+IN_FLIGHT (reservation)
+   ↓ (saveDraft succeeds or proven commit)
+COMMITTED
+```
+On persistence failure:
+- **Proven No Commit (`NO_COMMIT_PROVEN`)**: If `saveDraft` throws before any disk or storage write occurs and the repository confirms 0 matching drafts exist, the reservation is safely released (`IN_FLIGHT` → `AVAILABLE`), allowing recovery or retry.
+- **Ambiguous Commit (`reconcileUncertainCommit`)**: If `saveDraft` throws after a partial or unconfirmed write, the tool handler queries the repository using the execution ID idempotency identity and draft ID. If an exact matching draft is confirmed persisted, the commit is proven, consumption is marked `COMMITTED`, and the draft is returned successfully.
+- **Indeterminate Failure**: If storage state cannot be determined or an idempotency conflict occurs, the verifier fails closed and does not release the reservation.
+
+#### Idempotent Replay and Durability Limits
+- **Replay Under Same Identity**: Replaying the draft tool under the identical execution identity returns the existing draft and confirms `COMMITTED` status without creating duplicate drafts. Replay with conflicting payload fails with `IDEMPOTENCY_CONFLICT`.
+- **Durability Boundaries**: In Framework V1 and the operational request proof application, draft persistence is bounded by host repository implementation (in-memory draft repository in test/smoke, disk/DB in production host). Distributed transaction atomicity (two-phase commit between external approval engine and external database) is not claimed; safety is bounded by the deterministic single-host reconciliation contract.
 
 ## Consequences
 
-- AAO demonstrates complete operational governance: intent interpretation, proposal validation, human approval waitpoints, authority revalidation, and safe draft execution.
+- AAO demonstrates complete operational governance: intent interpretation, proposal validation, human approval waitpoints, authority revalidation, cross-run approval isolation, atomic draft commitment, and safe draft execution.
 - Invariants between proposals, approvals, permissions, and execution are proven and enforced.
 - The repository gains a third flagship proof application with an end-to-end interactive demo (`pnpm proof:operational-request`) and a standalone compiled smoke test (`pnpm --filter @aao/example-operational-request run smoke:sprint24`).

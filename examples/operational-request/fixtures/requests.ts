@@ -1,6 +1,7 @@
 import type { OperationalRequest } from "../src/contracts.js";
 
 export const SECRET_TOKEN = "SEC_OPS_MARKER_998877665544";
+export const SECRET_DO_NOT_PERSIST = "SECRET_DO_NOT_PERSIST";
 
 export const VALID_OPERATIONAL_REQUEST: OperationalRequest = Object.freeze({
   schemaVersion: 1,
@@ -39,6 +40,16 @@ export const REQUEST_WITH_SEEDED_SECRET: OperationalRequest = Object.freeze({
   schemaVersion: 1,
   requestId: "req-secret-001",
   instruction: `Update display name for ACME-001 to Acme Data Solutions. Internal token: ${SECRET_TOKEN}`,
+  accountContext: {
+    accountId: "ACME-001",
+    currentDisplayName: "Acme Analytics",
+  },
+});
+
+export const REQUEST_WITH_SECRET_DO_NOT_PERSIST: OperationalRequest = Object.freeze({
+  schemaVersion: 1,
+  requestId: "req-secret-do-not-persist-001",
+  instruction: `Update display name for ACME-001 to Acme Data Solutions. Marker: ${SECRET_DO_NOT_PERSIST}`,
   accountContext: {
     accountId: "ACME-001",
     currentDisplayName: "Acme Analytics",

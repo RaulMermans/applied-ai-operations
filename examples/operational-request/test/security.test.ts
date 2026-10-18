@@ -9,7 +9,9 @@ import {
   manager,
   PROMPT_INJECTION_REQUEST,
   REQUEST_WITH_SEEDED_SECRET,
+  REQUEST_WITH_SECRET_DO_NOT_PERSIST,
   SECRET_TOKEN,
+  SECRET_DO_NOT_PERSIST,
 } from "../fixtures/index.js";
 import { STATE_KEYS, type OperationalRequestResult } from "../src/index.js";
 import { failureCode, failureNodeId } from "./support.js";
@@ -94,5 +96,27 @@ describe("Security & Privacy Boundaries", () => {
 
     const finalResult = resumed.execution?.state.values[STATE_KEYS.finalResult] as OperationalRequestResult;
     expect(finalResult.renderedMarkdown.includes(SECRET_TOKEN)).toBe(false);
+  });
+
+  it("verifies SECRET_DO_NOT_PERSIST seeded into failure paths never leaks into trace or error", async () => {
+    const store = createInMemoryTraceStore();
+    const trace = createTraceRecorder({ store, clock: fixedClock() });
+
+    const { proof } = createFixtureProof({
+      trace,
+      modelOptions: { unsupportedOperation: true }, // will trigger failure path
+    });
+    const result = await proof.execute({
+      runId: "run.sec.secret-failure",
+      request: REQUEST_WITH_SECRET_DO_NOT_PERSIST,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(JSON.stringify(result.failure)).not.toContain(SECRET_DO_NOT_PERSIST);
+    }
+
+    const traceEvents = await store.getRunTrace("run.sec.secret-failure");
+    expect(JSON.stringify(traceEvents)).not.toContain(SECRET_DO_NOT_PERSIST);
   });
 });

@@ -61,23 +61,55 @@ Final Output (final)
 
 The operational path is deterministic. There is no general-purpose agent loop, autonomous retry/reflection cycle, or dynamic tool calling. A successful run makes exactly 1 bounded model call and 1 governed draft Tool call.
 
-## Trust Boundary Invariants
+## Final Authority Sequence & Trust Invariants
+
+### Authority Sequence
+
+```text
+Operational Request
+        ↓
+Validated Proposal
+        ↓
+Canonical Approval
+        ↓
+Eligible Human
+        ↓
+Trusted Execution-Origin Binding
+        ↓
+Exact Approved Payload
+        ↓
+Canonical Tool Runtime
+        ↓
+Recoverable Draft Commit
+        ↓
+Approved Local Draft
+```
+
+Neither a caller-supplied Run ID nor an Approval ID is authorization by itself. A caller cannot simply present an approval identifier, nor can a caller supply a different Run ID to authorize draft execution. Authority requires every step of the chain above to hold unbroken under trusted host verification.
+
+### Trust Boundary Invariants
 
 1. **Model Proposal ≠ Authorization:**
    The model proposes an `OperationalActionProposal`. It cannot self-authorize, select permission classes, or invoke tools. Deterministic code validates the proposal against trusted intake context.
-2. **Approval ID is Correlation Data, Not Authority:**
-   The draft Tool does not trust caller-supplied approval identifiers. The draft Tool requires canonical Tool Runtime authorization (`write_draft`) AND queries the trusted host Approval Engine to verify:
+2. **Caller-Supplied Run ID and Approval ID Are Correlation Data, Not Authority:**
+   The draft Tool does not trust caller-supplied approval or execution identifiers. The draft Tool requires canonical Tool Runtime authorization (`write_draft`) AND queries the trusted host Approval Engine and execution verifier to enforce:
    - The approval record actually exists and is currently in `approved` status.
-   - The approval belongs to the expected Run ID and node ID (`require_approval`).
+   - The approval belongs strictly to the invoking Run ID and node ID (`require_approval`).
+   - Genuine Approvals created for Run A can never authorize draft execution within Run B, even with identical business payloads.
+   - Caller-supplied `runId` in tool input is untrusted and cannot select or establish the expected execution context.
+   - Execution identity `deriveToolExecutionId(runId, "create_draft")` must match the expected node, and untrusted direct invocations lacking host execution-origin attestation fail closed (`UNTRUSTED_EXECUTION_ORIGIN`).
    - The approval's cryptographic request fingerprint matches the exact draft payload.
    - The approval has not been consumed previously (`APPROVAL_ALREADY_CONSUMED`).
-3. **Single Approved Source of Truth:**
+3. **Atomic Draft Commitment & Recoverable Persistence:**
+   Approvals are reserved (`IN_FLIGHT`) before storage writes and only marked `COMMITTED` upon successful draft persistence or proven commit reconciliation (`reconcileUncertainCommit`). Failed uncommitted persistence safely releases the reservation (`AVAILABLE`) for retry.
+4. **Single Approved Source of Truth:**
    All downstream business fields (`requestId`, `accountId`, `operation`, `proposedChanges`) are derived strictly from the verified `approvalSubject`. Mutable non-approved request state cannot influence the resulting draft.
-4. **Non-Execution Guarantees are Enforced by Deterministic Software:**
+5. **Non-Execution Guarantees are Enforced by Deterministic Software:**
    Non-execution is not a model prompt constraint or compliance suggestion. It is enforced structurally:
    - Tool Runtime refuses unsupported permission classes (`external_side_effect`, `destructive`, `sensitive_data`) during workflow preparation and preflight.
    - The registered tool (`operations.create_change_draft@1.0.0`) only has capability to append to a local host `DraftRepository`.
    - The draft artifact explicitly records `externalExecution: "not_executed"`.
+
 
 ## Core vs Application-Level Governance Revalidation
 

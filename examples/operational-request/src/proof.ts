@@ -17,10 +17,15 @@ import {
   type Workflow,
   type WorkflowExecutionResult,
 } from "@aao/framework";
+import { deriveToolExecutionId } from "@aao/tool-runtime";
 import { OPERATIONAL_REQUEST_EXECUTORS, STATE_KEYS } from "./executors.js";
 import { INTERPRET_POLICY_REF } from "./model-requests.js";
 import { createInMemoryDraftRepository, type OperationalDraftRepository } from "./repository.js";
-import { createOperationalApprovalVerifier, createOperationalDraftTool } from "./tool.js";
+import {
+  createOperationalApprovalVerifier,
+  createOperationalDraftTool,
+  type OperationalApprovalVerifier,
+} from "./tool.js";
 import { operationalRequestWorkflow } from "./workflow.js";
 import type { OperationalRequestInput } from "./contracts.js";
 
@@ -52,6 +57,7 @@ export interface OperationalRequestProof {
   readonly app: AAOApp;
   readonly draftRepository: OperationalDraftRepository;
   readonly approvals: AAOApprovals;
+  readonly approvalVerifier: OperationalApprovalVerifier;
   execute(input: { runId: string; request: OperationalRequestInput }): Promise<WorkflowExecutionResult>;
   continue(execution: RuntimeExecutionState): Promise<WorkflowExecutionResult>;
 }
@@ -70,11 +76,12 @@ export function createOperationalRequestProof(
 ): OperationalRequestProof {
   const draftRepository = options.draftRepository ?? createInMemoryDraftRepository();
   const approvalsHolder: { current?: AAOApprovals } = {};
+  const approvalVerifier = createOperationalApprovalVerifier({
+    getApproval: (id) => approvalsHolder.current?.get(id),
+  });
   const draftTool = createOperationalDraftTool({
     repository: draftRepository,
-    approvalVerifier: createOperationalApprovalVerifier({
-      getApproval: (id) => approvalsHolder.current?.get(id),
-    }),
+    approvalVerifier,
   });
   const tools = options.tools ? [...options.tools] : [draftTool];
 
@@ -103,6 +110,7 @@ export function createOperationalRequestProof(
     app,
     draftRepository,
     approvals: app.approvals,
+    approvalVerifier,
     execute: async (input: { runId: string; request: OperationalRequestInput }) => {
       return prepared.execute({
         runId: input.runId,
@@ -116,6 +124,9 @@ export function createOperationalRequestProof(
       });
     },
     continue: async (execution: RuntimeExecutionState) => {
+      const runId = execution.run.runId;
+      const expectedToolExecutionId = deriveToolExecutionId(runId, "create_draft");
+      approvalVerifier.attestExecutionOrigin?.(runId, expectedToolExecutionId);
       return prepared.continue(execution);
     },
   });

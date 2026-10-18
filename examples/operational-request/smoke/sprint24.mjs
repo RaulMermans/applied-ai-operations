@@ -15,11 +15,14 @@ import {
   createOperationalApprovalVerifier,
   renderOperationalMarkdown,
 } from '@aao/example-operational-request';
+import { deriveToolExecutionId } from '@aao/tool-runtime';
 import {
   VALID_OPERATIONAL_REQUEST,
   SECOND_OPERATIONAL_REQUEST,
   REQUEST_WITH_SEEDED_SECRET,
+  REQUEST_WITH_SECRET_DO_NOT_PERSIST,
   SECRET_TOKEN,
+  SECRET_DO_NOT_PERSIST,
   operator,
   manager,
   unauthorizedRequester,
@@ -92,34 +95,156 @@ assert(typeof requestFingerprint === "string" && /^[a-f0-9]{64}$/.test(requestFi
 // 8. Verify zero draft calls before approval
 assert(proof.draftRepository.getAllDrafts().length === 0, "Step 8: Draft was staged before approval!");
 
-// 9. Resolve Approval with eligible human
+// 9. Resolve Approval with eligible human (Point 2: Manager approves Run A)
 const record = proof.approvals.approve(approvalId, manager);
-assert(record.status === "approved" && record.resolvedBy?.id === manager.id, "Step 9: Approval resolution failed");
+assert(record.status === "approved" && record.resolvedBy?.id === manager.id, "Step 9 / Point 2: Approval resolution failed");
 
-// 10. Continue same Run
+// --- SPRINT 24D VERIFICATION POINTS 3, 4, 5, 6 ---
+// 3. Run B attempts use of Run A Approval.
+const runBToolExecutionId = deriveToolExecutionId("run.smoke.attack-B", "create_draft");
+const draftTool = createOperationalDraftTool({
+  repository: proof.draftRepository,
+  approvalVerifier: proof.approvalVerifier,
+});
+const attackResult = await draftTool.handler.execute({
+  input: {
+    requestId: VALID_OPERATIONAL_REQUEST.requestId,
+    accountId: VALID_OPERATIONAL_REQUEST.accountContext.accountId,
+    operation: "account.update_display_name",
+    proposedChanges: { displayName: "Acme Data Solutions" },
+    approvalBinding: {
+      approvalId,
+      requestFingerprint,
+      runId: "run.smoke.sprint24", // caller supplies Run A's runId
+    },
+  },
+  runId: "run.smoke.attack-B",
+  toolExecutionId: runBToolExecutionId,
+  grantedPermissionClasses: ["write_draft"],
+});
+// 4. Run B is denied.
+assert(!attackResult.ok, "Point 4: Run B attack was not denied!");
+assert(attackResult.code === "INVALID_APPROVAL_CONTEXT", `Point 4: Expected INVALID_APPROVAL_CONTEXT, got ${attackResult.code}`);
+// 5. Run B creates zero drafts.
+assert(proof.draftRepository.getAllDrafts().length === 0, "Point 5: Run B created drafts!");
+// 6. Run A Approval remains usable.
+assert(proof.approvalVerifier.getConsumptionState(approvalId) === "AVAILABLE", "Point 6: Run A approval was consumed by Run B attack!");
+
+// 10. Continue same Run (Point 7: Run A continues)
 const resumed = await proof.continue(initial.execution);
-assert(resumed.ok, `Step 10: Continuation failed: ${JSON.stringify(resumed.failure)}`);
-assert(resumed.execution?.run.status === "COMPLETED", "Step 10: Run did not reach COMPLETED");
+assert(resumed.ok, `Step 10 / Point 7: Continuation failed: ${JSON.stringify(resumed.failure)}`);
+assert(resumed.execution?.run.status === "COMPLETED", "Step 10 / Point 7: Run did not reach COMPLETED");
 
-// 11. Execute write_draft Tool once
+// 11. Execute write_draft Tool once (Point 8: Exact draft is created once)
 const drafts = proof.draftRepository.getAllDrafts();
-assert(drafts.length === 1, `Step 11: Expected exactly 1 draft, got ${drafts.length}`);
+assert(drafts.length === 1, `Step 11 / Point 8: Expected exactly 1 draft, got ${drafts.length}`);
 
 // 12. Inspect local draft artifact
 const draft = drafts[0];
 assert(draft.draftId.startsWith("draft."), "Step 12: Invalid draftId format");
 assert(draft.status === "approved_draft", "Step 12: Draft status is not approved_draft");
 
-// 13. Verify artifact matches approved subject
+// 13. Verify artifact matches approved subject (Point 8 continued)
 const subject = resumed.execution?.state.values[STATE_KEYS.approvalSubject];
-assert(draft.accountId === subject?.accountId, "Step 13: Draft accountId does not match approved subject");
-assert(draft.proposedChanges.displayName === subject?.proposedChanges.displayName, "Step 13: Draft changes do not match approved subject");
+assert(draft.accountId === subject?.accountId, "Step 13 / Point 8: Draft accountId does not match approved subject");
+assert(draft.proposedChanges.displayName === subject?.proposedChanges.displayName, "Step 13 / Point 8: Draft changes do not match approved subject");
 
-// 14. Verify externalExecution = not_executed
-assert(draft.externalExecution === "not_executed", "Step 14: Draft externalExecution must be 'not_executed'");
+// --- SPRINT 24D VERIFICATION POINT 9: Repository replay is idempotent ---
+const canonicalToolExecutionIdA = deriveToolExecutionId("run.smoke.sprint24", "create_draft");
+const replayResult = await draftTool.handler.execute({
+  input: {
+    requestId: VALID_OPERATIONAL_REQUEST.requestId,
+    accountId: VALID_OPERATIONAL_REQUEST.accountContext.accountId,
+    operation: "account.update_display_name",
+    proposedChanges: { displayName: "Acme Data Solutions" },
+    approvalBinding: {
+      approvalId,
+      requestFingerprint,
+      runId: "run.smoke.sprint24",
+    },
+  },
+  runId: "run.smoke.sprint24",
+  toolExecutionId: canonicalToolExecutionIdA,
+  grantedPermissionClasses: ["write_draft"],
+});
+assert(replayResult.ok, "Point 9: Idempotent replay failed");
+assert(proof.draftRepository.getAllDrafts().length === 1, "Point 9: Idempotent replay created duplicate drafts!");
+
+// --- SPRINT 24D VERIFICATION POINTS 10 & 11: Persistence safety & consumption commit ---
+// 10. Persistence failure does not permanently consume a definitely uncommitted Approval.
+const baseFailRepo = createInMemoryDraftRepository();
+let throwBeforeSave = true;
+const failRepo = {
+  ...baseFailRepo,
+  async saveDraft(execId, d) {
+    if (throwBeforeSave) {
+      throwBeforeSave = false;
+      throw new Error("Simulated storage failure before write");
+    }
+    return baseFailRepo.saveDraft(execId, d);
+  },
+};
+const recProof = createOperationalRequestProof({
+  modelAdapters: [nativeAdapter],
+  modelBindings: [binding],
+  governance: fixtureGovernance,
+  principalForRun: () => operator,
+  clock,
+});
+const recInit = await recProof.execute({
+  runId: "run.smoke.recovery",
+  request: VALID_OPERATIONAL_REQUEST,
+});
+const recAppId = recInit.execution?.wait?.referenceId;
+const recFp = recInit.execution?.wait?.requestFingerprint;
+recProof.approvals.approve(recAppId, manager);
+
+const recVerifier = createOperationalApprovalVerifier({ getApproval: (id) => recProof.approvals.get(id) });
+const recExecId = deriveToolExecutionId("run.smoke.recovery", "create_draft");
+recVerifier.attestExecutionOrigin("run.smoke.recovery", recExecId);
+
+const recTool = createOperationalDraftTool({
+  repository: failRepo,
+  approvalVerifier: recVerifier,
+});
+const failCall = await recTool.handler.execute({
+  input: {
+    requestId: VALID_OPERATIONAL_REQUEST.requestId,
+    accountId: VALID_OPERATIONAL_REQUEST.accountContext.accountId,
+    operation: "account.update_display_name",
+    proposedChanges: { displayName: "Acme Data Solutions" },
+    approvalBinding: { approvalId: recAppId, requestFingerprint: recFp, runId: "run.smoke.recovery" },
+  },
+  runId: "run.smoke.recovery",
+  toolExecutionId: recExecId,
+  grantedPermissionClasses: ["write_draft"],
+});
+assert(!failCall.ok, "Point 10: Expected failure on uncommitted save error");
+assert(failRepo.getAllDrafts().length === 0, "Point 10: Draft was saved despite error");
+assert(recVerifier.getConsumptionState(recAppId) === "AVAILABLE", "Point 10: Approval was prematurely consumed on save failure!");
+
+// 11. Successful persistence commits consumption.
+const successCall = await recTool.handler.execute({
+  input: {
+    requestId: VALID_OPERATIONAL_REQUEST.requestId,
+    accountId: VALID_OPERATIONAL_REQUEST.accountContext.accountId,
+    operation: "account.update_display_name",
+    proposedChanges: { displayName: "Acme Data Solutions" },
+    approvalBinding: { approvalId: recAppId, requestFingerprint: recFp, runId: "run.smoke.recovery" },
+  },
+  runId: "run.smoke.recovery",
+  toolExecutionId: recExecId,
+  grantedPermissionClasses: ["write_draft"],
+});
+assert(successCall.ok, "Point 11: Recovery invocation failed");
+assert(failRepo.getAllDrafts().length === 1, "Point 11: Draft was not persisted on recovery");
+assert(recVerifier.getConsumptionState(recAppId) === "COMMITTED", "Point 11: Approval was not committed on successful persistence!");
+
+// 14. Verify externalExecution = not_executed (Point 13: Final result confirms no external modification)
+assert(draft.externalExecution === "not_executed", "Step 14 / Point 13: Draft externalExecution must be 'not_executed'");
 const finalResult = resumed.execution?.state.values[STATE_KEYS.finalResult];
-assert(finalResult?.externalExecution === "not_executed", "Step 14: Final result externalExecution must be 'not_executed'");
-assert(finalResult?.renderedMarkdown.includes("The draft was prepared. The external account was not modified."), "Step 14: Final markdown missing required non-modification notice");
+assert(finalResult?.externalExecution === "not_executed", "Step 14 / Point 13: Final result externalExecution must be 'not_executed'");
+assert(finalResult?.renderedMarkdown.includes("The draft was prepared. The external account was not modified."), "Step 14 / Point 13: Final markdown missing required non-modification notice");
 
 // 15. Run canonical Eval assertions
 const traceEvents = await store.getRunTrace("run.smoke.sprint24");
@@ -310,6 +435,28 @@ const serializedTrace = JSON.stringify(secretEvents);
 assert(!serializedTrace.includes(SECRET_TOKEN), "Step 22: Seeded secret leaked into trace!");
 const secretFinal = secretResumed.execution?.state.values[STATE_KEYS.finalResult];
 assert(!secretFinal?.renderedMarkdown.includes(SECRET_TOKEN), "Step 22: Seeded secret leaked into rendered markdown!");
+
+// Also verify SECRET_DO_NOT_PERSIST does not leak in failure paths
+const secretStoreDnp = createInMemoryTraceStore();
+const secretProofDnp = createOperationalRequestProof({
+  modelAdapters: [nativeAdapter],
+  modelBindings: [binding],
+  governance: fixtureGovernance,
+  principalForRun: () => operator,
+  trace: createTraceRecorder({ store: secretStoreDnp, clock }),
+  clock,
+});
+const secretInitDnp = await secretProofDnp.execute({
+  runId: "run.smoke.secret-dnp",
+  request: REQUEST_WITH_SECRET_DO_NOT_PERSIST,
+});
+const secretAppIdDnp = secretInitDnp.execution?.wait?.referenceId;
+secretProofDnp.approvals.approve(secretAppIdDnp, manager);
+const secretResumedDnp = await secretProofDnp.continue(secretInitDnp.execution);
+const secretEventsDnp = await secretStoreDnp.getRunTrace("run.smoke.secret-dnp");
+assert(!JSON.stringify(secretEventsDnp).includes(SECRET_DO_NOT_PERSIST), "Step 22: SECRET_DO_NOT_PERSIST leaked into trace!");
+const secretFinalDnp = secretResumedDnp.execution?.state.values[STATE_KEYS.finalResult];
+assert(!secretFinalDnp?.renderedMarkdown.includes(SECRET_DO_NOT_PERSIST), "Step 22: SECRET_DO_NOT_PERSIST leaked into rendered markdown!");
 
 // 23. Verify model adapter portability
 const vercel = vercelModelAdapter();

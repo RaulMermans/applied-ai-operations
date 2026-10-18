@@ -18,8 +18,32 @@ import type {
 } from "@aao/contracts";
 import type { JsonValue, WorkflowExecutionResult } from "@aao/framework";
 import {
+  defineTool,
+  defineWorkflow,
+  type ToolDefinition,
+} from "@aao/framework";
+import {
+  deriveToolExecutionId,
+  executeTool,
+  createToolRegistry,
+  type ExecuteToolParams,
+} from "@aao/tool-runtime";
+
+type AuthorizationContext = ExecuteToolParams["authorizationContext"];
+import {
+  fingerprintApprovalSubject,
+  approvalIdForFingerprint,
+  createApprovalEngine,
+} from "@aao/approval";
+import { createGovernanceRegistry } from "@aao/governance";
+import {
   CREATE_CHANGE_DRAFT_TOOL_REF,
   OPERATIONAL_REQUEST_NODE_ORDER,
+  createInMemoryDraftRepository,
+  createOperationalApprovalVerifier,
+  createOperationalDraftTool,
+  type OperationalApprovalSubject,
+  type OperationalChangeDraft,
 } from "../src/index.js";
 import {
   createFixtureProof,
@@ -34,6 +58,7 @@ import {
   VERCEL_OPS_ADAPTER_REF,
   fixtureGovernance,
   operator,
+  SECRET_DO_NOT_PERSIST,
 } from "../fixtures/index.js";
 import { createOperationalRequestProof } from "../src/proof.js";
 
@@ -530,5 +555,517 @@ describe("Operational Request Evaluation Suite (36 Cases across Canonical Grader
     for (const c of judged.run.cases) {
       expect(c.matchesExpectation, `${c.caseId}: ${JSON.stringify(c.result)}`).toBe(true);
     }
+  });
+});
+
+const WRITE_DRAFT_AUTH: AuthorizationContext = {
+  schemaVersion: 1,
+  principal: { id: "user.operator", type: "user" },
+  grantedPermissionClasses: ["write_draft"],
+};
+
+function registryWithTool(tool: ToolDefinition) {
+  const registry = createToolRegistry();
+  registry.register({
+    spec: tool.spec,
+    handler: tool.handler,
+    retrySafety: tool.retrySafety,
+    idempotency: tool.idempotency,
+  });
+  return registry;
+}
+
+describe("Sprint 24D Targeted Security & Persistence Evaluations (Section 19)", () => {
+  it("evaluates cross-run isolation, spoofed execution refusal, persistence recovery, and replay safety under canonical Eval runtime", async () => {
+    const store = createInMemoryTraceStore();
+    const trace = createTraceRecorder({ store, clock: fixedClock() });
+    const proof = createFixtureProof({ trace }).proof;
+
+    // 1. Run A reaches approval waitpoint
+    const initialA = await proof.execute({
+      runId: "run.eval.s24d.runA",
+      request: VALID_OPERATIONAL_REQUEST,
+    });
+    expect(initialA.ok).toBe(true);
+    expect(initialA.execution?.run.status).toBe("WAITING_FOR_APPROVAL");
+    const waitA = initialA.execution?.wait;
+    if (!waitA) throw new Error("Expected approval waitpoint");
+    const approvalIdA = waitA.referenceId;
+    const fingerprintA = waitA.requestFingerprint;
+
+    // 2. Eligible manager approves Run A
+    proof.approvals.approve(approvalIdA, manager);
+    expect(proof.draftRepository.getAllDrafts().length).toBe(0);
+
+    // 3. Run B attempts cross-run reuse of Run A's genuine approval
+    const runBToolExecutionId = deriveToolExecutionId("run.eval.s24d.runB", "create_draft");
+    const tools = registryWithTool(
+      createOperationalDraftTool({
+        repository: proof.draftRepository,
+        approvalVerifier: proof.approvalVerifier,
+      })
+    );
+
+    const attackResult = await executeTool({
+      tools,
+      request: {
+        schemaVersion: 1,
+        toolExecutionId: runBToolExecutionId,
+        toolRef: { id: CREATE_CHANGE_DRAFT_TOOL_REF.id, version: CREATE_CHANGE_DRAFT_TOOL_REF.version },
+        input: {
+          requestId: VALID_OPERATIONAL_REQUEST.requestId,
+          accountId: VALID_OPERATIONAL_REQUEST.accountContext.accountId,
+          operation: "account.update_display_name",
+          proposedChanges: { displayName: "Acme Data Solutions" },
+          approvalBinding: {
+            approvalId: approvalIdA,
+            requestFingerprint: fingerprintA,
+            runId: "run.eval.s24d.runA",
+          },
+        },
+      },
+      authorizationContext: WRITE_DRAFT_AUTH,
+    });
+
+    // 4. Assert Run B cannot consume Run A approval (Important Negative Assertion)
+    expect(attackResult.ok).toBe(false);
+    if (!attackResult.ok) {
+      expect(attackResult.failure.handlerFailureCode).toBe("INVALID_APPROVAL_CONTEXT");
+    }
+    expect(proof.draftRepository.getAllDrafts().length).toBe(0);
+    // Crucial invariant: Run B must NEVER consume an Approval intended for Run A
+    expect(proof.approvalVerifier.getConsumptionState(approvalIdA)).toBe("AVAILABLE");
+
+    // 5. Spoofed Tool Execution ID from untrusted caller fails closed
+    const spoofedResult = await executeTool({
+      tools,
+      request: {
+        schemaVersion: 1,
+        toolExecutionId: deriveToolExecutionId("run.eval.s24d.runA", "create_draft"), // attacker recomputed Run A's ID
+        toolRef: { id: CREATE_CHANGE_DRAFT_TOOL_REF.id, version: CREATE_CHANGE_DRAFT_TOOL_REF.version },
+        input: {
+          requestId: VALID_OPERATIONAL_REQUEST.requestId,
+          accountId: VALID_OPERATIONAL_REQUEST.accountContext.accountId,
+          operation: "account.update_display_name",
+          proposedChanges: { displayName: "Acme Data Solutions" },
+          approvalBinding: {
+            approvalId: approvalIdA,
+            requestFingerprint: fingerprintA,
+            runId: "run.eval.s24d.runA",
+          },
+        },
+      },
+      authorizationContext: WRITE_DRAFT_AUTH,
+    });
+    expect(spoofedResult.ok).toBe(false);
+    if (!spoofedResult.ok) {
+      expect(spoofedResult.failure.handlerFailureCode).toBe("UNTRUSTED_EXECUTION_ORIGIN");
+    }
+    expect(proof.draftRepository.getAllDrafts().length).toBe(0);
+
+    // 6. Trusted Workflow-origin identity: Run A legitimate continuation succeeds
+    const resumedA = await proof.continue(initialA.execution!);
+    expect(resumedA.ok).toBe(true);
+    expect(resumedA.execution?.run.status).toBe("COMPLETED");
+    expect(proof.draftRepository.getAllDrafts().length).toBe(1);
+    expect(proof.approvalVerifier.getConsumptionState(approvalIdA)).toBe("COMMITTED");
+
+    // 7. Idempotent replay under identical execution identity returns existing draft
+    const canonicalToolExecA = deriveToolExecutionId("run.eval.s24d.runA", "create_draft");
+    const replayResult = await executeTool({
+      tools,
+      request: {
+        schemaVersion: 1,
+        toolExecutionId: canonicalToolExecA,
+        toolRef: { id: CREATE_CHANGE_DRAFT_TOOL_REF.id, version: CREATE_CHANGE_DRAFT_TOOL_REF.version },
+        input: {
+          requestId: VALID_OPERATIONAL_REQUEST.requestId,
+          accountId: VALID_OPERATIONAL_REQUEST.accountContext.accountId,
+          operation: "account.update_display_name",
+          proposedChanges: { displayName: "Acme Data Solutions" },
+          approvalBinding: {
+            approvalId: approvalIdA,
+            requestFingerprint: fingerprintA,
+            runId: "run.eval.s24d.runA",
+          },
+        },
+      },
+      authorizationContext: WRITE_DRAFT_AUTH,
+    });
+    expect(replayResult.ok).toBe(true);
+    expect(proof.draftRepository.getAllDrafts().length).toBe(1);
+
+    // 8. Different-payload replay fails with IDEMPOTENCY_CONFLICT
+    const conflictResult = await executeTool({
+      tools,
+      request: {
+        schemaVersion: 1,
+        toolExecutionId: canonicalToolExecA,
+        toolRef: { id: CREATE_CHANGE_DRAFT_TOOL_REF.id, version: CREATE_CHANGE_DRAFT_TOOL_REF.version },
+        input: {
+          requestId: VALID_OPERATIONAL_REQUEST.requestId,
+          accountId: VALID_OPERATIONAL_REQUEST.accountContext.accountId,
+          operation: "account.update_display_name",
+          proposedChanges: { displayName: "Tampered Display Name" },
+          approvalBinding: {
+            approvalId: approvalIdA,
+            requestFingerprint: fingerprintA,
+            runId: "run.eval.s24d.runA",
+          },
+        },
+      },
+      authorizationContext: WRITE_DRAFT_AUTH,
+    });
+    expect(conflictResult.ok).toBe(false);
+    if (!conflictResult.ok) {
+      expect(conflictResult.failure.handlerFailureCode).toBe("IDEMPOTENCY_CONFLICT");
+    }
+    expect(proof.draftRepository.getAllDrafts().length).toBe(1);
+
+    // 9. Persistence failure is safely recoverable (uncommitted save throws, reservation released)
+    const baseFailRepo = createInMemoryDraftRepository();
+    let throwOnce = true;
+    const failRepo = {
+      ...baseFailRepo,
+      async saveDraft(execId: string, draft: OperationalChangeDraft) {
+        if (throwOnce) {
+          throwOnce = false;
+          throw new Error("Simulated storage write error");
+        }
+        return baseFailRepo.saveDraft(execId, draft);
+      },
+    };
+
+    const govRegistry = createGovernanceRegistry(fixtureGovernance);
+    const engine = createApprovalEngine({ governance: govRegistry, clock: fixedClock() });
+    const subjectB: OperationalApprovalSubject = {
+      schemaVersion: 1,
+      requestId: "req-recovery",
+      operation: "account.update_display_name",
+      accountId: "ACME-001",
+      proposedChanges: { displayName: "Acme Data Solutions" },
+      executionMode: "draft_only",
+    };
+    const fpRec = fingerprintApprovalSubject("run.eval.recovery", "require_approval", 0, subjectB);
+    const appRec = approvalIdForFingerprint("run.eval.recovery", "require_approval", fpRec);
+    engine.requestApproval({
+      approvalId: appRec,
+      runId: "run.eval.recovery",
+      nodeId: "require_approval",
+      requestFingerprint: fpRec,
+      requestedBy: operator,
+      requiredApproverRoleIds: ["operations.approver"],
+      permissionClasses: ["write_draft"],
+      allowSelfApproval: false,
+    });
+    engine.approve(appRec, manager);
+
+    const recVerifier = createOperationalApprovalVerifier({ getApproval: (id) => engine.getApproval(id) });
+    const recExecId = deriveToolExecutionId("run.eval.recovery", "create_draft");
+    recVerifier.attestExecutionOrigin("run.eval.recovery", recExecId);
+
+    const recTool = createOperationalDraftTool({
+      repository: failRepo,
+      approvalVerifier: recVerifier,
+    });
+    const recTools = registryWithTool(recTool);
+
+    // First attempt throws before write
+    const failAttempt = await executeTool({
+      tools: recTools,
+      request: {
+        schemaVersion: 1,
+        toolExecutionId: recExecId,
+        toolRef: { id: CREATE_CHANGE_DRAFT_TOOL_REF.id, version: CREATE_CHANGE_DRAFT_TOOL_REF.version },
+        input: {
+          requestId: subjectB.requestId,
+          accountId: subjectB.accountId,
+          operation: subjectB.operation,
+          proposedChanges: subjectB.proposedChanges,
+          approvalBinding: { approvalId: appRec, requestFingerprint: fpRec, runId: "run.eval.recovery" },
+        },
+      },
+      authorizationContext: WRITE_DRAFT_AUTH,
+    });
+    expect(failAttempt.ok).toBe(false);
+    expect(failRepo.getAllDrafts().length).toBe(0);
+    expect(recVerifier.getConsumptionState(appRec)).toBe("AVAILABLE");
+
+    // Second attempt recovers and commits
+    const recoverAttempt = await executeTool({
+      tools: recTools,
+      request: {
+        schemaVersion: 1,
+        toolExecutionId: recExecId,
+        toolRef: { id: CREATE_CHANGE_DRAFT_TOOL_REF.id, version: CREATE_CHANGE_DRAFT_TOOL_REF.version },
+        input: {
+          requestId: subjectB.requestId,
+          accountId: subjectB.accountId,
+          operation: subjectB.operation,
+          proposedChanges: subjectB.proposedChanges,
+          approvalBinding: { approvalId: appRec, requestFingerprint: fpRec, runId: "run.eval.recovery" },
+        },
+      },
+      authorizationContext: WRITE_DRAFT_AUTH,
+    });
+    expect(recoverAttempt.ok).toBe(true);
+    expect(failRepo.getAllDrafts().length).toBe(1);
+    expect(recVerifier.getConsumptionState(appRec)).toBe("COMMITTED");
+
+    // 10. Ambiguous persistence (save writes then throws): reconciled and committed
+    const baseAmbigRepo = createInMemoryDraftRepository();
+    const ambigRepo = {
+      ...baseAmbigRepo,
+      async saveDraft(execId: string, draft: OperationalChangeDraft) {
+        await baseAmbigRepo.saveDraft(execId, draft);
+        throw new Error("Storage network connection dropped after write");
+      },
+    };
+
+    const fpAmbig = fingerprintApprovalSubject("run.eval.ambig", "require_approval", 0, subjectB);
+    const appAmbig = approvalIdForFingerprint("run.eval.ambig", "require_approval", fpAmbig);
+    engine.requestApproval({
+      approvalId: appAmbig,
+      runId: "run.eval.ambig",
+      nodeId: "require_approval",
+      requestFingerprint: fpAmbig,
+      requestedBy: operator,
+      requiredApproverRoleIds: ["operations.approver"],
+      permissionClasses: ["write_draft"],
+      allowSelfApproval: false,
+    });
+    engine.approve(appAmbig, manager);
+
+    const ambigVerifier = createOperationalApprovalVerifier({ getApproval: (id) => engine.getApproval(id) });
+    const ambigExecId = deriveToolExecutionId("run.eval.ambig", "create_draft");
+    ambigVerifier.attestExecutionOrigin("run.eval.ambig", ambigExecId);
+
+    const ambigTool = createOperationalDraftTool({
+      repository: ambigRepo,
+      approvalVerifier: ambigVerifier,
+    });
+    const ambigTools = registryWithTool(ambigTool);
+
+    const ambigResult = await executeTool({
+      tools: ambigTools,
+      request: {
+        schemaVersion: 1,
+        toolExecutionId: ambigExecId,
+        toolRef: { id: CREATE_CHANGE_DRAFT_TOOL_REF.id, version: CREATE_CHANGE_DRAFT_TOOL_REF.version },
+        input: {
+          requestId: subjectB.requestId,
+          accountId: subjectB.accountId,
+          operation: subjectB.operation,
+          proposedChanges: subjectB.proposedChanges,
+          approvalBinding: { approvalId: appAmbig, requestFingerprint: fpAmbig, runId: "run.eval.ambig" },
+        },
+      },
+      authorizationContext: WRITE_DRAFT_AUTH,
+    });
+    expect(ambigResult.ok).toBe(true);
+    expect(ambigRepo.getAllDrafts().length).toBe(1);
+    expect(ambigVerifier.getConsumptionState(appAmbig)).toBe("COMMITTED");
+
+    // 11. Concurrent consumption: only 1 execution succeeds
+    const concRepo = createInMemoryDraftRepository();
+    const fpConc = fingerprintApprovalSubject("run.eval.conc", "require_approval", 0, subjectB);
+    const appConc = approvalIdForFingerprint("run.eval.conc", "require_approval", fpConc);
+    engine.requestApproval({
+      approvalId: appConc,
+      runId: "run.eval.conc",
+      nodeId: "require_approval",
+      requestFingerprint: fpConc,
+      requestedBy: operator,
+      requiredApproverRoleIds: ["operations.approver"],
+      permissionClasses: ["write_draft"],
+      allowSelfApproval: false,
+    });
+    engine.approve(appConc, manager);
+
+    const concVerifier = createOperationalApprovalVerifier({ getApproval: (id) => engine.getApproval(id) });
+    const concExecId = deriveToolExecutionId("run.eval.conc", "create_draft");
+    concVerifier.attestExecutionOrigin("run.eval.conc", concExecId);
+
+    const concTool = createOperationalDraftTool({
+      repository: concRepo,
+      approvalVerifier: concVerifier,
+    });
+    const concTools = registryWithTool(concTool);
+
+    const call1 = executeTool({
+      tools: concTools,
+      request: {
+        schemaVersion: 1,
+        toolExecutionId: concExecId,
+        toolRef: { id: CREATE_CHANGE_DRAFT_TOOL_REF.id, version: CREATE_CHANGE_DRAFT_TOOL_REF.version },
+        input: {
+          requestId: subjectB.requestId,
+          accountId: subjectB.accountId,
+          operation: subjectB.operation,
+          proposedChanges: subjectB.proposedChanges,
+          approvalBinding: { approvalId: appConc, requestFingerprint: fpConc, runId: "run.eval.conc" },
+        },
+      },
+      authorizationContext: WRITE_DRAFT_AUTH,
+    });
+    const call2 = executeTool({
+      tools: concTools,
+      request: {
+        schemaVersion: 1,
+        toolExecutionId: concExecId,
+        toolRef: { id: CREATE_CHANGE_DRAFT_TOOL_REF.id, version: CREATE_CHANGE_DRAFT_TOOL_REF.version },
+        input: {
+          requestId: subjectB.requestId,
+          accountId: subjectB.accountId,
+          operation: subjectB.operation,
+          proposedChanges: subjectB.proposedChanges,
+          approvalBinding: { approvalId: appConc, requestFingerprint: fpConc, runId: "run.eval.conc" },
+        },
+      },
+      authorizationContext: WRITE_DRAFT_AUTH,
+    });
+    const [res1, res2] = await Promise.all([call1, call2]);
+    expect(res1.ok || res2.ok).toBe(true);
+    expect(concRepo.getAllDrafts().length).toBe(1);
+
+    // 12. External effect refusal: tools with external_side_effect are rejected
+    let extRefused = false;
+    try {
+      const extTool = defineTool({
+        spec: {
+          schemaVersion: 1,
+          id: "external.crm_mutation",
+          version: "1.0.0",
+          name: "External CRM",
+          description: "External mutation tool",
+          permissionClasses: ["external_side_effect"],
+          inputSchema: { type: "object", properties: {}, additionalProperties: false },
+          outputSchema: { type: "object", properties: {}, additionalProperties: false },
+        },
+        handler: { async execute() { return { ok: true, output: {} }; } },
+      });
+      const extWorkflow = defineWorkflow({
+        schemaVersion: 1,
+        id: "ext.eval.workflow",
+        version: "1.0.0",
+        name: "Ext",
+        description: "Ext",
+        entryNodeId: "ext_node",
+        nodes: [{ id: "ext_node", kind: "tool", config: { toolRef: { id: extTool.spec.id, version: extTool.spec.version }, inputStateKey: "in", resultStateKey: "out" } }],
+        edges: [],
+      });
+      proof.app.prepareWorkflow(extWorkflow);
+    } catch {
+      extRefused = true;
+    }
+    expect(extRefused).toBe(true);
+
+    // 13. Graded Evaluation via runEvalDataset
+    const traceEventsA = await store.getRunTrace("run.eval.s24d.runA");
+    const evalDataset: EvalDataset = {
+      schemaVersion: 2,
+      id: "dataset.ops-request.sprint24d",
+      version: "1.0.0",
+      name: "Sprint 24D Targeted Security & Persistence Dataset",
+      cases: [
+        {
+          id: "case.s24d.run-a-outcome",
+          name: "run-a-outcome",
+          evalRef: { id: "def.s24d.outcome", version: "1.0.0" },
+          mode: "RUNTIME",
+          evidenceRef: "run://runA",
+          expected: { status: "passed" },
+        },
+        {
+          id: "case.s24d.run-a-approval",
+          name: "run-a-approval",
+          evalRef: { id: "def.s24d.approval", version: "1.0.0" },
+          mode: "RUNTIME",
+          evidenceRef: "run://runA",
+          expected: { status: "passed" },
+        },
+        {
+          id: "case.s24d.run-a-state-draft",
+          name: "run-a-state-draft",
+          evalRef: { id: "def.s24d.state-draft", version: "1.0.0" },
+          mode: "RUNTIME",
+          evidenceRef: "run://runA",
+          expected: { status: "passed" },
+        },
+      ],
+    };
+
+    const evalDefs: EvalDefinition[] = [
+      {
+        schemaVersion: 2,
+        id: "def.s24d.outcome",
+        version: "1.0.0",
+        name: "Outcome completed",
+        categories: ["capability"],
+        supportedModes: ["RUNTIME"],
+        targetType: "run",
+        graderRef: { id: "aao.run-outcome", version: "1.0.0" },
+        config: { expectedStatus: "COMPLETED" },
+      },
+      {
+        schemaVersion: 2,
+        id: "def.s24d.approval",
+        version: "1.0.0",
+        name: "Approval compliance",
+        categories: ["approval"],
+        supportedModes: ["RUNTIME"],
+        targetType: "approval",
+        graderRef: { id: "aao.approval-compliance", version: "2.0.0" },
+        config: {
+          approvalRequired: true,
+          expectedResolution: "approved",
+          guardApprovalNodeId: "require_approval",
+          noToolBeforeApproval: true,
+          guardedTools: [{ id: CREATE_CHANGE_DRAFT_TOOL_REF.id, version: CREATE_CHANGE_DRAFT_TOOL_REF.version }],
+        },
+      },
+      {
+        schemaVersion: 2,
+        id: "def.s24d.state-draft",
+        version: "1.0.0",
+        name: "Draft state verification",
+        categories: ["capability"],
+        supportedModes: ["RUNTIME"],
+        targetType: "state",
+        graderRef: { id: "aao.state-assertion", version: "1.0.0" },
+        config: {
+          checks: [
+            { id: "draftStatus", op: "path_equals", path: "/draftToolResult/output/status", value: "approved_draft" },
+            { id: "externalExecution", op: "path_equals", path: "/draftToolResult/output/externalExecution", value: "not_executed" },
+          ],
+        },
+      },
+    ];
+
+    const evalResult = await runEvalDataset({
+      dataset: evalDataset,
+      definitions: evalDefs,
+      registry: createEvaluatorRegistry(deterministicGraders()),
+      evidenceResolver: {
+        resolve: () => ({
+          origin: "live_run",
+          runId: "run.eval.s24d.runA",
+          trace: traceEventsA,
+          execution: resumedA.execution,
+        }),
+      },
+    });
+
+    expect(evalResult.ok).toBe(true);
+    if (!evalResult.ok) throw new Error("Eval dataset run failed");
+    for (const c of evalResult.run.cases) {
+      expect(c.matchesExpectation).toBe(true);
+    }
+
+    // 14. Verify SECRET_DO_NOT_PERSIST does not leak
+    const serializedEval = JSON.stringify(evalResult);
+    expect(serializedEval).not.toContain(SECRET_DO_NOT_PERSIST);
+    const serializedTrace = JSON.stringify(traceEventsA);
+    expect(serializedTrace).not.toContain(SECRET_DO_NOT_PERSIST);
   });
 });

@@ -37,6 +37,7 @@ export {
   type CreateChangeDraftToolOutput,
   type CreateOperationalDraftToolOptions,
   type OperationalApprovalVerifier,
+  type CreateOperationalApprovalVerifierOptions,
 } from "./tool.js";
 
 export {
