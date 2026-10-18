@@ -1,0 +1,25 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "paths": {
+      "@aao/framework": ["../../packages/framework/src/index.ts"],
+      "@aao/config": ["../../packages/config/src/index.ts"],
+      "@aao/approval": ["../../packages/approval/src/index.ts"],
+      "@aao/governance": ["../../packages/governance/src/index.ts"],
+      "@aao/contracts": ["../../packages/contracts/src/index.ts"],
+      "@aao/evaluation": ["../../packages/evaluation/src/index.ts"],
+      "@aao/adapters": ["../../packages/adapters/src/index.ts"],
+      "@aao/model-runtime": ["../../packages/model-runtime/src/index.ts"],
+      "@aao/tool-runtime": ["../../packages/tool-runtime/src/index.ts"],
+      "@aao/observability": ["../../packages/observability/src/index.ts"],
+      "@aao/integration-public-web": ["../../packages/integration-public-web/src/index.ts"],
+      "@aao/integration-documents": ["../../packages/integration-documents/src/index.ts"],
+      "@aao/toolbox": ["../../packages/toolbox/src/index.ts"],
+      "@aao/example-company-research": ["../company-research/src/index.ts"],
+      "@aao/example-document-intelligence": ["../document-intelligence/src/index.ts"],
+      "@aao/example-operational-request": ["../operational-request/src/index.ts"]
+    }
+  },
+  "include": ["src", "fixtures", "demo", "test"]
+}

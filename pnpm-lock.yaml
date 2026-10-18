@@ -45,6 +45,64 @@ importers:
         specifier: workspace:*
         version: link:../../packages/config
 
+  examples/company-portability:
+    dependencies:
+      '@aao/approval':
+        specifier: workspace:*
+        version: link:../../packages/approval
+      '@aao/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+      '@aao/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@aao/example-company-research':
+        specifier: workspace:*
+        version: link:../company-research
+      '@aao/example-document-intelligence':
+        specifier: workspace:*
+        version: link:../document-intelligence
+      '@aao/example-operational-request':
+        specifier: workspace:*
+        version: link:../operational-request
+      '@aao/framework':
+        specifier: workspace:*
+        version: link:../../packages/framework
+      '@aao/governance':
+        specifier: workspace:*
+        version: link:../../packages/governance
+      '@aao/integration-documents':
+        specifier: workspace:*
+        version: link:../../packages/integration-documents
+      '@aao/integration-public-web':
+        specifier: workspace:*
+        version: link:../../packages/integration-public-web
+      '@aao/model-runtime':
+        specifier: workspace:*
+        version: link:../../packages/model-runtime
+      '@aao/tool-runtime':
+        specifier: workspace:*
+        version: link:../../packages/tool-runtime
+      '@aao/toolbox':
+        specifier: workspace:*
+        version: link:../../packages/toolbox
+      zod:
+        specifier: ^3.24.3
+        version: 3.25.76
+    devDependencies:
+      '@aao/adapters':
+        specifier: workspace:*
+        version: link:../../packages/adapters
+      '@aao/evaluation':
+        specifier: workspace:*
+        version: link:../../packages/evaluation
+      '@aao/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
+      ai:
+        specifier: ^7.0.107
+        version: 7.0.107(zod@3.25.76)
+
   examples/company-research:
     dependencies:
       '@aao/framework':
@@ -109,6 +167,9 @@ importers:
       '@aao/framework':
         specifier: workspace:*
         version: link:../../packages/framework
+      '@aao/tool-runtime':
+        specifier: workspace:*
+        version: link:../../packages/tool-runtime
       zod:
         specifier: ^3.24.3
         version: 3.25.76
@@ -122,15 +183,18 @@ importers:
       '@aao/evaluation':
         specifier: workspace:*
         version: link:../../packages/evaluation
+      '@aao/governance':
+        specifier: workspace:*
+        version: link:../../packages/governance
       '@aao/model-runtime':
         specifier: workspace:*
         version: link:../../packages/model-runtime
       '@aao/observability':
         specifier: workspace:*
         version: link:../../packages/observability
-      '@aao/tool-runtime':
+      '@aao/workflow-dsl':
         specifier: workspace:*
-        version: link:../../packages/tool-runtime
+        version: link:../../packages/workflow-dsl
       ai:
         specifier: ^7.0.107
         version: 7.0.107(zod@3.25.76)
@@ -205,6 +269,9 @@ importers:
 
   packages/config:
     dependencies:
+      '@aao/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       zod:
         specifier: ^3.24.3
         version: 3.25.76

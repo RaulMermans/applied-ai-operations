@@ -62,14 +62,16 @@ The Integration Fabric is externally connected capabilities exposed as normal go
 Company Research (example)      → @aao/integration-public-web + @aao/toolbox → @aao/framework → Core
 Document Intelligence (example) → @aao/integration-documents                 → @aao/framework → Core
 Operational Request (example)   → @aao/framework + @aao/approval             → Core
+Company Portability (example)   → @aao/config + @aao/framework + proofs       → Core
 ```
 
 - **Integration ≠ Tool Runtime ≠ adapter contract ≠ Toolbox ≠ Capability Pack.** The Toolbox never depends on an integration, and no Core package depends on either.
 - **The Company Research proof** (`examples/company-research`) is a linear Workflow of 16 nodes planning and synthesizing public-web research.
 - **The Document Intelligence proof** (`examples/document-intelligence`) is a linear 9-node Workflow: intake → extract_document → validate_document → segment_document → admit_evidence → synthesize (model) → validate_grounding → render → final. Offsets are UTF-16 code units into canonical normalized page text; citations resolve to precomputed evidence-span IDs (`ev.<16-hex>`). It uses no vector database, RAG framework, OCR, or branching DSL.
 - **The Operational Request proof** (`examples/operational-request`) is a linear 9-node Workflow: intake → interpret (model) → validate_proposal → bind_approval_subject → require_approval (waitpoint) → revalidate_authority → execute_draft (governed tool) → render → final. It demonstrates governed action proposals, human approval waitpoints, separation of duties, authority revalidation, and safe draft execution. External side effects remain refused at the Tool Runtime preflight gate.
+- **The Company Configuration & Portability proof** (`examples/company-portability`, Sprint 25, [ADR-030](docs/decisions/ADR-030-company-configuration-portability.md)) demonstrates multi-company composition: configuring two distinct enterprises (Northstar Commerce and Arbor Consulting) across all three flagship workflows without workflow code duplication or AAO Core modifications. Declarative manifests (`CompanyManifestV1`) resolve against a host capability catalog, with identical workflow plan fingerprints and distinct configuration fingerprints.
 
-See [Integration Fabric](docs/architecture/integration-fabric.md), [Company Research proof](docs/proofs/company-research.md), [Document Intelligence proof](docs/proofs/document-intelligence.md), and [Operational Request proof](docs/proofs/operational-request.md).
+See [Integration Fabric](docs/architecture/integration-fabric.md), [Company Research proof](docs/proofs/company-research.md), [Document Intelligence proof](docs/proofs/document-intelligence.md), [Operational Request proof](docs/proofs/operational-request.md), [Company Portability proof](docs/proofs/company-portability.md), and [company configuration](docs/architecture/company-configuration.md).
 
 ## Canonical domain contracts
 

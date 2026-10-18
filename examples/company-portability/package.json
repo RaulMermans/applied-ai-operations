@@ -1,0 +1,47 @@
+{
+  "name": "@aao/example-company-portability",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Sprint 25 proof application: company configuration & portability demonstrating multi-company composition without core forks.",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": ">=20.20.0 <21.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "proof": "node dist/demo/run.js",
+    "smoke:sprint25": "node smoke/sprint25.mjs"
+  },
+  "dependencies": {
+    "@aao/approval": "workspace:*",
+    "@aao/config": "workspace:*",
+    "@aao/contracts": "workspace:*",
+    "@aao/example-company-research": "workspace:*",
+    "@aao/example-document-intelligence": "workspace:*",
+    "@aao/example-operational-request": "workspace:*",
+    "@aao/framework": "workspace:*",
+    "@aao/governance": "workspace:*",
+    "@aao/integration-documents": "workspace:*",
+    "@aao/integration-public-web": "workspace:*",
+    "@aao/model-runtime": "workspace:*",
+    "@aao/tool-runtime": "workspace:*",
+    "@aao/toolbox": "workspace:*",
+    "zod": "^3.24.3"
+  },
+  "devDependencies": {
+    "@aao/adapters": "workspace:*",
+    "@aao/evaluation": "workspace:*",
+    "@aao/observability": "workspace:*",
+    "ai": "^7.0.107"
+  }
+}
