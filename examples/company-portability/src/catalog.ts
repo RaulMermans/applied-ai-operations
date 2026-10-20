@@ -7,12 +7,6 @@ import type { DocumentSourceProvider } from "@aao/integration-documents";
 import type { OperationalDraftRepository } from "@aao/example-operational-request";
 
 export interface HostCapabilityCatalog {
-  readonly modelAdapters: ReadonlyMap<string, ModelAdapterDefinition>;
-  readonly modelBindings: ReadonlyMap<string, ModelBindingDefinition>;
-  readonly publicWebProviders: ReadonlyMap<string, PublicWebProvider>;
-  readonly documentSourceProviders: ReadonlyMap<string, DocumentSourceProvider>;
-  readonly draftRepositories: ReadonlyMap<string, OperationalDraftRepository>;
-
   getModelAdapter(ref: string): ModelAdapterDefinition | undefined;
   getModelBinding(ref: string): ModelBindingDefinition | undefined;
   getPublicWebProvider(ref: string): PublicWebProvider | undefined;
@@ -31,11 +25,17 @@ export interface CreateHostCapabilityCatalogOptions {
 function toMap<T>(
   input?: Iterable<[string, T]> | Record<string, T>
 ): Map<string, T> {
-  if (!input) return new Map();
-  if (Symbol.iterator in input) {
-    return new Map(input as Iterable<[string, T]>);
+  const entries = !input ? [] : Symbol.iterator in input
+    ? input as Iterable<[string, T]>
+    : Object.entries(input);
+  const snapshot = new Map<string, T>();
+  for (const [ref, capability] of entries) {
+    if (snapshot.has(ref)) {
+      throw new Error(`Duplicate host capability reference: '${ref}'`);
+    }
+    snapshot.set(ref, capability);
   }
-  return new Map(Object.entries(input));
+  return snapshot;
 }
 
 /**
@@ -50,19 +50,13 @@ function toMap<T>(
 export function createHostCapabilityCatalog(
   options: CreateHostCapabilityCatalogOptions = {}
 ): HostCapabilityCatalog {
-  const modelAdapters = Object.freeze(toMap(options.modelAdapters));
-  const modelBindings = Object.freeze(toMap(options.modelBindings));
-  const publicWebProviders = Object.freeze(toMap(options.publicWebProviders));
-  const documentSourceProviders = Object.freeze(toMap(options.documentSourceProviders));
-  const draftRepositories = Object.freeze(toMap(options.draftRepositories));
+  const modelAdapters = toMap(options.modelAdapters);
+  const modelBindings = toMap(options.modelBindings);
+  const publicWebProviders = toMap(options.publicWebProviders);
+  const documentSourceProviders = toMap(options.documentSourceProviders);
+  const draftRepositories = toMap(options.draftRepositories);
 
   return Object.freeze({
-    modelAdapters,
-    modelBindings,
-    publicWebProviders,
-    documentSourceProviders,
-    draftRepositories,
-
     getModelAdapter(ref: string) {
       return modelAdapters.get(ref);
     },

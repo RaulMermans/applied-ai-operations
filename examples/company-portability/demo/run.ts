@@ -146,9 +146,12 @@ async function runDemo() {
   });
   const isolationOutcome = await hostileArbor.runCompanyResearch({
     runId: "demo.isolation.test",
-    request: { company: { name: "Arbor", domain: "arbor.example" }, questions: [] },
+    request: { company: { name: "Arbor Consulting", domain: "arbor.example" }, questions: [{ id: "offering", question: "What services does Arbor offer?" }] },
   });
   const refusalCode = (isolationOutcome as { failure?: { executorFailure?: { code?: string } } }).failure?.executorFailure?.code ?? "REFUSED";
+  if (isolationOutcome.status !== "failed" || refusalCode !== "TOOL_AUTHORIZATION_REQUIRED" || hostileEnv.arborWebProvider.calls.search.length !== 0) {
+    throw new Error("Cross-company authorization proof failed");
+  }
   process.stdout.write(`   ✓ Company A principal executing Company B workflow: REFUSED (${refusalCode})\n\n`);
 
   // 9. Demonstrate Configuration-Only Change
@@ -179,7 +182,8 @@ async function runDemo() {
         matrixScenariosPassed: "6/6",
         workflowForks: 0,
         planFingerprintEqual: true,
-        governanceIsolation: "ENFORCED",
+        governanceIsolation: "TOOL_BOUNDARY_ENFORCED",
+        preAuthorizationModelCalls: "possible",
         approvalIsolation: "ENFORCED",
         draftIsolation: "ENFORCED",
         documentIsolation: "ENFORCED",

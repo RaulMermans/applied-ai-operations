@@ -165,6 +165,16 @@ export function validateCompanyManifest(raw: unknown): ValidatedCompanyManifestR
       );
     }
   }
+  for (const policy of manifest.governance.policies) {
+    for (const rule of policy.rules) {
+      if (rule.roleIds?.some((id) => !roleIds.has(id))) {
+        throw new CompanyConfigError(
+          "CONFIG_GOVERNANCE_INVALID",
+          `Governance policy rule '${rule.id}' references an unknown role`
+        );
+      }
+    }
+  }
 
   // Integration references for enabled proofs
   const enabledSet = new Set(manifest.enabledProofs);
@@ -195,18 +205,33 @@ export function validateCompanyManifest(raw: unknown): ValidatedCompanyManifestR
       );
     }
 
-    // Operational request requires at least one requester role and one approver role
-    const hasRequesterRole = manifest.governance.roles.some((r) =>
-      r.permissionClasses.includes("read_only")
+    // The Approval Node requests write_draft from its requester and requires
+    // a distinct registered human in the exact operations.approver role.
+    const activeRolesFor = (actorId: string) => new Set(
+      manifest.governance.bindings
+        .filter((binding) => binding.actorId === actorId && binding.status === "active")
+        .map((binding) => binding.roleId)
     );
-    const hasApproverRole = manifest.governance.roles.some((r) =>
-      r.permissionClasses.includes("write_draft")
+    const requesters = manifest.governance.actors.filter((actor) => {
+      const roleIds = activeRolesFor(actor.id);
+      const granted = manifest.governance.roles.some((role) =>
+        roleIds.has(role.id) && role.permissionClasses.includes("write_draft")
+      );
+      const denied = manifest.governance.policies.some((policy) => policy.rules.some((rule) =>
+        rule.permissionClasses.includes("write_draft") &&
+        (!rule.actorTypes || rule.actorTypes.includes(actor.type)) &&
+        (!rule.roleIds || rule.roleIds.some((id) => roleIds.has(id)))
+      ));
+      return granted && !denied;
+    });
+    const approvers = manifest.governance.actors.filter((actor) =>
+      actor.type === "user" && activeRolesFor(actor.id).has("operations.approver")
     );
-
-    if (!hasRequesterRole || !hasApproverRole) {
+    if (!manifest.governance.roles.some((role) => role.id === "operations.approver") ||
+        !requesters.some((requester) => approvers.some((approver) => approver.id !== requester.id))) {
       throw new CompanyConfigError(
         "CONFIG_GOVERNANCE_INVALID",
-        "Enabled proof 'operational_request' requires governance roles with 'read_only' (requester) and 'write_draft' (approver)"
+        "Enabled proof 'operational_request' requires a requester authorized for 'write_draft' and a distinct registered human bound to 'operations.approver'"
       );
     }
   }

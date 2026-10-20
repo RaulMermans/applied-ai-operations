@@ -27,8 +27,8 @@ const VALID_MANIFEST: CompanyManifestV1 = {
     ],
     roles: [
       { id: "research.analyst", version: "1.0.0", permissionClasses: ["read_only"] },
-      { id: "operations.requester", version: "1.0.0", permissionClasses: ["read_only"] },
-      { id: "operations.approver", version: "1.0.0", permissionClasses: ["read_only", "write_draft"] },
+      { id: "operations.requester", version: "1.0.0", permissionClasses: ["read_only", "write_draft"] },
+      { id: "operations.approver", version: "1.0.0", permissionClasses: ["read_only"] },
     ],
     bindings: [
       { id: "b.analyst", actorId: "principal.northstar.analyst", roleId: "research.analyst", status: "active" },
@@ -45,6 +45,23 @@ const VALID_MANIFEST: CompanyManifestV1 = {
 };
 
 describe("Company Manifest V1 Validation", () => {
+  it("requires a write_draft requester and a distinct active human operations.approver", () => {
+    const base = structuredClone(VALID_MANIFEST);
+    expect(() => validateCompanyManifest(base)).not.toThrow();
+    const rejects = (governance: CompanyManifestV1["governance"]) =>
+      expect(() => validateCompanyManifest({ ...base, governance })).toThrow(/CONFIG_GOVERNANCE_INVALID/);
+    rejects({ ...base.governance, roles: base.governance.roles.filter((role) => role.id !== "operations.approver"), bindings: base.governance.bindings.filter((binding) => binding.roleId !== "operations.approver") });
+    rejects({ ...base.governance, bindings: base.governance.bindings.filter((binding) => binding.roleId !== "operations.approver") });
+    rejects({ ...base.governance, bindings: base.governance.bindings.map((binding) => binding.roleId === "operations.approver" ? { ...binding, status: "inactive" as const } : binding) });
+    rejects({ ...base.governance, actors: base.governance.actors.filter((actor) => actor.id !== "principal.northstar.manager"), bindings: base.governance.bindings.filter((binding) => binding.actorId !== "principal.northstar.manager") });
+    rejects({ ...base.governance, actors: base.governance.actors.map((actor) => actor.id === "principal.northstar.manager" ? { ...actor, type: "service" as const } : actor) });
+    rejects({ ...base.governance, roles: base.governance.roles.map((role) => role.id === "operations.requester" ? { ...role, permissionClasses: ["read_only" as const] } : role) });
+    rejects({ ...base.governance, bindings: base.governance.bindings.map((binding) => binding.roleId === "operations.requester" ? { ...binding, status: "inactive" as const } : binding) });
+    rejects({ ...base.governance, bindings: base.governance.bindings.map((binding) => binding.roleId === "operations.approver" ? { ...binding, actorId: "principal.northstar.requester" } : binding) });
+    rejects({ ...base.governance, policies: [{ id: "deny.drafts", rules: [{ id: "deny.write", effect: "DENY" as const, permissionClasses: ["write_draft" as const] }] }] });
+    rejects({ ...base.governance, policies: [{ id: "bad.role", rules: [{ id: "bad.reference", effect: "DENY" as const, permissionClasses: ["write_draft" as const], roleIds: ["missing.role"] }] }] });
+  });
+
   it("validates a compliant manifest and generates a deterministic fingerprint", () => {
     const { manifest, configFingerprint } = validateCompanyManifest(VALID_MANIFEST);
 

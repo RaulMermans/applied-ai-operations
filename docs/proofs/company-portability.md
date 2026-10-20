@@ -72,11 +72,11 @@ The proof provides mathematical verification that the workflows are unmodified a
 
 A configuration mutation (e.g. updating `displayName`) immediately yields a new configuration fingerprint (`c25f089d...`) while the workflow plan fingerprint remains 100% bit-for-bit identical.
 
-## Comprehensive Isolation Guarantees
+## Local Isolation Evidence and Limits
 
 1. **Provider Isolation**: Web provider calls are isolated to the company's designated provider. During Northstar research, Arbor's provider receives 0 calls.
 2. **Document Partitioning with Overlapping References**: Both companies configure the document reference `fixture.contract-001`. Northstar resolves `northstar-supplier-agreement.txt` with supplier payment terms; Arbor resolves `arbor-master-services.txt` with consulting terms. No cross-tenant document content is leaked.
-3. **Governance Refusal**: When a Northstar principal (`ns.analyst`) attempts to invoke Arbor Consulting's workflow, the request fails closed (`status: "failed"`).
+3. **Governance Refusal**: A valid Arbor Research request made with a Northstar principal fails at the search Tool with canonical `TOOL_AUTHORIZATION_REQUIRED` before Arbor web calls. The same request succeeds with an authorized Arbor principal. The Research planning model runs before the search Tool, so the refusal does not prove zero model calls.
 4. **Approval Verification Refusal**: An approval granted by Northstar's manager cannot be verified or used to authorize a draft inside Arbor Consulting's environment.
 5. **Draft Repository Partitioning**: In-memory draft repositories are partitioned. Drafts staged by Northstar cannot be accessed or modified by Arbor.
 6. **Zero External Side Effects**: All drafts are stored in host memory with `externalExecution: "not_executed"`.

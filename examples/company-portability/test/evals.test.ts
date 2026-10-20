@@ -197,6 +197,11 @@ describe("Sprint 25 — Company Portability Evaluation Suite", () => {
         questions: [{ id: "q", question: "Query" }],
       },
     });
+    expect(unauthOutcome.status).toBe("failed");
+    if (unauthOutcome.status === "failed") {
+      expect(unauthOutcome.failure.executorFailure?.code).toBe("TOOL_AUTHORIZATION_REQUIRED");
+    }
+    expect(hostileEnv.arborWebProvider.calls.search).toHaveLength(0);
     const unauthTrace = await store.getRunTrace("run.eval.unauth");
     evidenceMap.set("run://unauthorized", {
       origin: "live_run",
@@ -368,9 +373,13 @@ describe("Sprint 25 — Company Portability Evaluation Suite", () => {
     });
     const neg1 = await arborNeg.runCompanyResearch({
       runId: "run.neg.1",
-      request: { company: { name: "Arbor", domain: "arbor.example" }, questions: [] },
+      request: { company: { name: "Arbor Consulting", domain: "arbor.example" }, questions: [{ id: "offering", question: "What services does Arbor offer?" }] },
     });
     expect(neg1.status).toBe("failed");
+    if (neg1.status === "failed") {
+      expect(neg1.failure.executorFailure?.code).toBe("TOOL_AUTHORIZATION_REQUIRED");
+    }
+    expect(envNeg.arborWebProvider.calls.search).toHaveLength(0);
 
     // 2. Company A Approval submitted to Company B -> fails verification
     const nsApp = createCompanyAAO({
@@ -520,9 +529,6 @@ describe("Sprint 25 — Company Portability Evaluation Suite", () => {
           adapterRef: { id: "text-only-adapter", version: "1.0.0" },
         },
       },
-      publicWebProviders: env.hostCapabilities.publicWebProviders,
-      documentSourceProviders: env.hostCapabilities.documentSourceProviders,
-      draftRepositories: env.hostCapabilities.draftRepositories,
     });
     const manifestNoStruct = {
       ...NORTHSTAR_MANIFEST,

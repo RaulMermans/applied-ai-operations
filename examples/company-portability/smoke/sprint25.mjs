@@ -200,11 +200,29 @@ const crossArbor = createCompanyAAO({
   hostCapabilities: crossEnv.hostCapabilities,
   principalForRun: crossEnv.arborPrincipalForRun,
 });
+const isolationRequest = {
+  company: { name: "Arbor Consulting", domain: "arbor.example" },
+  questions: [{ id: "offering", question: "What services does Arbor offer?" }],
+};
 const crossGovRes = await crossArbor.runCompanyResearch({
   runId: "smoke.cross.gov.001",
-  request: { company: { name: "Arbor Consulting", domain: "arbor.example" }, questions: [] },
+  request: isolationRequest,
 });
 assert(crossGovRes.status === "failed", "Step 11: Cross-company governance invocation must fail closed");
+assert(crossGovRes.failure?.nodeId === "search" && crossGovRes.failure?.executorFailure?.namespace === "tool" && crossGovRes.failure?.executorFailure?.code === "TOOL_AUTHORIZATION_REQUIRED", "Step 11: Expected canonical Tool Authorization refusal at search");
+assert(crossEnv.arborWebProvider.calls.search.length === 0 && crossEnv.arborWebProvider.calls.fetch.length === 0, "Step 11: Denied request called Arbor provider");
+assert(crossEnv.arborDraftRepo.getAllDrafts().length === 0, "Step 11: Denied request created an Arbor draft");
+const authorizedArbor = createCompanyAAO({
+  manifest: ARBOR_MANIFEST,
+  hostCapabilities: crossEnv.hostCapabilities,
+  principalForRun: () => ARBOR_ACTORS.researcher,
+});
+const authorizedControl = await authorizedArbor.runCompanyResearch({
+  runId: "smoke.cross.gov.authorized",
+  request: isolationRequest,
+});
+assert(authorizedControl.status === "completed", "Step 11: Authorized control failed with the same valid request");
+assert(crossEnv.arborWebProvider.calls.search.length > 0 && crossEnv.getArborProviderCalls() > 0, "Step 11: Authorized control did not use Arbor providers");
 
 // 12. Cross-company approval isolation refusal (Company A approval in Company B fails)
 const crossApprovalVerif = await arborAAO.getOperationalRequestProof().approvalVerifier.verifyApproval({

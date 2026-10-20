@@ -12,6 +12,47 @@ import {
 } from "../fixtures/index.js";
 
 describe("Sprint 25 — Company Composition & Portability Tests", () => {
+  it("keeps catalog bindings stable through input and consumer mutation before later composition", async () => {
+    const env = createTestHostEnvironment();
+    const original = env.hostCapabilities.getPublicWebProvider("arbor.web-provider")!;
+    const input = new Map([["arbor.web-provider", original]]);
+    const catalog = createHostCapabilityCatalog({
+      modelAdapters: [["aao.vercel-ai-sdk", env.hostCapabilities.getModelAdapter("aao.vercel-ai-sdk")!]],
+      modelBindings: [["arbor.model.vercel", env.hostCapabilities.getModelBinding("arbor.model.vercel")!]],
+      publicWebProviders: input,
+    });
+    const first = createCompanyAAO({
+      manifest: { ...ARBOR_MANIFEST, enabledProofs: ["company_research"] },
+      hostCapabilities: catalog,
+      principalForRun: env.arborPrincipalForRun,
+    });
+    input.set("arbor.web-provider", env.northstarWebProvider);
+    input.delete("arbor.web-provider");
+    input.clear();
+    const consumer = catalog as unknown as Record<string, unknown>;
+    expect(consumer.publicWebProviders).toBeUndefined();
+    expect(consumer.set).toBeUndefined();
+    expect(consumer.delete).toBeUndefined();
+    expect(consumer.clear).toBeUndefined();
+    expect(() => { consumer.getPublicWebProvider = () => env.northstarWebProvider; }).toThrow();
+    expect(catalog.getPublicWebProvider("arbor.web-provider")).toBe(original);
+    expect(catalog.getPublicWebProvider("missing")).toBeUndefined();
+    const later = createCompanyAAO({
+      manifest: { ...ARBOR_MANIFEST, enabledProofs: ["company_research"] },
+      hostCapabilities: catalog,
+      principalForRun: env.arborPrincipalForRun,
+    });
+    expect(first.getCompanyResearchProof().planFingerprint).toBe(later.getCompanyResearchProof().planFingerprint);
+    expect(catalog.getPublicWebProvider("arbor.web-provider")).toBe(original);
+    const request = { company: { name: "Arbor Consulting", domain: "arbor.example" }, questions: [{ id: "offering", question: "What services does Arbor offer?" }] };
+    expect((await first.runCompanyResearch({ runId: "catalog.first", request })).status).toBe("completed");
+    expect((await later.runCompanyResearch({ runId: "catalog.later", request })).status).toBe("completed");
+    expect(env.arborWebProvider.calls.search.length).toBeGreaterThan(0);
+    expect(env.northstarWebProvider.calls.search.length).toBe(0);
+    expect(createHostCapabilityCatalog({ publicWebProviders: [["arbor.web-provider", env.northstarWebProvider]] }).getPublicWebProvider("arbor.web-provider")).not.toBe(original);
+    expect(() => createHostCapabilityCatalog({ publicWebProviders: [["same", original], ["same", env.northstarWebProvider]] })).toThrow(/Duplicate host capability reference/);
+  });
+
   it("composes Northstar and Arbor with identical Workflow plan fingerprints", () => {
     const env = createTestHostEnvironment();
 
@@ -65,10 +106,28 @@ describe("Sprint 25 — Company Composition & Portability Tests", () => {
     ).toThrowError(/CONFIG_CAPABILITY_NOT_FOUND/);
   });
 
+  it("refuses a missing operational approver before composing or calling capabilities", () => {
+    const env = createTestHostEnvironment();
+    const governance = {
+      ...NORTHSTAR_MANIFEST.governance,
+      roles: NORTHSTAR_MANIFEST.governance.roles.filter((role) => role.id !== "operations.approver"),
+      bindings: NORTHSTAR_MANIFEST.governance.bindings.filter((binding) => binding.roleId !== "operations.approver"),
+    };
+    expect(() => createCompanyAAO({
+      manifest: { ...NORTHSTAR_MANIFEST, governance },
+      hostCapabilities: env.hostCapabilities,
+      principalForRun: env.northstarPrincipalForRun,
+    })).toThrow(/CONFIG_GOVERNANCE_INVALID/);
+    expect(env.northstarWebProvider.calls.search).toHaveLength(0);
+    expect(env.northstarDraftRepo.getAllDrafts()).toHaveLength(0);
+  });
+
   it("fails composition with CONFIG_CAPABILITY_INCOMPATIBLE when model binding lacks structured output", () => {
     const env = createTestHostEnvironment();
     const incompatibleCatalog = createHostCapabilityCatalog({
-      modelAdapters: env.hostCapabilities.modelAdapters,
+      modelAdapters: {
+        "aao.native-model": env.hostCapabilities.getModelAdapter("aao.native-model")!,
+      },
       modelBindings: {
         "text-only.binding": {
           id: "text-only.binding",
@@ -79,9 +138,6 @@ describe("Sprint 25 — Company Composition & Portability Tests", () => {
           adapterRef: { id: "aao.native-model", version: "1.0.0" },
         },
       },
-      publicWebProviders: env.hostCapabilities.publicWebProviders,
-      documentSourceProviders: env.hostCapabilities.documentSourceProviders,
-      draftRepositories: env.hostCapabilities.draftRepositories,
     });
 
     const manifest = {

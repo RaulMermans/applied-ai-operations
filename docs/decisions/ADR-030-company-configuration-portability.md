@@ -81,6 +81,8 @@ Company manifests contain declarative capability references (e.g., `"northstar.w
 
 All concrete runtime objects reside in an immutable, host-owned **Host Capability Catalog** (`createHostCapabilityCatalog`). The manifest selects only from capabilities the host operator has explicitly authorized and registered. Attempts to reference unregistered capabilities throw `CONFIG_CAPABILITY_NOT_FOUND` before any workflow execution begins.
 
+The catalog defensively copies registration entries into private maps and exposes only exact-reference lookup methods. Freezing a JavaScript `Map` object does not freeze its entries; the earlier exposed `ReadonlyMap` properties allowed runtime `set`, `delete`, and `clear`. Duplicate references are rejected at construction. Binding identity is fixed after construction, including for companies composed later. Capability instances remain host-owned and may maintain operational state; they are not deep-frozen. This differs from the separately deep-frozen validated manifest snapshot.
+
 ### 4. Deterministic Preflight Validation & Configuration Fingerprinting
 
 `validateCompanyManifest` executes a 12-step deterministic preflight sequence:
@@ -96,6 +98,8 @@ All concrete runtime objects reside in an immutable, host-owned **Host Capabilit
 10. Required integration references for all enabled proofs.
 11. Reliability policy bounds validation.
 12. Deep freezing of the snapshot and SHA-256 fingerprint computation using canonical JSON serialization.
+
+When Operational Request is enabled, preflight additionally requires a registered principal with an active role granting `write_draft` and no applicable canonical deny rule, plus a distinct registered `user` with an active `operations.approver` binding. The approver's action permissions are irrelevant to approval eligibility. The canonical Approval Engine still checks role membership, human type, and self-approval for each decision; Runtime Governance and Authorization still decide each Tool use. Preflight cannot attest that the host will supply a particular requester at run time or that live authority will remain unchanged.
 
 ### 5. Architectural Distinction: Configuration Fingerprint vs Workflow Plan Fingerprint
 
@@ -127,8 +131,10 @@ The composition factory `createCompanyAAO` accepts a validated manifest and a ho
 - **Proven Portability**: The 3 flagship workflows run against Northstar Commerce (retail inventory sync, native model adapter, supplier agreements, merchandise approval) and Arbor Consulting (management advisory, Vercel AI SDK mock model, client MSA, client display name approval) without altering workflow code.
 - **Zero Core Forks**: AAO Core (`@aao/framework`, `@aao/runtime`, `@aao/tool-runtime`, `@aao/governance`, `@aao/approval`) remains untouched.
 - **Fail-Closed Isolation**: Cross-company principal invocations fail closed; cross-company approvals are rejected; overlapping document refs resolve strictly within company provider bounds.
+- **Compiled authorization evidence**: The cross-company smoke submits a schema-valid Research request with a Northstar principal to Arbor, checks `TOOL_AUTHORIZATION_REQUIRED` at the search Tool boundary and zero Arbor web calls, then runs the same request with an Arbor principal as a positive control. The Research planning model precedes the search Tool, so this smoke cannot prove zero model calls before denial.
 - **Verifiable Identity**: Plan fingerprints prove shared compilation; configuration fingerprints prove distinct governed environments.
 
 ### Trade-offs & Limitations
 - Composition is immutable at construction time; updating a company configuration requires instantiating a new composition.
 - Multitenancy is local-first host composition, not an adversarial, distributed multi-tenant SaaS platform.
+- The trusted host owns principal attestation, catalog construction, capability lifecycles, and separate company compositions. Static validation cannot replace those duties.

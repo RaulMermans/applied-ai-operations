@@ -85,9 +85,9 @@ Dynamic module imports, `eval`, reflection, and package managers are strictly fo
 5. **Company Identity Bounds**: Validates `companyId` slug format and `displayName` bounds.
 6. **Proof Reference Uniqueness**: Ensures `enabledProofs` contains no duplicate entries.
 7. **Governance Referential Integrity**: Verifies unique principal IDs, defined roles, role bindings, and policies.
-8. **Permission Safety**: Enforces that only canonical permission classes (`read_only`, `write_draft`) are assigned; unrecognized permissions fail closed (`CONFIG_PERMISSION_UNSUPPORTED`).
+8. **Permission Safety**: Enforces that only `read_only` and `write_draft` are assigned; unsupported classes fail closed (`CONFIG_GOVERNANCE_INVALID`).
 9. **Model Binding References**: Validates that `models.bindingRefs` is non-empty.
-10. **Required Integration References**: Asserts that every enabled proof has its required integration provider reference declared.
+10. **Required Integration References**: Asserts that every enabled proof has its required integration provider reference declared. Operational Request also checks its static requester and approver prerequisites.
 11. **Reliability Policy Bounds**: Ensures retry counts and timeout policies are within bounded thresholds.
 12. **Snapshot Freezing & Fingerprinting**: Deeply freezes the validated manifest and computes a canonical SHA-256 configuration fingerprint.
 
@@ -115,6 +115,10 @@ The host catalog (`createHostCapabilityCatalog`) provides an immutable lookup in
 - Public-Web Providers (`PublicWebProvider`)
 - Document-Source Providers (`DocumentSourceProvider`)
 - Draft Repositories (`OperationalDraftRepository`)
+
+Registration entries are copied into private maps. Consumers receive exact-reference lookup methods, never live maps or mutable entry collections. `set`, `delete`, and `clear` cannot alter bindings after construction. Provider objects themselves remain host-owned and may keep state; only catalog bindings and validated manifest snapshots are immutable.
+
+For Operational Request, preflight requires a registered requester with active `write_draft` authority after applicable deny policies, and a different registered human with an active `operations.approver` binding. `read_only` does not qualify a requester, and `write_draft` does not qualify an approver. This is a static coherence check. Runtime Governance and Authorization still check the actual host-attested requester, and the Approval Engine still checks the actual human and no-self-approval rule for each request.
 
 Any reference in a company manifest that is not found in the catalog immediately throws `CONFIG_CAPABILITY_NOT_FOUND` at composition time, failing closed before execution.
 

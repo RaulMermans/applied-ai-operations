@@ -35,14 +35,15 @@ describe("Sprint 25 — Cross-Company Governance & Execution Isolation Tests", (
     // Mandatory Negative Test: Authorization Refused
     expect(outcome.status).toBe("failed");
     if (outcome.status === "failed") {
-      expect(["TOOL_AUTHORIZATION_REQUIRED", "TOOL_AUTHORIZATION_DENIED"]).toContain(
-        outcome.failure.executorFailure?.code
-      );
+      expect(outcome.failure.nodeId).toBe("search");
+      expect(outcome.failure.executorFailure?.namespace).toBe("tool");
+      expect(outcome.failure.executorFailure?.code).toBe("TOOL_AUTHORIZATION_REQUIRED");
     }
 
     // 0 provider calls
     expect(env.arborWebProvider.calls.search.length).toBe(0);
     expect(env.arborWebProvider.calls.fetch.length).toBe(0);
+    expect(env.arborDraftRepo.getAllDrafts()).toHaveLength(0);
   });
 
   it("enforces Approval isolation: Company A approval cannot authorize draft execution in Company B", async () => {
