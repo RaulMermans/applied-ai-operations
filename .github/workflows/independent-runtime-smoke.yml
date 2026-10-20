@@ -1,0 +1,30 @@
+name: Independent AAO Runtime Smoke
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  governed-workflows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.20.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Compiled business-action proof (human approval and no external writes)
+        run: pnpm proof:operational-request
+      - name: Compiled document intelligence proof (grounded extraction)
+        run: pnpm proof:document-intelligence
+      - name: Compiled company research proof (citation integrity)
+        run: pnpm proof:company-research
+      - name: Compiled multi-company portability proof
+        run: pnpm proof:company-portability
+      - name: Independent tampering and forbidden-side-effect assertions from repository suites
+        run: pnpm exec vitest run examples/operational-request/test/tampering.test.ts examples/operational-request/test/external-effect.test.ts examples/company-portability/test/isolation.test.ts
