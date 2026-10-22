@@ -12,7 +12,17 @@ export {
   createCompanyAAO,
   type ComposedCompanyAAO,
   type CreateCompanyAAOOptions,
+  type CompanyResearchFacade,
+  type DocumentIntelligenceFacade,
+  type OperationalRequestFacade,
 } from "./composition.js";
+
+export {
+  CompanyAdmissionError,
+  requireCompanyAdmission,
+  REQUIRED_ADMISSION_PERMISSIONS,
+  type RequireCompanyAdmissionContext,
+} from "./admission.js";
 
 export {
   NORTHSTAR_MANIFEST,

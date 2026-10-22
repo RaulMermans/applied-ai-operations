@@ -1,7 +1,8 @@
 import process from "node:process";
 import {
   createCompanyAAO,
-} from "../src/composition.js";
+  CompanyAdmissionError,
+} from "../src/index.js";
 import {
   createTestHostEnvironment,
   NORTHSTAR_MANIFEST,
@@ -134,8 +135,8 @@ async function runDemo() {
     process.stdout.write(`   ✓ Arbor Operational Request: ${arbOpsResume.ok ? "completed" : "failed"} (Draft created in repo: ${env.arborDraftRepo.getAllDrafts().length})\n\n`);
   }
 
-  // 8. Demonstrate Cross-Company Isolation Refusal
-  process.stdout.write("5. Demonstrating cross-company Governance isolation refusal...\n");
+  // 8. Demonstrate Cross-Company Admission Refusal Before Model
+  process.stdout.write("5. Demonstrating cross-company admission refusal before model execution...\n");
   const hostileEnv = createTestHostEnvironment({
     arborPrincipalOverride: () => NORTHSTAR_ACTORS.analyst,
   });
@@ -144,15 +145,61 @@ async function runDemo() {
     hostCapabilities: hostileEnv.hostCapabilities,
     principalForRun: hostileEnv.arborPrincipalForRun,
   });
-  const isolationOutcome = await hostileArbor.runCompanyResearch({
-    runId: "demo.isolation.test",
-    request: { company: { name: "Arbor Consulting", domain: "arbor.example" }, questions: [{ id: "offering", question: "What services does Arbor offer?" }] },
-  });
-  const refusalCode = (isolationOutcome as { failure?: { executorFailure?: { code?: string } } }).failure?.executorFailure?.code ?? "REFUSED";
-  if (isolationOutcome.status !== "failed" || refusalCode !== "TOOL_AUTHORIZATION_REQUIRED" || hostileEnv.arborWebProvider.calls.search.length !== 0) {
-    throw new Error("Cross-company authorization proof failed");
+
+  const initialModelCalls = hostileEnv.getArborProviderCalls();
+  const initialWebCalls =
+    hostileEnv.arborWebProvider.calls.search.length +
+    hostileEnv.arborWebProvider.calls.fetch.length;
+
+  let admissionDenied = false;
+  let denialCode = "";
+  try {
+    await hostileArbor.runCompanyResearch({
+      runId: "demo.isolation.test",
+      request: {
+        company: { name: "Arbor Consulting", domain: "arbor.example" },
+        questions: [{ id: "offering", question: "What services does Arbor offer?" }],
+      },
+    });
+  } catch (err) {
+    if (err instanceof CompanyAdmissionError && err.code === "COMPANY_ADMISSION_DENIED") {
+      admissionDenied = true;
+      denialCode = err.code;
+    }
   }
-  process.stdout.write(`   ✓ Company A principal executing Company B workflow: REFUSED (${refusalCode})\n\n`);
+
+  const modelDelta = hostileEnv.getArborProviderCalls() - initialModelCalls;
+  const webDelta =
+    hostileEnv.arborWebProvider.calls.search.length +
+    hostileEnv.arborWebProvider.calls.fetch.length -
+    initialWebCalls;
+
+  if (!admissionDenied || denialCode !== "COMPANY_ADMISSION_DENIED" || modelDelta !== 0 || webDelta !== 0) {
+    throw new Error(
+      `Cross-company admission proof failed: denied=${admissionDenied}, code=${denialCode}, modelDelta=${modelDelta}, webDelta=${webDelta}`
+    );
+  }
+  process.stdout.write(`   ✓ Foreign principal executing Arbor workflow: REFUSED (${denialCode})\n`);
+  process.stdout.write(`   ✓ Model call delta: ${modelDelta} (Zero)\n`);
+  process.stdout.write(`   ✓ Provider call delta: ${webDelta} (Zero)\n`);
+
+  // Positive authorization control
+  const authorizedArbor = createCompanyAAO({
+    manifest: ARBOR_MANIFEST,
+    hostCapabilities: hostileEnv.hostCapabilities,
+    principalForRun: () => ARBOR_ACTORS.researcher,
+  });
+  const authOutcome = await authorizedArbor.runCompanyResearch({
+    runId: "demo.isolation.authorized",
+    request: {
+      company: { name: "Arbor Consulting", domain: "arbor.example" },
+      questions: [{ id: "offering", question: "What services does Arbor offer?" }],
+    },
+  });
+  if (authOutcome.status !== "completed") {
+    throw new Error("Positive authorization control failed");
+  }
+  process.stdout.write(`   ✓ Authorized Arbor principal control: COMPLETED\n\n`);
 
   // 9. Demonstrate Configuration-Only Change
   process.stdout.write("6. Demonstrating configuration-only mutation without code changes...\n");
@@ -182,8 +229,10 @@ async function runDemo() {
         matrixScenariosPassed: "6/6",
         workflowForks: 0,
         planFingerprintEqual: true,
-        governanceIsolation: "TOOL_BOUNDARY_ENFORCED",
-        preAuthorizationModelCalls: "possible",
+        admissionGate: "PRE_EXECUTION_GOVERNANCE_ENFORCED",
+        preAdmissionModelCalls: 0,
+        preAdmissionProviderCalls: 0,
+        governanceIsolation: "ADMISSION_AND_TOOL_BOUNDARY_ENFORCED",
         approvalIsolation: "ENFORCED",
         draftIsolation: "ENFORCED",
         documentIsolation: "ENFORCED",

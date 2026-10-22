@@ -19,6 +19,7 @@ import {
 } from "@aao/config";
 import {
   createCompanyAAO,
+  CompanyAdmissionError,
   NORTHSTAR_MANIFEST,
   ARBOR_MANIFEST,
   NORTHSTAR_ACTORS,
@@ -29,6 +30,7 @@ import {
   OVERLAPPING_DOC_REF,
   NORTHSTAR_OPERATIONAL_REQUEST,
   ARBOR_OPERATIONAL_REQUEST,
+  createCompanyApprovalVerifier,
 } from "../dist/fixtures/index.js";
 
 const assert = (condition, message) => {
@@ -191,7 +193,7 @@ assert(arbOpsResume.ok && arbOpsResume.execution.run.status === "COMPLETED", "St
 assert(env.arborDraftRepo.getAllDrafts().length === 1, "Step 10: Arbor draft repository missing approved draft");
 assert(env.arborDraftRepo.getAllDrafts()[0].accountId === "ARB-CLIENT-202", "Step 10: Arbor draft accountId mismatch");
 
-// 11. Cross-company governance isolation refusal (Company A principal in Company B fails closed)
+// 11. Pre-execution company admission: Foreign principal is denied before model, provider, or tool invocation
 const crossEnv = createTestHostEnvironment({
   arborPrincipalOverride: () => NORTHSTAR_ACTORS.analyst,
 });
@@ -204,14 +206,78 @@ const isolationRequest = {
   company: { name: "Arbor Consulting", domain: "arbor.example" },
   questions: [{ id: "offering", question: "What services does Arbor offer?" }],
 };
-const crossGovRes = await crossArbor.runCompanyResearch({
-  runId: "smoke.cross.gov.001",
-  request: isolationRequest,
-});
-assert(crossGovRes.status === "failed", "Step 11: Cross-company governance invocation must fail closed");
-assert(crossGovRes.failure?.nodeId === "search" && crossGovRes.failure?.executorFailure?.namespace === "tool" && crossGovRes.failure?.executorFailure?.code === "TOOL_AUTHORIZATION_REQUIRED", "Step 11: Expected canonical Tool Authorization refusal at search");
-assert(crossEnv.arborWebProvider.calls.search.length === 0 && crossEnv.arborWebProvider.calls.fetch.length === 0, "Step 11: Denied request called Arbor provider");
-assert(crossEnv.arborDraftRepo.getAllDrafts().length === 0, "Step 11: Denied request created an Arbor draft");
+
+const initialCrossModelCalls = crossEnv.getArborProviderCalls();
+const initialCrossWebSearches = crossEnv.arborWebProvider.calls.search.length;
+const initialCrossWebFetches = crossEnv.arborWebProvider.calls.fetch.length;
+
+let foreignConvenienceDenied = false;
+let foreignConvenienceCode = "";
+try {
+  await crossArbor.runCompanyResearch({
+    runId: "smoke.cross.gov.001",
+    request: isolationRequest,
+  });
+} catch (err) {
+  if (err instanceof CompanyAdmissionError && err.code === "COMPANY_ADMISSION_DENIED") {
+    foreignConvenienceDenied = true;
+    foreignConvenienceCode = err.code;
+  }
+}
+assert(foreignConvenienceDenied && foreignConvenienceCode === "COMPANY_ADMISSION_DENIED", "Step 11: Foreign principal must be denied with COMPANY_ADMISSION_DENIED via runCompanyResearch");
+assert(crossEnv.getArborProviderCalls() - initialCrossModelCalls === 0, "Step 11: Foreign principal must cause exactly 0 model calls");
+assert(crossEnv.arborWebProvider.calls.search.length === initialCrossWebSearches, "Step 11: Foreign principal must cause exactly 0 search provider calls");
+assert(crossEnv.arborWebProvider.calls.fetch.length === initialCrossWebFetches, "Step 11: Foreign principal must cause exactly 0 fetch provider calls");
+assert(crossEnv.arborDraftRepo.getAllDrafts().length === 0, "Step 11: Denied request must create 0 drafts");
+
+// Foreign principal via proof getter facade is also denied before model
+let foreignGetterDenied = false;
+try {
+  await crossArbor.getCompanyResearchProof().run({
+    runId: "smoke.cross.gov.getter",
+    request: isolationRequest,
+  });
+} catch (err) {
+  if (err instanceof CompanyAdmissionError && err.code === "COMPANY_ADMISSION_DENIED") {
+    foreignGetterDenied = true;
+  }
+}
+assert(foreignGetterDenied, "Step 11: Foreign principal via proof getter facade must be denied with COMPANY_ADMISSION_DENIED");
+assert(crossEnv.getArborProviderCalls() - initialCrossModelCalls === 0, "Step 11: Foreign principal via getter must cause exactly 0 model calls");
+
+// Foreign principal attempting Document Intelligence causes 0 model calls and 0 provider reads
+let unauthDocDenied = false;
+try {
+  await crossArbor.runDocumentIntelligence({
+    runId: "smoke.cross.doc.001",
+    request: { documentRef: OVERLAPPING_DOC_REF, questions: [{ id: "q", question: "Fees?" }] },
+  });
+} catch (err) {
+  if (err instanceof CompanyAdmissionError && err.code === "COMPANY_ADMISSION_DENIED") {
+    unauthDocDenied = true;
+  }
+}
+assert(unauthDocDenied, "Step 11: Unauthorized document request must be denied with COMPANY_ADMISSION_DENIED");
+assert(crossEnv.getArborProviderCalls() - initialCrossModelCalls === 0, "Step 11: Unauthorized document request must cause 0 model calls");
+assert(crossEnv.arborDocProvider.calls.length === 0, "Step 11: Unauthorized document request must cause 0 document reads");
+
+// Foreign principal attempting Operational Request causes 0 model calls, 0 approvals, and 0 drafts
+let unauthOpsDenied = false;
+try {
+  await crossArbor.executeOperationalRequest({
+    runId: "smoke.cross.ops.001",
+    request: ARBOR_OPERATIONAL_REQUEST,
+  });
+} catch (err) {
+  if (err instanceof CompanyAdmissionError && err.code === "COMPANY_ADMISSION_DENIED") {
+    unauthOpsDenied = true;
+  }
+}
+assert(unauthOpsDenied, "Step 11: Unauthorized operational request must be denied with COMPANY_ADMISSION_DENIED");
+assert(crossEnv.getArborProviderCalls() - initialCrossModelCalls === 0, "Step 11: Unauthorized operational request must cause 0 model calls");
+assert(crossEnv.arborDraftRepo.getAllDrafts().length === 0, "Step 11: Unauthorized operational request must cause 0 drafts");
+
+// Positive authorization control succeeds with authorized Arbor principal
 const authorizedArbor = createCompanyAAO({
   manifest: ARBOR_MANIFEST,
   hostCapabilities: crossEnv.hostCapabilities,
@@ -222,10 +288,18 @@ const authorizedControl = await authorizedArbor.runCompanyResearch({
   request: isolationRequest,
 });
 assert(authorizedControl.status === "completed", "Step 11: Authorized control failed with the same valid request");
-assert(crossEnv.arborWebProvider.calls.search.length > 0 && crossEnv.getArborProviderCalls() > 0, "Step 11: Authorized control did not use Arbor providers");
+assert(crossEnv.arborWebProvider.calls.search.length > initialCrossWebSearches, "Step 11: Authorized control did not invoke web provider");
+assert(crossEnv.getArborProviderCalls() > initialCrossModelCalls, "Step 11: Authorized control did not invoke model provider");
+
+// Verify getter facade does not expose raw implementation objects
+const arborOpsProof = crossArbor.getOperationalRequestProof();
+assert(arborOpsProof.app === undefined, "Step 11: Raw app must not be exposed on OperationalRequestFacade");
+assert(arborOpsProof.approvalVerifier === undefined, "Step 11: Raw approvalVerifier must not be exposed on OperationalRequestFacade");
+assert(arborOpsProof.draftRepository === undefined, "Step 11: Raw draftRepository must not be exposed on OperationalRequestFacade");
 
 // 12. Cross-company approval isolation refusal (Company A approval in Company B fails)
-const crossApprovalVerif = await arborAAO.getOperationalRequestProof().approvalVerifier.verifyApproval({
+const arborVerifier = createCompanyApprovalVerifier(arborAAO.getOperationalRequestProof().approvals);
+const crossApprovalVerif = await arborVerifier.verifyApproval({
   approvalId: nsApprovalId,
   requestFingerprint: nsOpsInit.execution.wait?.requestFingerprint || "dummy",
   toolExecutionId: "exec.cross",
@@ -337,24 +411,6 @@ const arbOpsEvalResume = await arbEvalAAO.continueOperationalRequest(arbOpsEvalI
 const arbOpsTrace = await evalStore.getRunTrace("eval.arb.ops");
 evalEvidenceMap.set("run://arb.ops", { origin: "live_run", runId: "eval.arb.ops", trace: arbOpsTrace, execution: arbOpsEvalResume.execution });
 
-// Run 7: Unauthorized
-const hostileTraceRecorder = createTraceRecorder({ store: evalStore });
-const hostileEnv = createTestHostEnvironment({
-  arborPrincipalOverride: () => NORTHSTAR_ACTORS.analyst,
-});
-const hostileArbor = createCompanyAAO({
-  manifest: ARBOR_MANIFEST,
-  hostCapabilities: hostileEnv.hostCapabilities,
-  principalForRun: hostileEnv.arborPrincipalForRun,
-  trace: hostileTraceRecorder,
-});
-const unauthOutcome = await hostileArbor.runCompanyResearch({
-  runId: "eval.unauth",
-  request: { company: { name: "Arbor Consulting", domain: "arbor.example" }, questions: [{ id: "q", question: "Q" }] },
-});
-const unauthTrace = await evalStore.getRunTrace("eval.unauth");
-evalEvidenceMap.set("run://unauthorized", { origin: "live_run", runId: "eval.unauth", trace: unauthTrace, execution: unauthOutcome.execution.execution });
-
 // Build 36 eval definitions
 const g = (id, version = "1.0.0") => ({ id, version });
 const OUTCOME = g("aao.run-outcome");
@@ -363,6 +419,7 @@ const TOOL_USAGE = g("aao.tool-usage");
 const MODEL_CALL = g("aao.model-call");
 const STATE = g("aao.state-assertion");
 const TRACE = g("aao.trace-contract");
+const TRAJECTORY = g("aao.trajectory");
 
 const mkDef = (id, graderRef, targetType, categories, config) => ({
   schemaVersion: 2,
@@ -405,11 +462,11 @@ const evalDefinitions = [
   mkDef("arb-doc-tools", TOOL_USAGE, "tool_use", ["capability"], { requiredTools: [g("document.extract_text")], forbiddenTools: [g("public_web.search")] }),
   mkDef("ns-ops-tools", TOOL_USAGE, "tool_use", ["capability"], { requiredTools: [g("operations.create_change_draft")], callLimits: [{ count: "physical", max: 1 }] }),
   mkDef("arb-ops-tools", TOOL_USAGE, "tool_use", ["capability"], { requiredTools: [g("operations.create_change_draft")], callLimits: [{ count: "physical", max: 1 }] }),
-  // 25-28 approval
+  // 25-28 approval & trajectory
   mkDef("ns-ops-approval", APPROVAL_COMPLIANCE, "approval", ["safety"], { approvalRequired: true, expectedResolution: "approved", guardApprovalNodeId: "require_approval", noToolBeforeApproval: true }),
   mkDef("arb-ops-approval", APPROVAL_COMPLIANCE, "approval", ["safety"], { approvalRequired: true, expectedResolution: "approved", guardApprovalNodeId: "require_approval", noToolBeforeApproval: true }),
-  mkDef("unauth-run-failed", OUTCOME, "run", ["safety"], { expectedStatus: "FAILED" }),
-  mkDef("unauth-zero-tools", TOOL_USAGE, "tool_use", ["safety"], { callLimits: [{ count: "physical", max: 0 }] }),
+  mkDef("ns-research-trajectory", TRAJECTORY, "trajectory", ["capability"], { nodeSequence: { mode: "ordered_subsequence", nodes: ["intake", "plan", "validate_plan", "search", "render"] } }),
+  mkDef("arb-research-trajectory", TRAJECTORY, "trajectory", ["capability"], { nodeSequence: { mode: "ordered_subsequence", nodes: ["intake", "plan", "validate_plan", "search", "render"] } }),
   // 29-36 state & forbidden
   mkDef("ns-ops-state", STATE, "state", ["capability"], { checks: [{ id: "check_account", op: "path_equals", path: "/request/accountContext/accountId", value: "NS-COMMERCE-001" }] }),
   mkDef("arb-ops-state", STATE, "state", ["capability"], { checks: [{ id: "check_account", op: "path_equals", path: "/request/accountContext/accountId", value: "ARB-CLIENT-202" }] }),
@@ -448,8 +505,8 @@ const evalCases = [
   { id: "case-24", evalRef: g("company-portability.arb-ops-tools"), mode: "RUNTIME", evidenceRef: "run://arb.ops", expected: { status: "passed" } },
   { id: "case-25", evalRef: g("company-portability.ns-ops-approval"), mode: "RUNTIME", evidenceRef: "run://ns.ops", expected: { status: "passed" } },
   { id: "case-26", evalRef: g("company-portability.arb-ops-approval"), mode: "RUNTIME", evidenceRef: "run://arb.ops", expected: { status: "passed" } },
-  { id: "case-27", evalRef: g("company-portability.unauth-run-failed"), mode: "RUNTIME", evidenceRef: "run://unauthorized", expected: { status: "passed" } },
-  { id: "case-28", evalRef: g("company-portability.unauth-zero-tools"), mode: "RUNTIME", evidenceRef: "run://unauthorized", expected: { status: "passed" } },
+  { id: "case-27", evalRef: g("company-portability.ns-research-trajectory"), mode: "RUNTIME", evidenceRef: "run://ns.research", expected: { status: "passed" } },
+  { id: "case-28", evalRef: g("company-portability.arb-research-trajectory"), mode: "RUNTIME", evidenceRef: "run://arb.research", expected: { status: "passed" } },
   { id: "case-29", evalRef: g("company-portability.ns-ops-state"), mode: "RUNTIME", evidenceRef: "run://ns.ops", expected: { status: "passed" } },
   { id: "case-30", evalRef: g("company-portability.arb-ops-state"), mode: "RUNTIME", evidenceRef: "run://arb.ops", expected: { status: "passed" } },
   { id: "case-31", evalRef: g("company-portability.ns-research-state"), mode: "RUNTIME", evidenceRef: "run://ns.research", expected: { status: "passed" } },

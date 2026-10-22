@@ -3,6 +3,7 @@ import { createCompanyAAO } from "../src/composition.js";
 import {
   createTestHostEnvironment,
   NORTHSTAR_MANIFEST,
+  ARBOR_MANIFEST,
   NORTHSTAR_OPERATIONAL_REQUEST,
 } from "../fixtures/index.js";
 import {
@@ -135,5 +136,97 @@ describe("Sprint 25 — Security & Boundary Enforcement Tests", () => {
     }
 
     expect((Object.prototype as Record<string, unknown>).polluted).toBeUndefined();
+  });
+
+  it("verifies threat matrix: request-supplied principal identity cannot override host-attested principal", async () => {
+    const env = createTestHostEnvironment({
+      arborPrincipalOverride: () => ({ id: "unregistered.foreign.principal", type: "user" }),
+    });
+
+    const arbor = createCompanyAAO({
+      manifest: ARBOR_MANIFEST,
+      hostCapabilities: env.hostCapabilities,
+      principalForRun: env.arborPrincipalForRun,
+    });
+
+    // Request payload tries to inject an authorized principal id
+    const payloadWithPrincipal = {
+      company: { name: "Arbor Consulting", domain: "arbor.example" },
+      principalId: "user.arbor.researcher",
+      actorId: "user.arbor.researcher",
+      actingAs: "user.arbor.researcher",
+      questions: [{ id: "offering", question: "What does Arbor offer?" }],
+    };
+
+    let denied = false;
+    try {
+      await arbor.runCompanyResearch({
+        runId: "run.sec.host.principal",
+        request: payloadWithPrincipal as unknown as Parameters<typeof arbor.runCompanyResearch>[0]["request"],
+      });
+    } catch (err) {
+      if (err instanceof Error && "code" in err && (err as { code: string }).code === "COMPANY_ADMISSION_DENIED") {
+        denied = true;
+      }
+    }
+
+    expect(denied).toBe(true);
+    expect(env.getArborProviderCalls()).toBe(0);
+    expect(env.arborWebProvider.calls.search.length).toBe(0);
+  });
+
+  it("verifies all three proofs enforce zero side effects on admission denial", async () => {
+    const env = createTestHostEnvironment({
+      arborPrincipalOverride: () => ({ id: "unregistered.hacker", type: "user" }),
+    });
+
+    const arbor = createCompanyAAO({
+      manifest: ARBOR_MANIFEST,
+      hostCapabilities: env.hostCapabilities,
+      principalForRun: env.arborPrincipalForRun,
+    });
+
+    // Research: 0 model, 0 search, 0 fetch
+    await expect(
+      arbor.runCompanyResearch({
+        runId: "sec.zero.res",
+        request: {
+          company: { name: "Arbor Consulting", domain: "arbor.example" },
+          questions: [{ id: "q", question: "Q" }],
+        },
+      })
+    ).rejects.toThrow();
+    expect(env.getArborProviderCalls()).toBe(0);
+    expect(env.arborWebProvider.calls.search.length).toBe(0);
+    expect(env.arborWebProvider.calls.fetch.length).toBe(0);
+
+    // Doc: 0 model, 0 reads
+    await expect(
+      arbor.runDocumentIntelligence({
+        runId: "sec.zero.doc",
+        request: {
+          documentRef: "fixture.contract-001",
+          questions: [{ id: "q", question: "Q" }],
+        },
+      })
+    ).rejects.toThrow();
+    expect(env.getArborProviderCalls()).toBe(0);
+    expect(env.arborDocProvider.calls.length).toBe(0);
+
+    // Ops: 0 model, 0 approvals, 0 drafts
+    await expect(
+      arbor.executeOperationalRequest({
+        runId: "sec.zero.ops",
+        request: {
+          schemaVersion: 1,
+          requestId: "sec-001",
+          instruction: "Do something unauthorized",
+          accountContext: { accountId: "ARB-CLIENT-202", currentDisplayName: "Arbor" },
+        },
+      })
+    ).rejects.toThrow();
+    expect(env.getArborProviderCalls()).toBe(0);
+    expect(env.arborDraftRepo.getAllDrafts().length).toBe(0);
+    expect(arbor.getOperationalRequestProof().approvals.get("any-id")).toBeUndefined();
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createCompanyAAO } from "../src/composition.js";
+import { createCompanyAAO, CompanyAdmissionError } from "../src/index.js";
 import {
   createTestHostEnvironment,
   NORTHSTAR_MANIFEST,
@@ -9,13 +9,186 @@ import {
   OVERLAPPING_DOC_REF,
   NORTHSTAR_OPERATIONAL_REQUEST,
   ARBOR_OPERATIONAL_REQUEST,
+  createCompanyApprovalVerifier,
 } from "../fixtures/index.js";
 
-describe("Sprint 25 — Cross-Company Governance & Execution Isolation Tests", () => {
-  it("enforces Governance isolation: principal belonging only to Company A is rejected in Company B", async () => {
-    // Host resolves Company A principal for all runs
+describe("Sprint 25 — Pre-Execution Company Admission & Cross-Company Isolation Tests", () => {
+  it("enforces pre-execution admission: foreign principal is rejected before planning model executes", async () => {
+    // Arbor host resolves Company A (Northstar) principal for all runs
     const env = createTestHostEnvironment({
-      arborPrincipalOverride: () => NORTHSTAR_ACTORS.analyst, // Company A principal injected into Company B host
+      arborPrincipalOverride: () => NORTHSTAR_ACTORS.analyst, // Registered in Northstar, unknown in Arbor
+    });
+
+    const arbor = createCompanyAAO({
+      manifest: ARBOR_MANIFEST,
+      hostCapabilities: env.hostCapabilities,
+      principalForRun: env.arborPrincipalForRun,
+    });
+
+    const validRequest = {
+      company: { name: "Arbor Consulting", domain: "arbor.example" },
+      questions: [{ id: "offering", question: "What does Arbor offer?" }],
+    };
+
+    // 1. Calling via company convenience method throws COMPANY_ADMISSION_DENIED
+    let thrownError: unknown;
+    try {
+      await arbor.runCompanyResearch({
+        runId: "run.arb.unauthorized.foreign",
+        request: validRequest,
+      });
+    } catch (err) {
+      thrownError = err;
+    }
+
+    expect(thrownError).toBeInstanceOf(CompanyAdmissionError);
+    const admissionError = thrownError as CompanyAdmissionError;
+    expect(admissionError.code).toBe("COMPANY_ADMISSION_DENIED");
+    expect(admissionError.companyId).toBe("arbor-consulting");
+    expect(admissionError.proof).toBe("company_research");
+    expect(admissionError.runId).toBe("run.arb.unauthorized.foreign");
+    expect(["GOVERNANCE_DEFAULT_DENY", "GOVERNANCE_INVALID_CONTEXT"]).toContain(
+      admissionError.reasonCode
+    );
+
+    // CRITICAL INVARIANT: Zero model calls, zero provider calls, zero drafts before admission
+    expect(env.getArborProviderCalls()).toBe(0);
+    expect(env.arborWebProvider.calls.search.length).toBe(0);
+    expect(env.arborWebProvider.calls.fetch.length).toBe(0);
+    expect(env.arborDraftRepo.getAllDrafts().length).toBe(0);
+
+    // 2. Calling via guarded proof getter facade ALSO enforces admission and throws
+    let getterError: unknown;
+    try {
+      await arbor.getCompanyResearchProof().run({
+        runId: "run.arb.getter.unauthorized",
+        request: validRequest,
+      });
+    } catch (err) {
+      getterError = err;
+    }
+
+    expect(getterError).toBeInstanceOf(CompanyAdmissionError);
+    expect((getterError as CompanyAdmissionError).code).toBe("COMPANY_ADMISSION_DENIED");
+    expect(env.getArborProviderCalls()).toBe(0);
+    expect(env.arborWebProvider.calls.search.length).toBe(0);
+  });
+
+  it("enforces pre-execution admission: registered but unauthorized principal is rejected with 0 calls", async () => {
+    // Create an Arbor manifest with an actor having no role grant for read_only
+    const guestActor = { id: "user.arbor.guest", type: "user" as const };
+    const guestRole = {
+      id: "consulting.guest",
+      version: "1.0.0",
+      description: "Guest with write_draft only, lacking read_only",
+      permissionClasses: ["write_draft" as const],
+    };
+    const manifestWithGuest = {
+      ...ARBOR_MANIFEST,
+      governance: {
+        ...ARBOR_MANIFEST.governance,
+        actors: [...ARBOR_MANIFEST.governance.actors, guestActor],
+        roles: [...ARBOR_MANIFEST.governance.roles, guestRole],
+        bindings: [
+          ...ARBOR_MANIFEST.governance.bindings,
+          {
+            id: "rb.arbor.guest",
+            actorId: guestActor.id,
+            roleId: guestRole.id,
+            status: "active" as const,
+          },
+        ],
+      },
+    };
+
+    const env = createTestHostEnvironment({
+      arborPrincipalOverride: () => guestActor,
+    });
+
+    const arbor = createCompanyAAO({
+      manifest: manifestWithGuest,
+      hostCapabilities: env.hostCapabilities,
+      principalForRun: env.arborPrincipalForRun,
+    });
+
+    let thrown: unknown;
+    try {
+      await arbor.runCompanyResearch({
+        runId: "run.arb.guest.unauthorized",
+        request: {
+          company: { name: "Arbor Consulting", domain: "arbor.example" },
+          questions: [{ id: "offering", question: "What does Arbor offer?" }],
+        },
+      });
+    } catch (err) {
+      thrown = err;
+    }
+
+    expect(thrown).toBeInstanceOf(CompanyAdmissionError);
+    expect((thrown as CompanyAdmissionError).code).toBe("COMPANY_ADMISSION_DENIED");
+    expect((thrown as CompanyAdmissionError).reasonCode).toBe("GOVERNANCE_DEFAULT_DENY");
+
+    // Zero model calls and provider calls
+    expect(env.getArborProviderCalls()).toBe(0);
+    expect(env.arborWebProvider.calls.search.length).toBe(0);
+  });
+
+  it("enforces pre-execution admission: deny policy overrides role grant before model runs", async () => {
+    // Add a deny policy revoking read_only for researchers
+    const manifestWithDeny = {
+      ...ARBOR_MANIFEST,
+      governance: {
+        ...ARBOR_MANIFEST.governance,
+        policies: [
+          {
+            id: "policy.arbor.deny_all_reads",
+            rules: [
+              {
+                id: "rule.deny_read_only",
+                effect: "DENY" as const,
+                permissionClasses: ["read_only" as const],
+                roleIds: ["consulting.researcher"],
+              },
+            ],
+          },
+        ],
+      },
+    };
+
+    const env = createTestHostEnvironment({
+      arborPrincipalOverride: () => ARBOR_ACTORS.researcher,
+    });
+
+    const arbor = createCompanyAAO({
+      manifest: manifestWithDeny,
+      hostCapabilities: env.hostCapabilities,
+      principalForRun: env.arborPrincipalForRun,
+    });
+
+    let thrown: unknown;
+    try {
+      await arbor.runCompanyResearch({
+        runId: "run.arb.policy.denied",
+        request: {
+          company: { name: "Arbor Consulting", domain: "arbor.example" },
+          questions: [{ id: "offering", question: "What does Arbor offer?" }],
+        },
+      });
+    } catch (err) {
+      thrown = err;
+    }
+
+    expect(thrown).toBeInstanceOf(CompanyAdmissionError);
+    expect((thrown as CompanyAdmissionError).code).toBe("COMPANY_ADMISSION_DENIED");
+    expect((thrown as CompanyAdmissionError).reasonCode).toBe("GOVERNANCE_POLICY_DENY");
+
+    expect(env.getArborProviderCalls()).toBe(0);
+    expect(env.arborWebProvider.calls.search.length).toBe(0);
+  });
+
+  it("positive authorization control: authorized Arbor principal completes the exact same research request", async () => {
+    const env = createTestHostEnvironment({
+      arborPrincipalOverride: () => ARBOR_ACTORS.researcher,
     });
 
     const arbor = createCompanyAAO({
@@ -25,25 +198,191 @@ describe("Sprint 25 — Cross-Company Governance & Execution Isolation Tests", (
     });
 
     const outcome = await arbor.runCompanyResearch({
-      runId: "run.arb.unauthorized",
+      runId: "run.arb.authorized.control",
       request: {
         company: { name: "Arbor Consulting", domain: "arbor.example" },
         questions: [{ id: "offering", question: "What does Arbor offer?" }],
       },
     });
 
-    // Mandatory Negative Test: Authorization Refused
-    expect(outcome.status).toBe("failed");
-    if (outcome.status === "failed") {
-      expect(outcome.failure.nodeId).toBe("search");
-      expect(outcome.failure.executorFailure?.namespace).toBe("tool");
-      expect(outcome.failure.executorFailure?.code).toBe("TOOL_AUTHORIZATION_REQUIRED");
+    expect(outcome.status).toBe("completed");
+    if (outcome.status === "completed") {
+      expect(outcome.result.coverage.questionsAnswered).toBe(1);
+      expect(outcome.result.coverage.sourcesCited).toBeGreaterThan(0);
+      expect(outcome.result.markdown).toContain("Arbor Consulting");
     }
 
-    // 0 provider calls
-    expect(env.arborWebProvider.calls.search.length).toBe(0);
-    expect(env.arborWebProvider.calls.fetch.length).toBe(0);
-    expect(env.arborDraftRepo.getAllDrafts()).toHaveLength(0);
+    // Model and providers were invoked normally for authorized run
+    expect(env.getArborProviderCalls()).toBeGreaterThan(0);
+    expect(env.arborWebProvider.calls.search.length).toBeGreaterThan(0);
+  });
+
+  it("enforces Document Intelligence admission: unauthorized principal causes 0 model calls and 0 provider reads", async () => {
+    const env = createTestHostEnvironment({
+      arborPrincipalOverride: () => NORTHSTAR_ACTORS.analyst,
+    });
+
+    const arbor = createCompanyAAO({
+      manifest: ARBOR_MANIFEST,
+      hostCapabilities: env.hostCapabilities,
+      principalForRun: env.arborPrincipalForRun,
+    });
+
+    let thrownConvenience: unknown;
+    try {
+      await arbor.runDocumentIntelligence({
+        runId: "run.arb.doc.unauth",
+        request: {
+          documentRef: OVERLAPPING_DOC_REF,
+          questions: [{ id: "terms", question: "What are the fees?" }],
+        },
+      });
+    } catch (err) {
+      thrownConvenience = err;
+    }
+    expect(thrownConvenience).toBeInstanceOf(CompanyAdmissionError);
+
+    let thrownGetter: unknown;
+    try {
+      await arbor.getDocumentIntelligenceProof().run({
+        runId: "run.arb.doc.unauth.getter",
+        request: {
+          documentRef: OVERLAPPING_DOC_REF,
+          questions: [{ id: "terms", question: "What are the fees?" }],
+        },
+      });
+    } catch (err) {
+      thrownGetter = err;
+    }
+    expect(thrownGetter).toBeInstanceOf(CompanyAdmissionError);
+
+    // Assert zero calls
+    expect(env.getArborProviderCalls()).toBe(0);
+    expect(env.arborDocProvider.calls.length).toBe(0);
+
+    // Authorized control succeeds
+    const authEnv = createTestHostEnvironment({
+      arborPrincipalOverride: () => ARBOR_ACTORS.researcher,
+    });
+    const authArbor = createCompanyAAO({
+      manifest: ARBOR_MANIFEST,
+      hostCapabilities: authEnv.hostCapabilities,
+      principalForRun: authEnv.arborPrincipalForRun,
+    });
+    const authOutcome = await authArbor.runDocumentIntelligence({
+      runId: "run.arb.doc.auth",
+      request: {
+        documentRef: OVERLAPPING_DOC_REF,
+        questions: [{ id: "terms", question: "What are the fees?" }],
+      },
+    });
+    expect(authOutcome.status).toBe("completed");
+    expect(authEnv.getArborProviderCalls()).toBeGreaterThan(0);
+    expect(authEnv.arborDocProvider.calls.length).toBe(1);
+  });
+
+  it("enforces Operational Request admission: unauthorized requester causes 0 model calls, 0 approval records, and 0 drafts", async () => {
+    const env = createTestHostEnvironment({
+      arborPrincipalOverride: () => NORTHSTAR_ACTORS.analyst, // Foreign principal lacking write_draft in Arbor
+    });
+
+    const arbor = createCompanyAAO({
+      manifest: ARBOR_MANIFEST,
+      hostCapabilities: env.hostCapabilities,
+      principalForRun: env.arborPrincipalForRun,
+    });
+
+    let thrownConvenience: unknown;
+    try {
+      await arbor.executeOperationalRequest({
+        runId: "run.arb.ops.unauth",
+        request: ARBOR_OPERATIONAL_REQUEST,
+      });
+    } catch (err) {
+      thrownConvenience = err;
+    }
+    expect(thrownConvenience).toBeInstanceOf(CompanyAdmissionError);
+
+    let thrownGetter: unknown;
+    try {
+      await arbor.getOperationalRequestProof().execute({
+        runId: "run.arb.ops.unauth.getter",
+        request: ARBOR_OPERATIONAL_REQUEST,
+      });
+    } catch (err) {
+      thrownGetter = err;
+    }
+    expect(thrownGetter).toBeInstanceOf(CompanyAdmissionError);
+
+    // Assert zero side effects
+    expect(env.getArborProviderCalls()).toBe(0);
+    expect(env.arborDraftRepo.getAllDrafts().length).toBe(0);
+    expect(arbor.getOperationalRequestProof().approvals.get("any-id")).toBeUndefined();
+  });
+
+  it("preserves canonical Approval Engine: approver without write_draft can approve when eligible", async () => {
+    const env = createTestHostEnvironment();
+
+    const northstar = createCompanyAAO({
+      manifest: NORTHSTAR_MANIFEST,
+      hostCapabilities: env.hostCapabilities,
+      principalForRun: env.northstarPrincipalForRun,
+    });
+
+    // Requester has write_draft and enters Operational Request
+    const nsExec = await northstar.executeOperationalRequest({
+      runId: "run.ns.ops.approver-check",
+      request: NORTHSTAR_OPERATIONAL_REQUEST,
+    });
+
+    expect(nsExec.ok).toBe(true);
+    if (!nsExec.ok) return;
+    expect(nsExec.execution.run.status).toBe("WAITING_FOR_APPROVAL");
+
+    const wait = nsExec.execution.wait!;
+    const approvalRef = wait.referenceId;
+
+    // Manager actor has read_only, NOT write_draft
+    expect(NORTHSTAR_ACTORS.manager.id).toBe("user.northstar.manager");
+    const managerRole = NORTHSTAR_MANIFEST.governance.roles.find(
+      (r) => r.id === "operations.approver"
+    );
+    expect(managerRole?.permissionClasses).toEqual(["read_only"]);
+
+    // The manager can approve because Approval eligibility is role-based, not write_draft-based
+    const approvalRec = await northstar
+      .getOperationalRequestProof()
+      .approvals.approve(approvalRef, NORTHSTAR_ACTORS.manager);
+    expect(approvalRec.status).toBe("approved");
+
+    // Continuing with requester principal succeeds
+    const continued = await northstar.continueOperationalRequest(nsExec.execution);
+    expect(continued.ok).toBe(true);
+    expect(env.northstarDraftRepo.getAllDrafts().length).toBe(1);
+  });
+
+  it("enforces guarded facades: raw app and approvalVerifier are not exposed on company proof getter", () => {
+    const env = createTestHostEnvironment();
+    const arbor = createCompanyAAO({
+      manifest: ARBOR_MANIFEST,
+      hostCapabilities: env.hostCapabilities,
+      principalForRun: env.arborPrincipalForRun,
+    });
+
+    const opsProof = arbor.getOperationalRequestProof();
+
+    // Guarded facade exposes safe inspection and admission-guarded execution
+    expect(typeof opsProof.planFingerprint).toBe("string");
+    expect(typeof opsProof.workflow).toBe("object");
+    expect(typeof opsProof.execute).toBe("function");
+    expect(typeof opsProof.continue).toBe("function");
+    expect(typeof opsProof.approvals).toBe("object");
+
+    // Intentionally removed implementation surfaces that could bypass admission
+    const rawInspection = opsProof as unknown as Record<string, unknown>;
+    expect(rawInspection.app).toBeUndefined();
+    expect(rawInspection.approvalVerifier).toBeUndefined();
+    expect(rawInspection.draftRepository).toBeUndefined();
   });
 
   it("enforces Approval isolation: Company A approval cannot authorize draft execution in Company B", async () => {
@@ -91,8 +430,9 @@ describe("Sprint 25 — Cross-Company Governance & Execution Isolation Tests", (
 
     const arbProof = arbor.getOperationalRequestProof();
 
-    // 3. Attempt to verify or consume Northstar's approval ID in Arbor's draft tool/verifier
-    const verification = await arbProof.approvalVerifier.verifyApproval({
+    // 3. Attempt to verify Northstar's approval ID in Arbor's approval verifier
+    const arborApprovalVerifier = createCompanyApprovalVerifier(arbProof.approvals);
+    const verification = await arborApprovalVerifier.verifyApproval({
       approvalId: approvalRef,
       requestFingerprint: "tampered-or-real-fingerprint",
       toolExecutionId: "exec.isolation.1",
@@ -233,7 +573,7 @@ describe("Sprint 25 — Cross-Company Governance & Execution Isolation Tests", (
     expect(env.arborDocProvider.calls.length).toBe(1);
   });
 
-  it("enforces Public-web provider isolation: distinct provider calls and corpus per company", async () => {
+  it("enforces cross-company identity collision resistance: literal same runId maintains strict company isolation", async () => {
     const env = createTestHostEnvironment();
 
     const northstar = createCompanyAAO({
@@ -248,37 +588,35 @@ describe("Sprint 25 — Cross-Company Governance & Execution Isolation Tests", (
       principalForRun: env.arborPrincipalForRun,
     });
 
-    // Run Company A research
-    await northstar.runCompanyResearch({
-      runId: "run.ns.web.iso",
+    const sharedRunId = "run.literal.collision.001";
+
+    const nsRes = await northstar.runCompanyResearch({
+      runId: sharedRunId,
       request: {
         company: { name: "Northstar Commerce", domain: "northstar.example" },
         questions: [{ id: "offering", question: "What does Northstar offer?" }],
       },
     });
 
-    expect(env.northstarWebProvider.calls.search.length).toBeGreaterThan(0);
-    expect(env.northstarWebProvider.calls.fetch.length).toBeGreaterThan(0);
-    // Arbor provider was called 0 times during Northstar execution
-    expect(env.arborWebProvider.calls.search.length).toBe(0);
-    expect(env.arborWebProvider.calls.fetch.length).toBe(0);
-
-    // Reset calls
-    env.northstarWebProvider.clearCalls();
-
-    // Run Company B research
-    await arbor.runCompanyResearch({
-      runId: "run.arb.web.iso",
+    const arbRes = await arbor.runCompanyResearch({
+      runId: sharedRunId,
       request: {
         company: { name: "Arbor Consulting", domain: "arbor.example" },
         questions: [{ id: "offering", question: "What does Arbor offer?" }],
       },
     });
 
+    expect(nsRes.status).toBe("completed");
+    expect(arbRes.status).toBe("completed");
+
+    // Northstar used Northstar provider; Arbor used Arbor provider
+    expect(env.northstarWebProvider.calls.search.length).toBeGreaterThan(0);
     expect(env.arborWebProvider.calls.search.length).toBeGreaterThan(0);
-    expect(env.arborWebProvider.calls.fetch.length).toBeGreaterThan(0);
-    // Northstar provider was called 0 times during Arbor execution
-    expect(env.northstarWebProvider.calls.search.length).toBe(0);
-    expect(env.northstarWebProvider.calls.fetch.length).toBe(0);
+    expect(
+      env.northstarWebProvider.calls.search.every((q) => q.toLowerCase().includes("northstar"))
+    ).toBe(true);
+    expect(
+      env.arborWebProvider.calls.search.every((q) => q.toLowerCase().includes("arbor"))
+    ).toBe(true);
   });
 });

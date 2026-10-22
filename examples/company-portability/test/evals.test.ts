@@ -17,7 +17,10 @@ import type {
   EvalTargetType,
 } from "@aao/contracts";
 import type { JsonValue } from "@aao/framework";
-import { createCompanyAAO } from "../src/composition.js";
+import {
+  createCompanyAAO,
+  CompanyAdmissionError,
+} from "../src/index.js";
 import {
   createTestHostEnvironment,
   NORTHSTAR_MANIFEST,
@@ -27,6 +30,7 @@ import {
   OVERLAPPING_DOC_REF,
   NORTHSTAR_OPERATIONAL_REQUEST,
   ARBOR_OPERATIONAL_REQUEST,
+  createCompanyApprovalVerifier,
 } from "../fixtures/index.js";
 import { validateCompanyManifest } from "@aao/config";
 import { createHostCapabilityCatalog } from "../src/catalog.js";
@@ -38,6 +42,7 @@ const TOOL_USAGE = g("aao.tool-usage");
 const MODEL_CALL = g("aao.model-call");
 const STATE = g("aao.state-assertion");
 const TRACE = g("aao.trace-contract");
+const TRAJECTORY = g("aao.trajectory");
 
 const def = (
   id: string,
@@ -190,25 +195,23 @@ describe("Sprint 25 — Company Portability Evaluation Suite", () => {
       principalForRun: hostileEnv.arborPrincipalForRun,
       trace: createTraceRecorder({ store }),
     });
-    const unauthOutcome = await hostileArbor.runCompanyResearch({
-      runId: "run.eval.unauth",
-      request: {
-        company: { name: "Arbor Consulting", domain: "arbor.example" },
-        questions: [{ id: "q", question: "Query" }],
-      },
-    });
-    expect(unauthOutcome.status).toBe("failed");
-    if (unauthOutcome.status === "failed") {
-      expect(unauthOutcome.failure.executorFailure?.code).toBe("TOOL_AUTHORIZATION_REQUIRED");
+    let admissionDenied = false;
+    try {
+      await hostileArbor.runCompanyResearch({
+        runId: "run.eval.unauth",
+        request: {
+          company: { name: "Arbor Consulting", domain: "arbor.example" },
+          questions: [{ id: "q", question: "Query" }],
+        },
+      });
+    } catch (err) {
+      if (err instanceof CompanyAdmissionError && err.code === "COMPANY_ADMISSION_DENIED") {
+        admissionDenied = true;
+      }
     }
+    expect(admissionDenied).toBe(true);
+    expect(hostileEnv.getArborProviderCalls()).toBe(0);
     expect(hostileEnv.arborWebProvider.calls.search).toHaveLength(0);
-    const unauthTrace = await store.getRunTrace("run.eval.unauth");
-    evidenceMap.set("run://unauthorized", {
-      origin: "live_run",
-      runId: "run.eval.unauth",
-      trace: unauthTrace,
-      execution: (unauthOutcome as unknown as { execution: { execution: ExecutionEvidence } }).execution.execution,
-    });
   });
 
   it("evaluates 36 high-value portability cases across canonical evaluation graders", async () => {
@@ -258,8 +261,12 @@ describe("Sprint 25 — Company Portability Evaluation Suite", () => {
         guardApprovalNodeId: "require_approval",
         noToolBeforeApproval: true,
       }),
-      def("unauth-run-failed", OUTCOME, "run", ["safety"], { expectedStatus: "FAILED" }),
-      def("unauth-zero-tools", TOOL_USAGE, "tool_use", ["safety"], { callLimits: [{ count: "physical", max: 0 }] }),
+      def("ns-research-trajectory", TRAJECTORY, "trajectory", ["capability"], {
+        nodeSequence: { mode: "ordered_subsequence", nodes: ["intake", "plan", "validate_plan", "search", "render"] },
+      }),
+      def("arb-research-trajectory", TRAJECTORY, "trajectory", ["capability"], {
+        nodeSequence: { mode: "ordered_subsequence", nodes: ["intake", "plan", "validate_plan", "search", "render"] },
+      }),
 
       // 29–36: Trajectory & State Integrity
       def("ns-ops-state", STATE, "state", ["capability"], {
@@ -320,8 +327,8 @@ describe("Sprint 25 — Company Portability Evaluation Suite", () => {
       // 25–28 Governance & Authorization isolation
       { id: "case-25", evalRef: g("company-portability.ns-ops-approval"), mode: "RUNTIME", evidenceRef: "run://ns.ops", expected: { status: "passed" } },
       { id: "case-26", evalRef: g("company-portability.arb-ops-approval"), mode: "RUNTIME", evidenceRef: "run://arb.ops", expected: { status: "passed" } },
-      { id: "case-27", evalRef: g("company-portability.unauth-run-failed"), mode: "RUNTIME", evidenceRef: "run://unauthorized", expected: { status: "passed" } },
-      { id: "case-28", evalRef: g("company-portability.unauth-zero-tools"), mode: "RUNTIME", evidenceRef: "run://unauthorized", expected: { status: "passed" } },
+      { id: "case-27", evalRef: g("company-portability.ns-research-trajectory"), mode: "RUNTIME", evidenceRef: "run://ns.research", expected: { status: "passed" } },
+      { id: "case-28", evalRef: g("company-portability.arb-research-trajectory"), mode: "RUNTIME", evidenceRef: "run://arb.research", expected: { status: "passed" } },
 
       // 29–36 State assertions & forbidden tools
       { id: "case-29", evalRef: g("company-portability.ns-ops-state"), mode: "RUNTIME", evidenceRef: "run://ns.ops", expected: { status: "passed" } },
@@ -371,14 +378,19 @@ describe("Sprint 25 — Company Portability Evaluation Suite", () => {
       hostCapabilities: envNeg.hostCapabilities,
       principalForRun: envNeg.arborPrincipalForRun,
     });
-    const neg1 = await arborNeg.runCompanyResearch({
-      runId: "run.neg.1",
-      request: { company: { name: "Arbor Consulting", domain: "arbor.example" }, questions: [{ id: "offering", question: "What services does Arbor offer?" }] },
-    });
-    expect(neg1.status).toBe("failed");
-    if (neg1.status === "failed") {
-      expect(neg1.failure.executorFailure?.code).toBe("TOOL_AUTHORIZATION_REQUIRED");
+    let neg1Denied = false;
+    try {
+      await arborNeg.runCompanyResearch({
+        runId: "run.neg.1",
+        request: { company: { name: "Arbor Consulting", domain: "arbor.example" }, questions: [{ id: "offering", question: "What services does Arbor offer?" }] },
+      });
+    } catch (err) {
+      if (err instanceof CompanyAdmissionError && err.code === "COMPANY_ADMISSION_DENIED") {
+        neg1Denied = true;
+      }
     }
+    expect(neg1Denied).toBe(true);
+    expect(envNeg.getArborProviderCalls()).toBe(0);
     expect(envNeg.arborWebProvider.calls.search).toHaveLength(0);
 
     // 2. Company A Approval submitted to Company B -> fails verification
@@ -395,7 +407,8 @@ describe("Sprint 25 — Company Portability Evaluation Suite", () => {
     const nsOps = await nsApp.executeOperationalRequest({ runId: "run.neg.ops.2", request: NORTHSTAR_OPERATIONAL_REQUEST });
     const waitRef = nsOps.ok ? (nsOps.execution.wait?.referenceId as string) : "";
     await nsApp.getOperationalRequestProof().approvals.approve(waitRef, NORTHSTAR_ACTORS.manager);
-    const verif = await arbApp.getOperationalRequestProof().approvalVerifier.verifyApproval({
+    const verifier = createCompanyApprovalVerifier(arbApp.getOperationalRequestProof().approvals);
+    const verif = await verifier.verifyApproval({
       approvalId: waitRef,
       requestFingerprint: "fingerprint",
       toolExecutionId: "exec.1",

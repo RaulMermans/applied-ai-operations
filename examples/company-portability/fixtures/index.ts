@@ -24,6 +24,7 @@ import {
 import {
   createNorthstarDraftRepository,
   createArborDraftRepository,
+  createCompanyApprovalVerifier,
   NORTHSTAR_OPERATIONAL_REQUEST,
   ARBOR_OPERATIONAL_REQUEST,
 } from "./operations.js";
@@ -44,6 +45,7 @@ export {
   OVERLAPPING_DOC_REF,
   NORTHSTAR_OPERATIONAL_REQUEST,
   ARBOR_OPERATIONAL_REQUEST,
+  createCompanyApprovalVerifier,
 };
 
 export interface TestHostEnvironment {
@@ -57,6 +59,7 @@ export interface TestHostEnvironment {
   readonly northstarPrincipalForRun: PrincipalForRun;
   readonly arborPrincipalForRun: PrincipalForRun;
   readonly getArborProviderCalls: () => number;
+  readonly getNorthstarProviderCalls: () => number;
 }
 
 export interface TestHostOptions {
@@ -133,5 +136,7 @@ export function createTestHostEnvironment(options: TestHostOptions = {}): TestHo
     northstarPrincipalForRun,
     arborPrincipalForRun,
     getArborProviderCalls: arborModel.providerCalls,
+    getNorthstarProviderCalls: () =>
+      (northstarModelAdapterDef.adapter as unknown as { requests: unknown[] }).requests.length,
   };
 }

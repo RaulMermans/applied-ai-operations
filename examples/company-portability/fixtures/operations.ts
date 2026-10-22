@@ -1,8 +1,11 @@
 import {
   createInMemoryDraftRepository,
+  createOperationalApprovalVerifier,
+  type OperationalApprovalVerifier,
   type OperationalDraftRepository,
   type OperationalRequestInput,
 } from "@aao/example-operational-request";
+import type { AAOApprovals } from "@aao/framework";
 
 export const NORTHSTAR_OPERATIONAL_REQUEST: OperationalRequestInput = Object.freeze({
   schemaVersion: 1,
@@ -32,4 +35,17 @@ export function createNorthstarDraftRepository(): OperationalDraftRepository {
 
 export function createArborDraftRepository(): OperationalDraftRepository {
   return createInMemoryDraftRepository();
+}
+
+/**
+ * Creates an OperationalApprovalVerifier bound to a company's AAOApprovals port.
+ * Exposes approval verification for host fixtures and test suites without
+ * exposing raw approval verifiers on the public company execution facade.
+ */
+export function createCompanyApprovalVerifier(
+  approvals: AAOApprovals
+): OperationalApprovalVerifier {
+  return createOperationalApprovalVerifier({
+    getApproval: (id) => approvals.get(id),
+  });
 }

@@ -249,4 +249,36 @@ describe("Sprint 25 — Company Composition & Portability Tests", () => {
       original.getOperationalRequestProof().planFingerprint
     );
   });
+
+  it("enforces guarded facades: getters return narrow company-scoped interfaces without raw app escape paths", () => {
+    const env = createTestHostEnvironment();
+    const company = createCompanyAAO({
+      manifest: NORTHSTAR_MANIFEST,
+      hostCapabilities: env.hostCapabilities,
+      principalForRun: env.northstarPrincipalForRun,
+    });
+
+    const research = company.getCompanyResearchProof();
+    expect(typeof research.planFingerprint).toBe("string");
+    expect(typeof research.workflow).toBe("object");
+    expect(typeof research.run).toBe("function");
+
+    const doc = company.getDocumentIntelligenceProof();
+    expect(typeof doc.planFingerprint).toBe("string");
+    expect(typeof doc.workflow).toBe("object");
+    expect(typeof doc.run).toBe("function");
+
+    const ops = company.getOperationalRequestProof();
+    expect(typeof ops.planFingerprint).toBe("string");
+    expect(typeof ops.workflow).toBe("object");
+    expect(typeof ops.execute).toBe("function");
+    expect(typeof ops.continue).toBe("function");
+    expect(typeof ops.approvals).toBe("object");
+
+    // Assert raw implementation properties are excluded from public facades
+    const rawOps = ops as unknown as Record<string, unknown>;
+    expect(rawOps.app).toBeUndefined();
+    expect(rawOps.approvalVerifier).toBeUndefined();
+    expect(rawOps.draftRepository).toBeUndefined();
+  });
 });

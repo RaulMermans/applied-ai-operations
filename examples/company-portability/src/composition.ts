@@ -5,14 +5,17 @@ import {
   type EnabledProof,
 } from "@aao/config";
 import type {
+  AAOApprovals,
   AAOClock,
   ModelAdapterDefinition,
   ModelBindingDefinition,
   PrincipalForRun,
   RuntimeExecutionState,
   RuntimeTracePort,
+  Workflow,
   WorkflowExecutionResult,
 } from "@aao/framework";
+import { createGovernanceRegistry } from "@aao/governance";
 import {
   createCompanyResearchProof,
   type CompanyResearchProof,
@@ -31,6 +34,10 @@ import {
   type OperationalRequestInput,
 } from "@aao/example-operational-request";
 import type { HostCapabilityCatalog } from "./catalog.js";
+import {
+  requireCompanyAdmission,
+  type RequireCompanyAdmissionContext,
+} from "./admission.js";
 
 export interface CreateCompanyAAOOptions {
   /** The company manifest (validated or raw). */
@@ -43,6 +50,48 @@ export interface CreateCompanyAAOOptions {
   readonly clock?: AAOClock;
 }
 
+/**
+ * Narrow, guarded execution facade for Company Research.
+ * Enforces company-level admission before any workflow run begins.
+ */
+export interface CompanyResearchFacade {
+  readonly workflow: Workflow;
+  readonly planFingerprint: string;
+  run(input: {
+    runId: string;
+    request: CompanyResearchRequestInput;
+  }): Promise<CompanyResearchRunOutcome>;
+}
+
+/**
+ * Narrow, guarded execution facade for Document Intelligence.
+ * Enforces company-level admission before any workflow run begins.
+ */
+export interface DocumentIntelligenceFacade {
+  readonly workflow: Workflow;
+  readonly planFingerprint: string;
+  run(input: {
+    runId: string;
+    request: DocumentIntelligenceRequestInput;
+  }): Promise<DocumentIntelligenceRunOutcome>;
+}
+
+/**
+ * Narrow, guarded execution facade for Operational Request.
+ * Enforces company-level admission before intake or continuation begins.
+ * Exposes canonical human approval operations without unguarded workflow preparation.
+ */
+export interface OperationalRequestFacade {
+  readonly workflow: Workflow;
+  readonly planFingerprint: string;
+  readonly approvals: AAOApprovals;
+  execute(input: {
+    runId: string;
+    request: OperationalRequestInput;
+  }): Promise<WorkflowExecutionResult>;
+  continue(execution: RuntimeExecutionState): Promise<WorkflowExecutionResult>;
+}
+
 export interface ComposedCompanyAAO {
   readonly companyId: string;
   readonly displayName: string;
@@ -50,9 +99,9 @@ export interface ComposedCompanyAAO {
   readonly manifest: Readonly<CompanyManifestV1>;
   readonly enabledProofs: ReadonlyArray<EnabledProof>;
 
-  getCompanyResearchProof(): CompanyResearchProof;
-  getDocumentIntelligenceProof(): DocumentIntelligenceProof;
-  getOperationalRequestProof(): OperationalRequestProof;
+  getCompanyResearchProof(): CompanyResearchFacade;
+  getDocumentIntelligenceProof(): DocumentIntelligenceFacade;
+  getOperationalRequestProof(): OperationalRequestFacade;
 
   runCompanyResearch(input: {
     runId: string;
@@ -84,6 +133,8 @@ export interface ComposedCompanyAAO {
  * 3. Exact capability reference resolution from host catalog; no dynamic loading.
  * 4. Company-scoped Governance, Tool Registries, Model Bindings, and Approval isolation.
  * 5. Preflight validation fails fast before any tool, provider, or model execution.
+ * 6. Deterministic company-level admission check backed by canonical Governance precedes any workflow execution.
+ * 7. Guarded facades prevent getter bypass of admission boundaries.
  */
 export function createCompanyAAO(options: CreateCompanyAAOOptions): ComposedCompanyAAO {
   if (typeof options.principalForRun !== "function") {
@@ -96,7 +147,15 @@ export function createCompanyAAO(options: CreateCompanyAAOOptions): ComposedComp
   // 1. Strict preflight validation and fingerprinting
   const { manifest, configFingerprint } = validateCompanyManifest(options.manifest);
 
-  // 2. Resolve model bindings and adapters
+  // 2. Compile canonical Governance registry for admission gating
+  const governanceRegistry = createGovernanceRegistry(manifest.governance);
+  const admissionContext: RequireCompanyAdmissionContext = Object.freeze({
+    companyId: manifest.companyId,
+    governanceRegistry,
+    principalForRun: options.principalForRun,
+  });
+
+  // 3. Resolve model bindings and adapters
   const resolvedBindings: ModelBindingDefinition[] = [];
   const resolvedAdaptersMap = new Map<string, ModelAdapterDefinition>();
 
@@ -141,7 +200,7 @@ export function createCompanyAAO(options: CreateCompanyAAOOptions): ComposedComp
   const resolvedModelAdapters = Object.freeze(Array.from(resolvedAdaptersMap.values()));
   const resolvedModelBindings = Object.freeze(resolvedBindings);
 
-  // 3. Resolve integration providers for enabled proofs
+  // 4. Resolve integration providers for enabled proofs
   const enabledSet = new Set(manifest.enabledProofs);
 
   let companyResearchProof: CompanyResearchProof | undefined;
@@ -219,6 +278,60 @@ export function createCompanyAAO(options: CreateCompanyAAOOptions): ComposedComp
     });
   }
 
+  // 5. Construct guarded proof facades preventing getter bypass
+  const companyResearchFacade: CompanyResearchFacade | undefined = companyResearchProof
+    ? Object.freeze({
+        workflow: companyResearchProof.workflow,
+        planFingerprint: companyResearchProof.planFingerprint,
+        async run(input: {
+          runId: string;
+          request: CompanyResearchRequestInput;
+        }): Promise<CompanyResearchRunOutcome> {
+          requireCompanyAdmission(admissionContext, input.runId, "company_research");
+          return companyResearchProof!.run(input);
+        },
+      })
+    : undefined;
+
+  const documentIntelligenceFacade: DocumentIntelligenceFacade | undefined =
+    documentIntelligenceProof
+      ? Object.freeze({
+          workflow: documentIntelligenceProof.workflow,
+          planFingerprint: documentIntelligenceProof.planFingerprint,
+          async run(input: {
+            runId: string;
+            request: DocumentIntelligenceRequestInput;
+          }): Promise<DocumentIntelligenceRunOutcome> {
+            requireCompanyAdmission(admissionContext, input.runId, "document_intelligence");
+            return documentIntelligenceProof!.run(input);
+          },
+        })
+      : undefined;
+
+  const operationalRequestFacade: OperationalRequestFacade | undefined =
+    operationalRequestProof
+      ? Object.freeze({
+          workflow: operationalRequestProof.workflow,
+          planFingerprint: operationalRequestProof.planFingerprint,
+          approvals: operationalRequestProof.approvals,
+          async execute(input: {
+            runId: string;
+            request: OperationalRequestInput;
+          }): Promise<WorkflowExecutionResult> {
+            requireCompanyAdmission(admissionContext, input.runId, "operational_request");
+            return operationalRequestProof!.execute(input);
+          },
+          async continue(execution: RuntimeExecutionState): Promise<WorkflowExecutionResult> {
+            requireCompanyAdmission(
+              admissionContext,
+              execution?.run?.runId,
+              "operational_request"
+            );
+            return operationalRequestProof!.continue(execution);
+          },
+        })
+      : undefined;
+
   return Object.freeze({
     companyId: manifest.companyId,
     displayName: manifest.displayName,
@@ -226,46 +339,47 @@ export function createCompanyAAO(options: CreateCompanyAAOOptions): ComposedComp
     manifest,
     enabledProofs: manifest.enabledProofs,
 
-    getCompanyResearchProof() {
-      if (!companyResearchProof) {
+    getCompanyResearchProof(): CompanyResearchFacade {
+      if (!companyResearchFacade) {
         throw new CompanyConfigError(
           "CONFIG_PROOF_DISABLED",
           `Proof 'company_research' is disabled for company '${manifest.companyId}'`
         );
       }
-      return companyResearchProof;
+      return companyResearchFacade;
     },
 
-    getDocumentIntelligenceProof() {
-      if (!documentIntelligenceProof) {
+    getDocumentIntelligenceProof(): DocumentIntelligenceFacade {
+      if (!documentIntelligenceFacade) {
         throw new CompanyConfigError(
           "CONFIG_PROOF_DISABLED",
           `Proof 'document_intelligence' is disabled for company '${manifest.companyId}'`
         );
       }
-      return documentIntelligenceProof;
+      return documentIntelligenceFacade;
     },
 
-    getOperationalRequestProof() {
-      if (!operationalRequestProof) {
+    getOperationalRequestProof(): OperationalRequestFacade {
+      if (!operationalRequestFacade) {
         throw new CompanyConfigError(
           "CONFIG_PROOF_DISABLED",
           `Proof 'operational_request' is disabled for company '${manifest.companyId}'`
         );
       }
-      return operationalRequestProof;
+      return operationalRequestFacade;
     },
 
     async runCompanyResearch(input: {
       runId: string;
       request: CompanyResearchRequestInput;
-    }) {
+    }): Promise<CompanyResearchRunOutcome> {
       if (!companyResearchProof) {
         throw new CompanyConfigError(
           "CONFIG_PROOF_DISABLED",
           `Proof 'company_research' is disabled for company '${manifest.companyId}'`
         );
       }
+      requireCompanyAdmission(admissionContext, input.runId, "company_research");
       const canonicalRequest = {
         schemaVersion: 1 as const,
         company: input.request.company,
@@ -277,36 +391,45 @@ export function createCompanyAAO(options: CreateCompanyAAOOptions): ComposedComp
     async runDocumentIntelligence(input: {
       runId: string;
       request: DocumentIntelligenceRequestInput;
-    }) {
+    }): Promise<DocumentIntelligenceRunOutcome> {
       if (!documentIntelligenceProof) {
         throw new CompanyConfigError(
           "CONFIG_PROOF_DISABLED",
           `Proof 'document_intelligence' is disabled for company '${manifest.companyId}'`
         );
       }
+      requireCompanyAdmission(admissionContext, input.runId, "document_intelligence");
       return documentIntelligenceProof.run(input);
     },
 
     async executeOperationalRequest(input: {
       runId: string;
       request: OperationalRequestInput;
-    }) {
+    }): Promise<WorkflowExecutionResult> {
       if (!operationalRequestProof) {
         throw new CompanyConfigError(
           "CONFIG_PROOF_DISABLED",
           `Proof 'operational_request' is disabled for company '${manifest.companyId}'`
         );
       }
+      requireCompanyAdmission(admissionContext, input.runId, "operational_request");
       return operationalRequestProof.execute(input);
     },
 
-    async continueOperationalRequest(execution: RuntimeExecutionState) {
+    async continueOperationalRequest(
+      execution: RuntimeExecutionState
+    ): Promise<WorkflowExecutionResult> {
       if (!operationalRequestProof) {
         throw new CompanyConfigError(
           "CONFIG_PROOF_DISABLED",
           `Proof 'operational_request' is disabled for company '${manifest.companyId}'`
         );
       }
+      requireCompanyAdmission(
+        admissionContext,
+        execution?.run?.runId,
+        "operational_request"
+      );
       return operationalRequestProof.continue(execution);
     },
   });
