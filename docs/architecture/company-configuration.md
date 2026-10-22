@@ -130,3 +130,74 @@ The composition factory `createCompanyAAO` builds a company execution container:
 3. Instantiates enabled proofs passing company-scoped governance, providers, and bindings.
 4. Isolates Tool Registries, Governance subjects, and Approval engines to the specific company scope.
 5. Guarantees immutable configuration during a run: no hot reload, no mid-flight tenant switching.
+
+## Deterministic Host-Side Admission Gate (`requireCompanyAdmission`)
+
+In workflows where model reasoning precedes governed Tool nodes (such as Company Research's `plan` node), relying solely on Tool Runtime authorization allows an unauthorized principal to trigger model execution before Tool authorization eventually fails.
+
+To enforce deterministic, company-scoped isolation, AAO introduces a host-side admission gate before any Workflow execution begins:
+
+```text
+Company Execution Request
+           │
+           ▼
+  Trusted Company Host
+           │
+           ▼
+ Resolve Host-Attested Principal
+           │
+           ▼
+ Canonical Governance Decision (resolveAuthority)
+           │
+       ┌───┴───┐
+       ▼       ▼
+     DENY    ALLOW
+       │       │
+       ▼       ▼
+   No Run   Existing Workflow
+   No Model      │
+   No Tool       ▼
+   No Provider  Existing AAO Runtime
+                 │
+                 ▼
+          Model / Tool / Approval
+          Existing Authority Gates
+```
+
+### The Three Boundaries
+
+AAO maintains three distinct, non-interchangeable security boundaries:
+
+- **Admission** determines whether a Run may start. Backed by canonical Governance (`resolveAuthority` from `@aao/governance`), it validates host-attested principal eligibility against fixed preliminary proof permissions before model invocation, tool invocation, provider access, approval creation, draft creation, or workflow run execution.
+- **Authorization** determines whether a Tool may execute. Enforced deterministically by the Tool Runtime at tool invocation time against the principal's effective permissions.
+- **Approval** determines whether an eligible human has authorized a specific business proposal. Enforced by the canonical Approval Engine.
+
+### Fixed Preliminary Permissions
+
+Preliminary permissions are owned by trusted application code and cannot be overridden by request input, model output, or manifests:
+
+| Proof | Required Preliminary Permission | Rationale |
+|---|---|---|
+| `company_research` | `read_only` | Entry into public-web search and synthesis workflows |
+| `document_intelligence` | `read_only` | Entry into document extraction and grounding workflows |
+| `operational_request` | `write_draft` | Entry into business proposal and draft staging workflows |
+
+### Zero Side-Effect Invariant on Denial
+
+When an unauthorized principal is denied admission:
+- Model invocations = 0
+- Tool invocations = 0
+- Provider calls = 0
+- Approval records created = 0
+- Drafts created = 0
+- Workflow runs started = 0
+
+The request fails closed with a typed `CompanyAdmissionError` (`code: "COMPANY_ADMISSION_DENIED"`). No synthetic runtime traces or fake workflow executions are fabricated.
+
+## Guarded Proof Facades & Elimination of Execution Bypasses
+
+To prevent callers from bypassing admission checks through alternative API surfaces:
+
+1. **Guarded Facade Interfaces**: `createCompanyAAO` returns guarded facade objects (`CompanyResearchFacade`, `DocumentIntelligenceFacade`, `OperationalRequestFacade`). Every entry point (`runCompanyResearch`, `runDocumentIntelligence`, `executeOperationalRequest`, `continueOperationalRequest`, `proof.run`, `proof.execute`, `proof.continue`) enforces `requireCompanyAdmission()`.
+2. **Omission of Raw Engine Objects**: Raw `app` instances (`AAOApplication`), `approvalVerifier`, and `draftRepository` are deliberately omitted from public facade properties. Callers cannot invoke `app.prepareWorkflow().execute(...)` or `approvalVerifier.verify(...)` directly to bypass the company admission gate.
+3. **Continuation Guard**: Continuation of pending workflows (e.g. `continueOperationalRequest`) enforces admission with the continued `runId`, ensuring revoked authority prevents workflow resumption before any node execution.

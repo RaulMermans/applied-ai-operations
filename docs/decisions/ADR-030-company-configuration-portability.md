@@ -125,13 +125,70 @@ The composition factory `createCompanyAAO` accepts a validated manifest and a ho
 - Isolates Tool Registries, Governance verification, and Approval verifiers strictly to the composed company scope.
 - Enforces fail-closed isolation: cross-company principals, approval records, or document IDs are rejected.
 
+### 7. Deterministic Pre-Execution Company Admission & Guarded Proof Facades (Sprint 25D)
+
+In Sprint 25C, the cross-company isolation test proved that foreign principals are correctly rejected by canonical Tool Authorization at the first governed Tool boundary (`TOOL_AUTHORIZATION_REQUIRED`). However, because Company Research executes its planning model (`plan`) before reaching its first Tool (`search`), foreign principals could cause an unauthorized model invocation before Tool Runtime rejected the run.
+
+#### Rejection of Workflow Graph Reordering
+
+We explicitly reject modifying or reordering Workflow DAG nodes to solve this issue (e.g., placing `search` before `plan`, adding an artificial dummy tool before planning, or conditional routing). Such alterations would distort natural workflow semantics, fork workflow graphs across use cases, and violate the core portability invariant:
+```text
+PlanFingerprint(Northstar) === PlanFingerprint(Arbor)
+```
+
+#### Deterministic Host-Side Admission Architecture
+
+Instead, we introduce deterministic host-side admission backed by canonical AAO Governance (`@aao/governance`):
+
+```text
+Company Execution Request
+           │
+           ▼
+  Trusted Company Host
+           │
+           ▼
+ Resolve Host-Attested Principal (principalForRun)
+           │
+           ▼
+ Canonical Governance Decision (resolveAuthority)
+           │
+       ┌───┴───┐
+       │       │
+      DENY   ALLOW
+       │       │
+       ▼       ▼
+    No Run  Existing Workflow
+   No Model     │
+   No Tool      ▼
+ No Provider Existing AAO Runtime
+                │
+                ▼
+         Model / Tool / Approval
+         Existing Authority Gates
+```
+
+#### Core Invariants & Rules
+
+1. **Canonical Governance Reuse**: The admission gate calls `resolveAuthority(governanceRegistry, principal, requiredPermissions)` directly against the validated, immutable Governance snapshot compiled at composition time (`createGovernanceRegistry(manifest.governance)`). No custom policy evaluator, permission class, or interpreter is introduced.
+2. **Fixed Application-Owned Admission Permissions**: Preliminary requirements are fixed constants defined in trusted application code:
+   - `company_research`: `read_only`
+   - `document_intelligence`: `read_only`
+   - `operational_request`: `write_draft`
+   These requirements cannot be altered by request payloads, model proposals, company display names, manifest extensions, or dynamic expressions.
+3. **Boundary Distinction**: Admission determines whether a Run may start; Tool Runtime Authorization determines whether a specific Tool may execute; Human Approval determines whether an authorized human has approved a concrete proposal. None replaces the others.
+4. **Trusted Principal & Run ID Separation**: `principalForRun({ runId })` is a trusted host function. Run IDs are correlation identifiers, never authentication credentials. Authorization is never derived from string prefixes or request parameters.
+5. **Guarded Proof Facades**: Raw proof instances are kept private inside `createCompanyAAO()`. Getters (`getCompanyResearchProof()`, `getDocumentIntelligenceProof()`, `getOperationalRequestProof()`) return narrow facades enforcing admission on `.run()`, `.execute()`, and `.continue()`. Implementation objects (`app`, `approvalVerifier`, `draftRepository`) that could allow alternative `app.prepareWorkflow()` bypass paths are excluded from public facades.
+6. **Operational Continuation Protection**: Continuation paths (`continueOperationalRequest` and `facade.continue`) re-enforce admission using the canonical Run ID association before resuming execution, preventing cross-company continuation while preserving canonical human approval checks.
+7. **Admission Failure Semantics & Zero-Call Invariant**: Denied attempts throw `CompanyAdmissionError` with code `COMPANY_ADMISSION_DENIED` and Governance reason codes (`GOVERNANCE_DEFAULT_DENY`, `GOVERNANCE_POLICY_DENY`). On denial, exactly 0 model calls, 0 tool calls, 0 provider calls, 0 approval records, and 0 drafts occur. No Workflow run starts and no execution trace is fabricated.
+8. **Local Trusted Host Boundary**: The architecture guarantees strict isolation within a trusted host process and does not claim adversarial multitenancy, network isolation, or identity federation.
+
 ## Consequences
 
 ### Positive
 - **Proven Portability**: The 3 flagship workflows run against Northstar Commerce (retail inventory sync, native model adapter, supplier agreements, merchandise approval) and Arbor Consulting (management advisory, Vercel AI SDK mock model, client MSA, client display name approval) without altering workflow code.
 - **Zero Core Forks**: AAO Core (`@aao/framework`, `@aao/runtime`, `@aao/tool-runtime`, `@aao/governance`, `@aao/approval`) remains untouched.
-- **Fail-Closed Isolation**: Cross-company principal invocations fail closed; cross-company approvals are rejected; overlapping document refs resolve strictly within company provider bounds.
-- **Compiled authorization evidence**: The cross-company smoke submits a schema-valid Research request with a Northstar principal to Arbor, checks `TOOL_AUTHORIZATION_REQUIRED` at the search Tool boundary and zero Arbor web calls, then runs the same request with an Arbor principal as a positive control. The Research planning model precedes the search Tool, so this smoke cannot prove zero model calls before denial.
+- **Pre-Execution Admission & Fail-Closed Isolation**: Cross-company principal invocations fail closed with `COMPANY_ADMISSION_DENIED` before any model, tool, or provider execution; cross-company approvals are rejected; overlapping document refs resolve strictly within company provider bounds.
+- **Compiled admission evidence**: The cross-company smoke submits a schema-valid Research request with a Northstar principal to Arbor, proves `COMPANY_ADMISSION_DENIED` with exactly zero model calls, zero provider calls, and zero workflow executions, then runs the same request with an authorized Arbor principal as a positive control.
 - **Verifiable Identity**: Plan fingerprints prove shared compilation; configuration fingerprints prove distinct governed environments.
 
 ### Trade-offs & Limitations

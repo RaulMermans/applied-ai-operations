@@ -74,12 +74,13 @@ A configuration mutation (e.g. updating `displayName`) immediately yields a new 
 
 ## Local Isolation Evidence and Limits
 
-1. **Provider Isolation**: Web provider calls are isolated to the company's designated provider. During Northstar research, Arbor's provider receives 0 calls.
-2. **Document Partitioning with Overlapping References**: Both companies configure the document reference `fixture.contract-001`. Northstar resolves `northstar-supplier-agreement.txt` with supplier payment terms; Arbor resolves `arbor-master-services.txt` with consulting terms. No cross-tenant document content is leaked.
-3. **Governance Refusal**: A valid Arbor Research request made with a Northstar principal fails at the search Tool with canonical `TOOL_AUTHORIZATION_REQUIRED` before Arbor web calls. The same request succeeds with an authorized Arbor principal. The Research planning model runs before the search Tool, so the refusal does not prove zero model calls.
-4. **Approval Verification Refusal**: An approval granted by Northstar's manager cannot be verified or used to authorize a draft inside Arbor Consulting's environment.
+1. **Pre-Execution Company Admission Gate**: A valid Arbor Research request made with a Northstar principal is refused before any workflow execution begins with typed `COMPANY_ADMISSION_DENIED`. Pre-execution admission guarantees exactly 0 model invocations, 0 tool calls, 0 provider calls, 0 approval records, 0 drafts created, and 0 workflow runs started. The identical request succeeds with an authorized Arbor principal (`arb.researcher`).
+2. **Provider Isolation**: Web provider calls are isolated to the company's designated provider. During Northstar research, Arbor's provider receives 0 calls.
+3. **Document Partitioning with Overlapping References**: Both companies configure the document reference `fixture.contract-001`. Northstar resolves `northstar-supplier-agreement.txt` with supplier payment terms; Arbor resolves `arbor-master-services.txt` with consulting terms. No cross-tenant document content is leaked.
+4. **Approval Verification Refusal**: An approval granted by Northstar's manager cannot be verified or used to authorize a draft inside Arbor Consulting's environment (`APPROVAL_FINGERPRINT_MISMATCH`).
 5. **Draft Repository Partitioning**: In-memory draft repositories are partitioned. Drafts staged by Northstar cannot be accessed or modified by Arbor.
 6. **Zero External Side Effects**: All drafts are stored in host memory with `externalExecution: "not_executed"`.
+7. **Guarded Facade Surfaces**: Direct access to raw `app`, `approvalVerifier`, and `draftRepository` is eliminated from public proof facade objects, preventing callers from bypassing the admission gate.
 
 ## Evaluation & Smoke Verification
 
