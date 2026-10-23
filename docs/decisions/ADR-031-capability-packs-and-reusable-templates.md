@@ -110,6 +110,16 @@ To preserve `CompanyManifestV1` compatibility and configuration fingerprints fro
 
 Each pack references an exact evaluation profile (`aao.company-research.evals@1.0.0`, `aao.document-intelligence.evals@1.0.0`, `aao.operational-request.evals@1.0.0`) executed by the canonical Evaluation Runtime (`@aao/evaluation`) and its deterministic graders. Passing an Eval profile provides verification evidence; it never bypasses runtime Governance or authorization.
 
+### 9. Fail-Closed Compatibility Preflight & Mandatory Registration Evidence (Sprint 26C)
+
+Compatibility preflight (`validatePackCompatibility()` and `resolveCompanyCapabilityPacks()`) is strictly **fail-closed and evidence-backed**:
+- **Mandatory Registration Evidence**: `PackCompatibilityContext` requires explicit, non-null arrays for `registeredTools`, `registeredModelPolicies`, `registeredModelBindings`, and `registeredEvalProfiles`. Omitted, `undefined`, `null`, or malformed evidence is rejected immediately with `PACK_EVIDENCE_UNAVAILABLE`. Missing evidence is never treated as permission to skip validation.
+- **Trusted Registration Snapshots (`ProofRegistrationSnapshot`)**: Each composed proof captures a deep-frozen, read-only `ProofRegistrationSnapshot` from the exact `prepared` workflow plan, `tools`, `modelPolicies`, `modelBindings`, and `modelAdapters` supplied to `createAAO()`. Raw runtime objects (`app`, `prepareWorkflow`, tool handlers, adapter implementations, approval verifiers) are never exposed.
+- **No Static Capability Inventories**: Hard-coded fallback lists (`STANDARD_PROOF_TOOLS`, `STANDARD_MODEL_POLICIES`) and untrusted caller capability overrides are disallowed. If a Tool or Model Policy is removed from actual proof registration, compatibility preflight fails automatically with `PACK_REQUIREMENT_MISSING`.
+- **Binding + Adapter Capability Verification**: Compatibility never assumes a model binding supports `model.structured_output`. For every required `modelCapability`, preflight verifies that at least one registered `ModelBindingDefinition` declares the capability **and** its referenced `ModelAdapterDefinition` (`id@version`) also declares the capability in `manifest.capabilities`.
+- **Verified Evaluation Profile Registration**: Before activation, the host verifies that `pack.manifest.verification.evalProfileRef` is registered in the `PackEvalProfileCatalog`, its dataset and definition contracts pass canonical validation, and every referenced grader is registered in the canonical `EvaluatorRegistry`. Unknown or unbuildable profiles fail preflight with `PACK_VERIFICATION_PROFILE_MISSING` without executing the Eval dataset during activation.
+- **Atomic Whole-Selection Validation**: When a company selects multiple Capability Packs, all selected packs must pass compatibility preflight before any pack is activated.
+
 ## Consequences
 
 ### Positive

@@ -12,6 +12,8 @@ export {
   createCompanyAAO,
   type ComposedCompanyAAO,
   type CreateCompanyAAOOptions,
+  type ProofRegistrationOverride,
+  type ProofRegistrationSnapshot,
   type CompanyResearchFacade,
   type DocumentIntelligenceFacade,
   type OperationalRequestFacade,

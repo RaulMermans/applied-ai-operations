@@ -74,4 +74,5 @@ export {
   type DocumentIntelligenceProof,
   type DocumentIntelligenceProofOptions,
   type DocumentIntelligenceRunOutcome,
+  type ProofRegistrationSnapshot,
 } from "./proof.js";

@@ -2,7 +2,9 @@ import process from "node:process";
 import {
   CANONICAL_CAPABILITY_PACKS,
   CapabilityPackError,
-  validatePackCompatibility,
+  COMPANY_RESEARCH_PACK_MANIFEST,
+  createCapabilityPackCatalog,
+  defineCapabilityPack,
 } from "@aao/capability-packs";
 import {
   createCompanyAAO,
@@ -15,6 +17,7 @@ import {
 import type { EvalEvidenceBundle, ExecutionEvidence } from "@aao/evaluation";
 import {
   createStandardPackCatalog,
+  createStandardEvalProfileCatalog,
   resolveCompanyCapabilityPacks,
   evaluatePackRun,
   EVAL_PROFILES,
@@ -41,11 +44,12 @@ import {
 async function main() {
   process.stdout.write("=== Sprint 26: Capability Packs & Reusable Business Templates Demo ===\n\n");
 
-  // 1-3. Load manifests, validate contracts, and print catalog
+  // 1. Registered Capability Packs and fingerprints
   const catalog = createStandardPackCatalog();
+  const evalProfileCatalog = createStandardEvalProfileCatalog();
   const packs = catalog.listCapabilityPacks();
 
-  process.stdout.write(`Registered Capability Packs (${packs.length}):\n`);
+  process.stdout.write(`1. Registered Capability Packs (${packs.length}):\n`);
   for (const pack of packs) {
     process.stdout.write(
       `  - ${pack.identity}\n` +
@@ -54,14 +58,14 @@ async function main() {
         `    Outcome Class: ${pack.manifest.execution.outcomeClass}\n` +
         `    Pack Fingerprint: ${pack.fingerprint.slice(0, 16)}...\n` +
         `    Workflow: ${pack.manifest.workflow.id}@${pack.manifest.workflow.version} (plan: ${pack.manifest.workflow.planFingerprint.slice(0, 16)}...)\n` +
-        `    Tools: ${pack.manifest.requirements.toolRefs.map((t) => `${t.id}@${t.version}`).join(", ")}\n` +
-        `    Model Policies: ${pack.manifest.requirements.modelPolicyRefs.join(", ")}\n` +
-        `    Eval Profile: ${pack.manifest.verification.evalProfileRef}\n`
+        `    Required Tools: ${pack.manifest.requirements.toolRefs.map((t) => `${t.id}@${t.version}`).join(", ")}\n` +
+        `    Required Model Policies: ${pack.manifest.requirements.modelPolicyRefs.join(", ")}\n` +
+        `    Required Eval Profile: ${pack.manifest.verification.evalProfileRef}\n`
     );
   }
   process.stdout.write("\n");
 
-  // 4-8. Compose Northstar Commerce & Arbor Consulting and activate packs
+  // Compose Northstar Commerce & Arbor Consulting
   const store = createInMemoryTraceStore();
   const trace = createTraceRecorder({ store });
   const env = createTestHostEnvironment();
@@ -80,27 +84,92 @@ async function main() {
     trace,
   });
 
-  process.stdout.write("Company Configurations:\n");
-  process.stdout.write(`  - ${northstarAAO.displayName} (${northstarAAO.companyId}) | fingerprint: ${northstarAAO.configFingerprint.slice(0, 16)}...\n`);
-  process.stdout.write(`  - ${arborAAO.displayName} (${arborAAO.companyId}) | fingerprint: ${arborAAO.configFingerprint.slice(0, 16)}...\n\n`);
+  // 2-5. Actual registered Tool counts, Model Policy refs, Model binding/adapter verification, Eval profile refs
+  process.stdout.write("2-5. Trusted Registration Evidence Snapshot (Northstar & Arbor):\n");
+  const proofEntries = [
+    ["company_research", northstarAAO.getCompanyResearchProof()],
+    ["document_intelligence", northstarAAO.getDocumentIntelligenceProof()],
+    ["operational_request", northstarAAO.getOperationalRequestProof()],
+  ] as const;
+  for (const [proofId, nsFacade] of proofEntries) {
+    const snap = nsFacade.registrationSnapshot;
+    const bindingInfo = snap.modelBindings
+      .map((b) => {
+        const adapter = snap.modelAdapters.find(
+          (a) => a.id === b.adapterRef.id && a.version === b.adapterRef.version
+        );
+        const supportedAdapterCaps =
+          adapter?.capabilities
+            .filter((c) => c.support === "supported")
+            .map((c) => c.capability)
+            .join(",") ?? "missing";
+        return `${b.id}[${b.capabilities.join(",")}] -> ${b.adapterRef.id}@${b.adapterRef.version}[${supportedAdapterCaps}]`;
+      })
+      .join("; ");
+    process.stdout.write(
+      `  - Proof [${proofId}]:\n` +
+        `    Registered Tools (${snap.tools.length}): ${snap.tools.map((t) => `${t.id}@${t.version}`).join(", ")}\n` +
+        `    Registered Model Policies (${snap.modelPolicies.length}): ${snap.modelPolicies.join(", ")}\n` +
+        `    Verified Binding & Adapter Capabilities: ${bindingInfo}\n`
+    );
+  }
+  process.stdout.write(
+    `  - Registered Eval Profiles (${evalProfileCatalog.listProfileRefs().length}): ${evalProfileCatalog.listProfileRefs().join(", ")}\n\n`
+  );
 
+  // 6-7. Northstar & Arbor compatibility reports: PASS
   const northstarPacks = resolveCompanyCapabilityPacks({
     company: northstarAAO,
     catalog,
     selection: NORTHSTAR_PACK_SELECTION,
+    evalProfileCatalog,
+    hostCapabilities: env.hostCapabilities,
   });
 
   const arborPacks = resolveCompanyCapabilityPacks({
     company: arborAAO,
     catalog,
     selection: ARBOR_PACK_SELECTION,
+    evalProfileCatalog,
+    hostCapabilities: env.hostCapabilities,
   });
 
-  process.stdout.write("Activated Pack Matrix (6/6):\n");
+  process.stdout.write("6-7. Compatibility Preflight Reports:\n");
+  for (const activated of northstarPacks.listPacks()) {
+    const r = activated.compatibilityReport;
+    process.stdout.write(
+      `  - Northstar (${r.companyId}) x ${r.packIdentity}: ${r.compatible ? "PASS" : "FAIL"} ` +
+        `(tools: ${r.verifiedRequirements.tools}, policies: ${r.verifiedRequirements.modelPolicies}, ` +
+        `modelCaps: ${r.verifiedRequirements.modelCapabilities}, evalProfiles: ${r.verifiedRequirements.evalProfiles})\n`
+    );
+  }
+  for (const activated of arborPacks.listPacks()) {
+    const r = activated.compatibilityReport;
+    process.stdout.write(
+      `  - Arbor (${r.companyId}) x ${r.packIdentity}: ${r.compatible ? "PASS" : "FAIL"} ` +
+        `(tools: ${r.verifiedRequirements.tools}, policies: ${r.verifiedRequirements.modelPolicies}, ` +
+        `modelCaps: ${r.verifiedRequirements.modelCapabilities}, evalProfiles: ${r.verifiedRequirements.evalProfiles})\n`
+    );
+  }
+  process.stdout.write("\n");
+
+  // 13-14. Pack fingerprint equality & Workflow Plan fingerprint equality across companies
+  process.stdout.write("13-14. Cross-Company Fingerprint Equality:\n");
+  for (const pack of CANONICAL_CAPABILITY_PACKS) {
+    const nsAct = northstarPacks.getPack(pack.ref);
+    const arbAct = arborPacks.getPack(pack.ref);
+    process.stdout.write(
+      `  - ${pack.identity}: Pack Fingerprint Equal=${nsAct.packFingerprint === arbAct.packFingerprint} (${nsAct.packFingerprint.slice(0, 12)}...) | ` +
+        `Workflow Plan Fingerprint Equal=${nsAct.workflowPlanFingerprint === arbAct.workflowPlanFingerprint} (${nsAct.workflowPlanFingerprint.slice(0, 12)}...)\n`
+    );
+  }
+  process.stdout.write("\n");
+
+  // 8. Six successful executions
+  process.stdout.write("8. Activated Pack Execution Matrix (6/6):\n");
 
   const evidenceMap = new Map<string, EvalEvidenceBundle>();
 
-  // 9. Run Six-Scenario Matrix
   // Scenario 1: Northstar x Company Research
   const nsCR = await northstarPacks.getPack<CompanyResearchFacade>("aao.company-research@1.0.0").facade.run({
     runId: "run.demo.ns.cr",
@@ -173,48 +242,98 @@ async function main() {
   if (!arbORResume.ok) throw new Error("Arbor Operational Request continuation failed");
   process.stdout.write(`  [6/6] Arbor x Operational Request: ${arbORResume.execution.run.status}\n\n`);
 
-  // 10-12. Negative boundary demonstrations
-  process.stdout.write("Governance & Compatibility Refusal Demonstrations:\n");
+  // 9-12. Governance & Compatibility Refusal Demonstrations
+  process.stdout.write("9-12. Governance & Compatibility Refusal Demonstrations:\n");
 
-  // 10. Missing capability rejection
+  const baseCRSnapshot = northstarAAO.getCompanyResearchProof().registrationSnapshot;
+
+  // 9. Missing Tool refusal demonstration
   try {
-    validatePackCompatibility(CANONICAL_CAPABILITY_PACKS[0]!, {
-      companyId: "northstar-commerce",
-      enabledProofs: ["company_research"],
-      governanceRoles: [],
-      modelBindings: [{ id: "ns", capabilities: ["model.structured_output"] }],
-      integrations: {}, // Missing publicWebProviderRef!
-      workflow: CANONICAL_CAPABILITY_PACKS[0]!.manifest.workflow,
+    const missingToolAAO = createCompanyAAO({
+      manifest: NORTHSTAR_MANIFEST,
+      hostCapabilities: env.hostCapabilities,
+      principalForRun: env.northstarPrincipalForRun,
+      proofRegistrations: {
+        company_research: {
+          tools: [],
+        },
+      },
     });
-  } catch (err) {
-    if (err instanceof CapabilityPackError) {
-      process.stdout.write(`  - Missing integration capability refused: ${err.code}\n`);
-    }
-  }
-
-  // 11. Disabled proof rejection
-  const restrictedAAO = createCompanyAAO({
-    manifest: { ...ARBOR_MANIFEST, enabledProofs: ["company_research"] },
-    hostCapabilities: env.hostCapabilities,
-    principalForRun: env.arborPrincipalForRun,
-  });
-  try {
     resolveCompanyCapabilityPacks({
-      company: restrictedAAO,
+      company: missingToolAAO,
       catalog,
       selection: {
         schemaVersion: 1,
-        companyId: "arbor-consulting",
-        packRefs: [{ id: "aao.operational-request", version: "1.0.0" }],
+        companyId: "northstar-commerce",
+        packRefs: [{ id: "aao.company-research", version: "1.0.0" }],
       },
     });
   } catch (err) {
     if (err instanceof CapabilityPackError) {
-      process.stdout.write(`  - Disabled proof pack activation refused: ${err.code}\n`);
+      process.stdout.write(`  - [9] Missing Tool registration refused: ${err.code} (${err.message})\n`);
     }
   }
 
-  // 12. Unauthorized principal refusal
+  // 10. Missing Model capability refusal demonstration
+  try {
+    const missingModelCapAAO = createCompanyAAO({
+      manifest: NORTHSTAR_MANIFEST,
+      hostCapabilities: env.hostCapabilities,
+      principalForRun: env.northstarPrincipalForRun,
+      proofRegistrations: {
+        company_research: {
+          registrationSnapshot: {
+            ...baseCRSnapshot,
+            modelAdapters: baseCRSnapshot.modelAdapters.map((a) => ({
+              ...a,
+              capabilities: [
+                { capability: "model.structured_output", support: "unsupported" as const },
+              ],
+            })),
+          },
+        },
+      },
+    });
+    resolveCompanyCapabilityPacks({
+      company: missingModelCapAAO,
+      catalog,
+      selection: {
+        schemaVersion: 1,
+        companyId: "northstar-commerce",
+        packRefs: [{ id: "aao.company-research", version: "1.0.0" }],
+      },
+    });
+  } catch (err) {
+    if (err instanceof CapabilityPackError) {
+      process.stdout.write(`  - [10] Missing Model/Adapter capability refused: ${err.code} (${err.message})\n`);
+    }
+  }
+
+  // 11. Unknown Eval profile refusal demonstration
+  try {
+    const unknownEvalPack = defineCapabilityPack({
+      ...COMPANY_RESEARCH_PACK_MANIFEST,
+      verification: {
+        evalProfileRef: "aao.unknown-profile.evals@1.0.0",
+      },
+    });
+    const customCatalog = createCapabilityPackCatalog([unknownEvalPack]);
+    resolveCompanyCapabilityPacks({
+      company: northstarAAO,
+      catalog: customCatalog,
+      selection: {
+        schemaVersion: 1,
+        companyId: "northstar-commerce",
+        packRefs: [{ id: "aao.company-research", version: "1.0.0" }],
+      },
+    });
+  } catch (err) {
+    if (err instanceof CapabilityPackError) {
+      process.stdout.write(`  - [11] Unknown Eval profile refused: ${err.code} (${err.message})\n`);
+    }
+  }
+
+  // 12. Foreign-principal refusal demonstration
   const foreignEnv = createTestHostEnvironment({
     arborPrincipalOverride: () => NORTHSTAR_ACTORS.analyst,
   });
@@ -235,11 +354,11 @@ async function main() {
     });
   } catch (err) {
     if (err instanceof CompanyAdmissionError) {
-      process.stdout.write(`  - Foreign principal refused pre-execution: ${err.code}\n\n`);
+      process.stdout.write(`  - [12] Foreign principal refused pre-execution: ${err.code} (0 provider calls)\n\n`);
     }
   }
 
-  // 14. Evaluation verification
+  // 15. Evaluation verification results
   const crEval = await evaluatePackRun({
     profileRef: EVAL_PROFILES.companyResearch,
     evidenceKey: "run://demo.ns.cr",
@@ -256,7 +375,7 @@ async function main() {
     evidenceMap,
   });
 
-  process.stdout.write("Pack Evaluation Verification:\n");
+  process.stdout.write("15. Pack Evaluation Verification:\n");
   process.stdout.write(`  - ${EVAL_PROFILES.companyResearch}: ${crEval.passedCases}/${crEval.totalCases} PASSED\n`);
   process.stdout.write(`  - ${EVAL_PROFILES.documentIntelligence}: ${diEval.passedCases}/${diEval.totalCases} PASSED\n`);
   process.stdout.write(`  - ${EVAL_PROFILES.operationalRequest}: ${orEval.passedCases}/${orEval.totalCases} PASSED\n\n`);

@@ -75,4 +75,5 @@ export {
   createOperationalRequestProof,
   type OperationalRequestProofOptions,
   type OperationalRequestProof,
+  type ProofRegistrationSnapshot,
 } from "./proof.js";

@@ -9,9 +9,11 @@ import type {
   AAOClock,
   ModelAdapterDefinition,
   ModelBindingDefinition,
+  ModelPolicySpec,
   PrincipalForRun,
   RuntimeExecutionState,
   RuntimeTracePort,
+  ToolDefinition,
   Workflow,
   WorkflowExecutionResult,
 } from "@aao/framework";
@@ -21,6 +23,7 @@ import {
   type CompanyResearchProof,
   type CompanyResearchRequestInput,
   type CompanyResearchRunOutcome,
+  type ProofRegistrationSnapshot,
 } from "@aao/example-company-research";
 import {
   createDocumentIntelligenceProof,
@@ -39,6 +42,16 @@ import {
   type RequireCompanyAdmissionContext,
 } from "./admission.js";
 
+export type { ProofRegistrationSnapshot };
+
+export interface ProofRegistrationOverride {
+  readonly tools?: readonly ToolDefinition[];
+  readonly modelPolicies?: readonly ModelPolicySpec[];
+  readonly modelBindings?: readonly ModelBindingDefinition[];
+  readonly modelAdapters?: readonly ModelAdapterDefinition[];
+  readonly registrationSnapshot?: ProofRegistrationSnapshot;
+}
+
 export interface CreateCompanyAAOOptions {
   /** The company manifest (validated or raw). */
   readonly manifest: CompanyManifestV1 | unknown;
@@ -48,6 +61,15 @@ export interface CreateCompanyAAOOptions {
   readonly principalForRun: PrincipalForRun;
   readonly trace?: RuntimeTracePort;
   readonly clock?: AAOClock;
+  /**
+   * Optional per-proof registration overrides for testing actual proof registration
+   * changes (e.g. missing tools, missing model policies, or altered model bindings).
+   */
+  readonly proofRegistrations?: {
+    readonly company_research?: ProofRegistrationOverride;
+    readonly document_intelligence?: ProofRegistrationOverride;
+    readonly operational_request?: ProofRegistrationOverride;
+  };
 }
 
 /**
@@ -57,6 +79,7 @@ export interface CreateCompanyAAOOptions {
 export interface CompanyResearchFacade {
   readonly workflow: Workflow;
   readonly planFingerprint: string;
+  readonly registrationSnapshot: ProofRegistrationSnapshot;
   run(input: {
     runId: string;
     request: CompanyResearchRequestInput;
@@ -70,6 +93,7 @@ export interface CompanyResearchFacade {
 export interface DocumentIntelligenceFacade {
   readonly workflow: Workflow;
   readonly planFingerprint: string;
+  readonly registrationSnapshot: ProofRegistrationSnapshot;
   run(input: {
     runId: string;
     request: DocumentIntelligenceRequestInput;
@@ -84,6 +108,7 @@ export interface DocumentIntelligenceFacade {
 export interface OperationalRequestFacade {
   readonly workflow: Workflow;
   readonly planFingerprint: string;
+  readonly registrationSnapshot: ProofRegistrationSnapshot;
   readonly approvals: AAOApprovals;
   execute(input: {
     runId: string;
@@ -175,11 +200,17 @@ export function createCompanyAAO(options: CreateCompanyAAOOptions): ComposedComp
       );
     }
 
-    const adapterDef = options.hostCapabilities.getModelAdapter(binding.adapterRef.id);
-    if (!adapterDef) {
+    const adapterDef =
+      options.hostCapabilities.getModelAdapter(`${binding.adapterRef.id}@${binding.adapterRef.version}`) ??
+      options.hostCapabilities.getModelAdapter(binding.adapterRef.id);
+    if (
+      !adapterDef ||
+      adapterDef.manifest.id !== binding.adapterRef.id ||
+      adapterDef.manifest.version !== binding.adapterRef.version
+    ) {
       throw new CompanyConfigError(
         "CONFIG_CAPABILITY_NOT_FOUND",
-        `Model adapter '${binding.adapterRef.id}' referenced by binding '${bindingRef}' is not registered in the host capability catalog`
+        `Model adapter '${binding.adapterRef.id}@${binding.adapterRef.version}' referenced by binding '${bindingRef}' is not registered in the host capability catalog`
       );
     }
 
@@ -214,12 +245,15 @@ export function createCompanyAAO(options: CreateCompanyAAOOptions): ComposedComp
       );
     }
 
+    const crOverrides = options.proofRegistrations?.company_research;
     companyResearchProof = createCompanyResearchProof({
-      modelAdapters: resolvedModelAdapters,
-      modelBindings: resolvedModelBindings,
+      modelAdapters: crOverrides?.modelAdapters ?? resolvedModelAdapters,
+      modelBindings: crOverrides?.modelBindings ?? resolvedModelBindings,
       researchProvider,
       governance: manifest.governance,
       principalForRun: options.principalForRun,
+      ...(crOverrides?.tools !== undefined ? { tools: crOverrides.tools } : {}),
+      ...(crOverrides?.modelPolicies !== undefined ? { modelPolicies: crOverrides.modelPolicies } : {}),
       ...(options.trace ? { trace: options.trace } : {}),
       ...(options.clock ? { clock: options.clock } : {}),
       ...(manifest.reliability?.company_research
@@ -239,12 +273,15 @@ export function createCompanyAAO(options: CreateCompanyAAOOptions): ComposedComp
       );
     }
 
+    const diOverrides = options.proofRegistrations?.document_intelligence;
     documentIntelligenceProof = createDocumentIntelligenceProof({
-      modelAdapters: resolvedModelAdapters,
-      modelBindings: resolvedModelBindings,
+      modelAdapters: diOverrides?.modelAdapters ?? resolvedModelAdapters,
+      modelBindings: diOverrides?.modelBindings ?? resolvedModelBindings,
       documentSourceProvider,
       governance: manifest.governance,
       principalForRun: options.principalForRun,
+      ...(diOverrides?.tools !== undefined ? { tools: diOverrides.tools } : {}),
+      ...(diOverrides?.modelPolicies !== undefined ? { modelPolicies: diOverrides.modelPolicies } : {}),
       ...(options.trace ? { trace: options.trace } : {}),
       ...(options.clock ? { clock: options.clock } : {}),
       ...(manifest.reliability?.document_intelligence
@@ -264,12 +301,15 @@ export function createCompanyAAO(options: CreateCompanyAAOOptions): ComposedComp
       );
     }
 
+    const orOverrides = options.proofRegistrations?.operational_request;
     operationalRequestProof = createOperationalRequestProof({
-      modelAdapters: resolvedModelAdapters,
-      modelBindings: resolvedModelBindings,
+      modelAdapters: orOverrides?.modelAdapters ?? resolvedModelAdapters,
+      modelBindings: orOverrides?.modelBindings ?? resolvedModelBindings,
       draftRepository,
       governance: manifest.governance,
       principalForRun: options.principalForRun,
+      ...(orOverrides?.tools !== undefined ? { tools: orOverrides.tools } : {}),
+      ...(orOverrides?.modelPolicies !== undefined ? { modelPolicies: orOverrides.modelPolicies } : {}),
       ...(options.trace ? { trace: options.trace } : {}),
       ...(options.clock ? { clock: options.clock } : {}),
       ...(manifest.reliability?.operational_request
@@ -283,6 +323,9 @@ export function createCompanyAAO(options: CreateCompanyAAOOptions): ComposedComp
     ? Object.freeze({
         workflow: companyResearchProof.workflow,
         planFingerprint: companyResearchProof.planFingerprint,
+        registrationSnapshot:
+          options.proofRegistrations?.company_research?.registrationSnapshot ??
+          companyResearchProof.registrationSnapshot,
         async run(input: {
           runId: string;
           request: CompanyResearchRequestInput;
@@ -298,6 +341,9 @@ export function createCompanyAAO(options: CreateCompanyAAOOptions): ComposedComp
       ? Object.freeze({
           workflow: documentIntelligenceProof.workflow,
           planFingerprint: documentIntelligenceProof.planFingerprint,
+          registrationSnapshot:
+            options.proofRegistrations?.document_intelligence?.registrationSnapshot ??
+            documentIntelligenceProof.registrationSnapshot,
           async run(input: {
             runId: string;
             request: DocumentIntelligenceRequestInput;
@@ -313,6 +359,9 @@ export function createCompanyAAO(options: CreateCompanyAAOOptions): ComposedComp
       ? Object.freeze({
           workflow: operationalRequestProof.workflow,
           planFingerprint: operationalRequestProof.planFingerprint,
+          registrationSnapshot:
+            options.proofRegistrations?.operational_request?.registrationSnapshot ??
+            operationalRequestProof.registrationSnapshot,
           approvals: operationalRequestProof.approvals,
           async execute(input: {
             runId: string;

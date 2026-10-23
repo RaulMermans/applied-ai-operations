@@ -241,21 +241,200 @@ assert(env.arborDraftRepo.getAllDrafts().length === 1, "Step 10: Arbor draft cou
 assert(env.northstarDraftRepo.getAllDrafts()[0].accountId === "NS-COMMERCE-001", "Step 10: Northstar draft target mismatch");
 assert(env.arborDraftRepo.getAllDrafts()[0].accountId === "ARB-CLIENT-202", "Step 10: Arbor draft target mismatch");
 
-// 11. Missing provider fails before execution
+// 11. Missing provider & compatibility negative checks fail before execution
+const baseCRSnapshot = northstarAAO.getCompanyResearchProof().registrationSnapshot;
+
 let missingProviderFailed = false;
 try {
   validatePackCompatibility(COMPANY_RESEARCH_PACK, {
     companyId: "northstar-commerce",
     enabledProofs: ["company_research"],
     governanceRoles: [],
-    modelBindings: [{ id: "ns", capabilities: ["model.structured_output"] }],
     integrations: {}, // missing publicWebProviderRef
-    workflow: COMPANY_RESEARCH_PACK.manifest.workflow,
+    workflow: baseCRSnapshot.workflow,
+    registeredTools: baseCRSnapshot.tools,
+    registeredModelPolicies: baseCRSnapshot.modelPolicies,
+    registeredModelBindings: baseCRSnapshot.modelBindings,
+    registeredModelAdapters: baseCRSnapshot.modelAdapters,
+    registeredEvalProfiles: [EVAL_PROFILES.companyResearch],
   });
 } catch (err) {
   missingProviderFailed = err instanceof CapabilityPackError && err.code === "PACK_REQUIREMENT_MISSING";
 }
-assert(missingProviderFailed, "Step 11: Missing provider did not fail with PACK_REQUIREMENT_MISSING");
+assert(missingProviderFailed, "Step 11.0: Missing provider did not fail with PACK_REQUIREMENT_MISSING");
+
+// 11.1 Missing Tool evidence -> FAIL
+let missingToolEvidenceFailed = false;
+try {
+  validatePackCompatibility(COMPANY_RESEARCH_PACK, {
+    companyId: "northstar-commerce",
+    enabledProofs: ["company_research"],
+    governanceRoles: [],
+    integrations: { publicWebProviderRef: "provider.northstar.public_web" },
+    workflow: baseCRSnapshot.workflow,
+    registeredTools: undefined,
+    registeredModelPolicies: baseCRSnapshot.modelPolicies,
+    registeredModelBindings: baseCRSnapshot.modelBindings,
+    registeredModelAdapters: baseCRSnapshot.modelAdapters,
+    registeredEvalProfiles: [EVAL_PROFILES.companyResearch],
+  });
+} catch (err) {
+  missingToolEvidenceFailed = err instanceof CapabilityPackError && err.code === "PACK_EVIDENCE_UNAVAILABLE";
+}
+assert(missingToolEvidenceFailed, "Step 11.1: Missing Tool evidence did not fail with PACK_EVIDENCE_UNAVAILABLE");
+
+// 11.2 Tool absent from actual registration -> FAIL
+let toolAbsentFromRegistrationFailed = false;
+try {
+  const driftedAAO = createCompanyAAO({
+    manifest: NORTHSTAR_MANIFEST,
+    hostCapabilities: env.hostCapabilities,
+    principalForRun: env.northstarPrincipalForRun,
+    proofRegistrations: {
+      company_research: {
+        tools: [],
+      },
+    },
+  });
+  resolveCompanyCapabilityPacks({
+    company: driftedAAO,
+    catalog,
+    selection: {
+      schemaVersion: 1,
+      companyId: "northstar-commerce",
+      packRefs: [{ id: "aao.company-research", version: "1.0.0" }],
+    },
+  });
+} catch (err) {
+  toolAbsentFromRegistrationFailed = err instanceof CapabilityPackError && err.code === "PACK_REQUIREMENT_MISSING";
+}
+assert(toolAbsentFromRegistrationFailed, "Step 11.2: Tool absent from actual registration did not fail with PACK_REQUIREMENT_MISSING");
+
+// 11.3 Missing Model Policy -> FAIL
+let missingModelPolicyFailed = false;
+try {
+  const driftedPolicyAAO = createCompanyAAO({
+    manifest: NORTHSTAR_MANIFEST,
+    hostCapabilities: env.hostCapabilities,
+    principalForRun: env.northstarPrincipalForRun,
+    proofRegistrations: {
+      company_research: {
+        modelPolicies: [],
+      },
+    },
+  });
+  resolveCompanyCapabilityPacks({
+    company: driftedPolicyAAO,
+    catalog,
+    selection: {
+      schemaVersion: 1,
+      companyId: "northstar-commerce",
+      packRefs: [{ id: "aao.company-research", version: "1.0.0" }],
+    },
+  });
+} catch (err) {
+  missingModelPolicyFailed = err instanceof CapabilityPackError && err.code === "PACK_REQUIREMENT_MISSING";
+}
+assert(missingModelPolicyFailed, "Step 11.3: Missing Model Policy did not fail with PACK_REQUIREMENT_MISSING");
+
+// 11.4 Model binding capability unsupported -> FAIL
+let bindingCapUnsupportedFailed = false;
+try {
+  const driftedBindingAAO = createCompanyAAO({
+    manifest: NORTHSTAR_MANIFEST,
+    hostCapabilities: env.hostCapabilities,
+    principalForRun: env.northstarPrincipalForRun,
+    proofRegistrations: {
+      company_research: {
+        registrationSnapshot: {
+          ...baseCRSnapshot,
+          modelBindings: baseCRSnapshot.modelBindings.map((b) => ({
+            ...b,
+            capabilities: ["model.text_generation"],
+          })),
+          modelAdapters: baseCRSnapshot.modelAdapters.map((a) => ({
+            ...a,
+            capabilities: [
+              { capability: "model.text_generation", support: "supported" },
+              { capability: "model.structured_output", support: "supported" },
+            ],
+          })),
+        },
+      },
+    },
+  });
+  resolveCompanyCapabilityPacks({
+    company: driftedBindingAAO,
+    catalog,
+    selection: {
+      schemaVersion: 1,
+      companyId: "northstar-commerce",
+      packRefs: [{ id: "aao.company-research", version: "1.0.0" }],
+    },
+  });
+} catch (err) {
+  bindingCapUnsupportedFailed = err instanceof CapabilityPackError && err.code === "PACK_CAPABILITY_INCOMPATIBLE";
+}
+assert(bindingCapUnsupportedFailed, "Step 11.4: Model binding capability unsupported did not fail with PACK_CAPABILITY_INCOMPATIBLE");
+
+// 11.5 Adapter capability unsupported -> FAIL
+let adapterCapUnsupportedFailed = false;
+try {
+  const driftedAdapterAAO = createCompanyAAO({
+    manifest: NORTHSTAR_MANIFEST,
+    hostCapabilities: env.hostCapabilities,
+    principalForRun: env.northstarPrincipalForRun,
+    proofRegistrations: {
+      company_research: {
+        registrationSnapshot: {
+          ...baseCRSnapshot,
+          modelAdapters: baseCRSnapshot.modelAdapters.map((a) => ({
+            ...a,
+            capabilities: [
+              { capability: "model.structured_output", support: "unsupported" },
+            ],
+          })),
+        },
+      },
+    },
+  });
+  resolveCompanyCapabilityPacks({
+    company: driftedAdapterAAO,
+    catalog,
+    selection: {
+      schemaVersion: 1,
+      companyId: "northstar-commerce",
+      packRefs: [{ id: "aao.company-research", version: "1.0.0" }],
+    },
+  });
+} catch (err) {
+  adapterCapUnsupportedFailed = err instanceof CapabilityPackError && err.code === "PACK_CAPABILITY_INCOMPATIBLE";
+}
+assert(adapterCapUnsupportedFailed, "Step 11.5: Adapter capability unsupported did not fail with PACK_CAPABILITY_INCOMPATIBLE");
+
+// 11.6 Unknown Eval profile -> PACK_VERIFICATION_PROFILE_MISSING
+let unknownEvalProfileFailed = false;
+try {
+  const unknownEvalPack = defineCapabilityPack({
+    ...COMPANY_RESEARCH_PACK_MANIFEST,
+    verification: {
+      evalProfileRef: "aao.unknown-profile.evals@1.0.0",
+    },
+  });
+  const customCatalog = createCapabilityPackCatalog([unknownEvalPack]);
+  resolveCompanyCapabilityPacks({
+    company: northstarAAO,
+    catalog: customCatalog,
+    selection: {
+      schemaVersion: 1,
+      companyId: "northstar-commerce",
+      packRefs: [{ id: "aao.company-research", version: "1.0.0" }],
+    },
+  });
+} catch (err) {
+  unknownEvalProfileFailed = err instanceof CapabilityPackError && err.code === "PACK_VERIFICATION_PROFILE_MISSING";
+}
+assert(unknownEvalProfileFailed, "Step 11.6: Unknown Eval profile did not fail with PACK_VERIFICATION_PROFILE_MISSING");
 
 // 12. Disabled proof fails before execution
 let disabledProofFailed = false;

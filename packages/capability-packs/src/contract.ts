@@ -49,6 +49,23 @@ export type IntegrationSlotRequirement = z.infer<typeof IntegrationSlotRequireme
 export const SUPPORTED_PERMISSION_CLASSES = ["read_only", "write_draft"] as const;
 export const SupportedPermissionClassSchema = z.enum(SUPPORTED_PERMISSION_CLASSES);
 
+export const SUPPORTED_MODEL_CAPABILITIES = [
+  "model.text_generation",
+  "model.structured_output",
+  "model.usage",
+  "model.cancellation",
+  "model.tool_call_response",
+] as const;
+export const SupportedModelCapabilitySchema = z.enum(SUPPORTED_MODEL_CAPABILITIES);
+export type SupportedModelCapability = z.infer<typeof SupportedModelCapabilitySchema>;
+
+export const ExactEvalProfileRefSchema = z
+  .string()
+  .regex(
+    /^[a-zA-Z0-9]+(?:[._:-][a-zA-Z0-9]+)*@(0|[1-9]\d{0,5})\.(0|[1-9]\d{0,5})\.(0|[1-9]\d{0,5})$/,
+    "evalProfileRef must be an exact reference format: evalProfileId@MAJOR.MINOR.PATCH"
+  );
+
 export const ApprovalRequirementSchema = z
   .object({
     required: z.boolean(),

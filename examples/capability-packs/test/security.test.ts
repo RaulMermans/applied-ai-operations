@@ -203,4 +203,283 @@ describe("Sprint 26 — Capability Pack Security & Boundary Enforcement", () => 
     expect(continuation.execution?.run.status).toBe("FAILED");
     expect(env.northstarDraftRepo.getAllDrafts().length).toBe(initialDraftCount);
   });
+
+  const researchOnlyManifest = {
+    ...NORTHSTAR_MANIFEST,
+    enabledProofs: ["company_research"] as const,
+  };
+
+  it("Section 28.1: fails compatibility when a required Tool is removed from actual proof registration (even if an obsolete static constant still lists it)", () => {
+    const env = createTestHostEnvironment();
+    const catalog = createStandardPackCatalog();
+
+    // Even if an obsolete helper lists all tools, actual proof registration is authoritative
+    const OBSOLETE_STATIC_TOOLS = [
+      { id: "public_web.search", version: "1.0.0" },
+      { id: "records.dedupe", version: "1.0.0" },
+      { id: "public_web.fetch_pages", version: "1.0.0" },
+      { id: "records.project", version: "1.0.0" },
+    ];
+    expect(OBSOLETE_STATIC_TOOLS).toHaveLength(4);
+
+    // Controlled composition where tools=[] is passed to actual proof registration
+    const driftedAAO = createCompanyAAO({
+      manifest: researchOnlyManifest,
+      hostCapabilities: env.hostCapabilities,
+      principalForRun: env.northstarPrincipalForRun,
+      proofRegistrations: {
+        company_research: {
+          tools: [],
+        },
+      },
+    });
+
+    expect(() =>
+      resolveCompanyCapabilityPacks({
+        company: driftedAAO,
+        catalog,
+        selection: {
+          schemaVersion: 1,
+          companyId: "northstar-commerce",
+          packRefs: [{ id: "aao.company-research", version: "1.0.0" }],
+        },
+      })
+    ).toThrow(/PACK_REQUIREMENT_MISSING.*public_web\.search@1\.0\.0/);
+  });
+
+  it("Section 28.2: fails compatibility when a required Model Policy is removed from actual proof registration", () => {
+    const env = createTestHostEnvironment();
+    const catalog = createStandardPackCatalog();
+
+    const driftedAAO = createCompanyAAO({
+      manifest: researchOnlyManifest,
+      hostCapabilities: env.hostCapabilities,
+      principalForRun: env.northstarPrincipalForRun,
+      proofRegistrations: {
+        company_research: {
+          modelPolicies: [],
+        },
+      },
+    });
+
+    expect(() =>
+      resolveCompanyCapabilityPacks({
+        company: driftedAAO,
+        catalog,
+        selection: {
+          schemaVersion: 1,
+          companyId: "northstar-commerce",
+          packRefs: [{ id: "aao.company-research", version: "1.0.0" }],
+        },
+      })
+    ).toThrow(/PACK_REQUIREMENT_MISSING.*company_research\.planning/);
+  });
+
+  it("Section 28.3: fails compatibility before activation when binding or adapter lacks required model.structured_output capability", () => {
+    const env = createTestHostEnvironment();
+    const catalog = createStandardPackCatalog();
+
+    const baseAAO = createCompanyAAO({
+      manifest: researchOnlyManifest,
+      hostCapabilities: env.hostCapabilities,
+      principalForRun: env.northstarPrincipalForRun,
+    });
+    const baseSnapshot = baseAAO.getCompanyResearchProof().registrationSnapshot;
+
+    // Case A: Binding lacks model.structured_output
+    const bindingLacksCapAAO = createCompanyAAO({
+      manifest: researchOnlyManifest,
+      hostCapabilities: env.hostCapabilities,
+      principalForRun: env.northstarPrincipalForRun,
+      proofRegistrations: {
+        company_research: {
+          registrationSnapshot: {
+            ...baseSnapshot,
+            modelBindings: baseSnapshot.modelBindings.map((b) => ({
+              ...b,
+              capabilities: ["model.text_generation"],
+            })),
+            modelAdapters: baseSnapshot.modelAdapters.map((a) => ({
+              ...a,
+              capabilities: [
+                { capability: "model.text_generation", support: "supported" as const },
+                { capability: "model.structured_output", support: "supported" as const },
+              ],
+            })),
+          },
+        },
+      },
+    });
+
+    expect(() =>
+      resolveCompanyCapabilityPacks({
+        company: bindingLacksCapAAO,
+        catalog,
+        selection: {
+          schemaVersion: 1,
+          companyId: "northstar-commerce",
+          packRefs: [{ id: "aao.company-research", version: "1.0.0" }],
+        },
+      })
+    ).toThrow(/PACK_CAPABILITY_INCOMPATIBLE/);
+
+    // Case B: Adapter manifest lacks model.structured_output
+    const adapterLacksCapAAO = createCompanyAAO({
+      manifest: researchOnlyManifest,
+      hostCapabilities: env.hostCapabilities,
+      principalForRun: env.northstarPrincipalForRun,
+      proofRegistrations: {
+        company_research: {
+          registrationSnapshot: {
+            ...baseSnapshot,
+            modelAdapters: baseSnapshot.modelAdapters.map((a) => ({
+              ...a,
+              capabilities: [
+                { capability: "model.structured_output", support: "unsupported" as const },
+              ],
+            })),
+          },
+        },
+      },
+    });
+
+    expect(() =>
+      resolveCompanyCapabilityPacks({
+        company: adapterLacksCapAAO,
+        catalog,
+        selection: {
+          schemaVersion: 1,
+          companyId: "northstar-commerce",
+          packRefs: [{ id: "aao.company-research", version: "1.0.0" }],
+        },
+      })
+    ).toThrow(/PACK_CAPABILITY_INCOMPATIBLE/);
+  });
+
+  it("Section 28.4: untrusted caller cannot pass a fake capability array (registeredTools) to authorize an incompatible pack", () => {
+    const env = createTestHostEnvironment();
+    const catalog = createStandardPackCatalog();
+
+    // Proof is missing required tools in actual registration
+    const driftedAAO = createCompanyAAO({
+      manifest: researchOnlyManifest,
+      hostCapabilities: env.hostCapabilities,
+      principalForRun: env.northstarPrincipalForRun,
+      proofRegistrations: {
+        company_research: {
+          tools: [],
+        },
+      },
+    });
+
+    // Untrusted caller attempts to pass `registeredTools` or `availableTools` in activation input
+    const untrustedInput = {
+      company: driftedAAO,
+      catalog,
+      selection: {
+        schemaVersion: 1 as const,
+        companyId: "northstar-commerce",
+        packRefs: [{ id: "aao.company-research", version: "1.0.0" }],
+      },
+      registeredTools: [
+        { id: "public_web.search", version: "1.0.0" },
+        { id: "records.dedupe", version: "1.0.0" },
+        { id: "public_web.fetch_pages", version: "1.0.0" },
+        { id: "records.project", version: "1.0.0" },
+        { id: "missing.tool", version: "1.0.0" },
+      ],
+      availableTools: [
+        { id: "public_web.search", version: "1.0.0" },
+        { id: "records.dedupe", version: "1.0.0" },
+        { id: "public_web.fetch_pages", version: "1.0.0" },
+        { id: "records.project", version: "1.0.0" },
+      ],
+    };
+
+    expect(() =>
+      resolveCompanyCapabilityPacks(
+        untrustedInput as unknown as Parameters<typeof resolveCompanyCapabilityPacks>[0]
+      )
+    ).toThrow(/PACK_REQUIREMENT_MISSING.*public_web\.search@1\.0\.0/);
+  });
+
+  it("Part F Section 18: enforces atomic whole-selection validation (2 compatible + 1 incompatible -> 0 activated, 0 runs/calls)", () => {
+    const env = createTestHostEnvironment();
+    const catalog = createStandardPackCatalog();
+
+    // Make the 3rd pack (operational_request) incompatible while first 2 are compatible
+    const partiallyIncompatibleAAO = createCompanyAAO({
+      manifest: NORTHSTAR_MANIFEST,
+      hostCapabilities: env.hostCapabilities,
+      principalForRun: env.northstarPrincipalForRun,
+      proofRegistrations: {
+        operational_request: {
+          tools: [],
+        },
+      },
+    });
+
+    const initialArborCalls = env.getArborProviderCalls();
+    const initialDrafts = env.northstarDraftRepo.getAllDrafts().length;
+
+    let activatedResult: unknown = undefined;
+    expect(() => {
+      activatedResult = resolveCompanyCapabilityPacks({
+        company: partiallyIncompatibleAAO,
+        catalog,
+        selection: NORTHSTAR_PACK_SELECTION, // selects all 3 packs
+      });
+    }).toThrow(CapabilityPackError);
+
+    expect(activatedResult).toBeUndefined();
+    expect(env.getArborProviderCalls()).toBe(initialArborCalls);
+    expect(env.northstarDraftRepo.getAllDrafts().length).toBe(initialDrafts);
+  });
+
+  it("Part C Section 8: never exposes raw runtime objects (app, prepareWorkflow, handlers, adapters, approval verifiers)", () => {
+    const env = createTestHostEnvironment();
+    const catalog = createStandardPackCatalog();
+
+    const northstarAAO = createCompanyAAO({
+      manifest: NORTHSTAR_MANIFEST,
+      hostCapabilities: env.hostCapabilities,
+      principalForRun: env.northstarPrincipalForRun,
+    });
+
+    const northstarPacks = resolveCompanyCapabilityPacks({
+      company: northstarAAO,
+      catalog,
+      selection: NORTHSTAR_PACK_SELECTION,
+    });
+
+    expect("app" in northstarAAO).toBe(false);
+    expect("prepareWorkflow" in northstarAAO).toBe(false);
+
+    for (const activated of northstarPacks.listPacks()) {
+      const facade = activated.facade as {
+        readonly registrationSnapshot: CompanyResearchFacade["registrationSnapshot"];
+      } & Record<string, unknown>;
+      expect("app" in facade).toBe(false);
+      expect("prepareWorkflow" in facade).toBe(false);
+      expect("toolRegistry" in facade).toBe(false);
+      expect("modelRegistry" in facade).toBe(false);
+      expect("approvalVerifier" in facade).toBe(false);
+
+      const snapshot = facade.registrationSnapshot;
+      expect(Object.isFrozen(snapshot)).toBe(true);
+      expect(Object.isFrozen(snapshot.tools)).toBe(true);
+      expect(Object.isFrozen(snapshot.modelPolicies)).toBe(true);
+      expect(Object.isFrozen(snapshot.modelBindings)).toBe(true);
+      expect(Object.isFrozen(snapshot.modelAdapters)).toBe(true);
+
+      for (const tool of snapshot.tools) {
+        expect("handler" in tool).toBe(false);
+        expect("execute" in tool).toBe(false);
+      }
+      for (const adapter of snapshot.modelAdapters) {
+        expect("invoke" in adapter).toBe(false);
+        expect("execute" in adapter).toBe(false);
+      }
+    }
+  });
 });

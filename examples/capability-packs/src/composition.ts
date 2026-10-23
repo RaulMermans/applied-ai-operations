@@ -3,6 +3,10 @@ import {
   type CapabilityPackCatalog,
   type CompanyPackSelectionV1,
   type CompanyPackSelectionV1Input,
+  type PackCompatibilityReport,
+  type ProofRegistrationSnapshot,
+  type VerifiedModelAdapter,
+  type VerifiedModelBinding,
   CapabilityPackError,
   packRefKey,
   validateCompanyPackSelection,
@@ -15,35 +19,24 @@ import type {
   CompanyResearchFacade,
   DocumentIntelligenceFacade,
   OperationalRequestFacade,
+  HostCapabilityCatalog,
 } from "@aao/example-company-portability";
+import {
+  createStandardEvalProfileCatalog,
+  verifyEvalProfileRegistration,
+  type PackEvalProfileCatalog,
+} from "./eval-profiles.js";
 
 /**
- * Known tools and policies provided by the flagship proof execution environments.
- */
-export const STANDARD_PROOF_TOOLS = Object.freeze([
-  { id: "public_web.search", version: "1.0.0" },
-  { id: "records.dedupe", version: "1.0.0" },
-  { id: "public_web.fetch_pages", version: "1.0.0" },
-  { id: "records.project", version: "1.0.0" },
-  { id: "document.extract_text", version: "1.0.0" },
-  { id: "operations.create_change_draft", version: "1.0.0" },
-]);
-
-export const STANDARD_MODEL_POLICIES = Object.freeze([
-  "company_research.planning",
-  "company_research.synthesis",
-  "document_intelligence.synthesis",
-  "operational_request.interpret",
-]);
-
-/**
- * An activated capability pack bound to a company's guarded execution facade.
+ * An activated capability pack bound to a company's guarded execution facade
+ * and its verified compatibility report.
  */
 export interface ActivatedCompanyPack<TFacade = unknown> {
   readonly pack: CapabilityPack;
   readonly packRef: { readonly id: string; readonly version: string };
   readonly packFingerprint: string;
   readonly workflowPlanFingerprint: string;
+  readonly compatibilityReport: PackCompatibilityReport;
   readonly facade: TFacade;
 }
 
@@ -62,10 +55,76 @@ export interface ResolveCompanyCapabilityPacksOptions {
   readonly catalog: CapabilityPackCatalog;
   /** The company's pack selection contract. */
   readonly selection: CompanyPackSelectionV1 | CompanyPackSelectionV1Input | unknown;
-  /** Optional override for available tools (defaults to STANDARD_PROOF_TOOLS). */
-  readonly availableTools?: ReadonlyArray<{ id: string; version: string }>;
-  /** Optional override for available model policies (defaults to STANDARD_MODEL_POLICIES). */
-  readonly availableModelPolicies?: ReadonlyArray<string>;
+  /**
+   * Optional host capability catalog used to cross-verify model bindings and
+   * adapters against the host's registered declarations.
+   */
+  readonly hostCapabilities?: HostCapabilityCatalog;
+  /**
+   * Optional evaluation profile catalog (defaults to the canonical standard
+   * evaluation profile catalog).
+   */
+  readonly evalProfileCatalog?: PackEvalProfileCatalog;
+}
+
+function buildHostModelEvidence(
+  company: ComposedCompanyAAO,
+  hostCapabilities: HostCapabilityCatalog
+): {
+  readonly bindings: ReadonlyArray<VerifiedModelBinding>;
+  readonly adapters: ReadonlyArray<VerifiedModelAdapter>;
+} {
+  const bindings: VerifiedModelBinding[] = [];
+  const adaptersMap = new Map<string, VerifiedModelAdapter>();
+
+  for (const bindingRef of company.manifest.models.bindingRefs) {
+    const binding = hostCapabilities.getModelBinding(bindingRef);
+    if (!binding) {
+      throw new CapabilityPackError(
+        "PACK_CAPABILITY_INCOMPATIBLE",
+        `Model binding '${bindingRef}' configured for company '${company.companyId}' is not registered in the host capability catalog`
+      );
+    }
+
+    const adapterDef =
+      hostCapabilities.getModelAdapter(`${binding.adapterRef.id}@${binding.adapterRef.version}`) ??
+      hostCapabilities.getModelAdapter(binding.adapterRef.id);
+
+    let adapterSnapshot: VerifiedModelAdapter | undefined;
+    if (adapterDef) {
+      adapterSnapshot = Object.freeze({
+        id: adapterDef.manifest.id,
+        version: adapterDef.manifest.version,
+        capabilities: Object.freeze(
+          adapterDef.manifest.capabilities.map((c) =>
+            Object.freeze({ capability: c.capability, support: c.support })
+          )
+        ),
+      });
+      adaptersMap.set(`${adapterSnapshot.id}@${adapterSnapshot.version}`, adapterSnapshot);
+    }
+
+    bindings.push(
+      Object.freeze({
+        id: binding.id,
+        capabilities: Object.freeze([...binding.capabilities]),
+        adapterRef: Object.freeze({
+          id: binding.adapterRef.id,
+          version: binding.adapterRef.version,
+        }),
+        ...(adapterSnapshot &&
+        adapterSnapshot.id === binding.adapterRef.id &&
+        adapterSnapshot.version === binding.adapterRef.version
+          ? { adapter: adapterSnapshot }
+          : {}),
+      })
+    );
+  }
+
+  return {
+    bindings: Object.freeze(bindings),
+    adapters: Object.freeze(Array.from(adaptersMap.values())),
+  };
 }
 
 /**
@@ -73,10 +132,14 @@ export interface ResolveCompanyCapabilityPacksOptions {
  *
  * Guarantees:
  * 1. Zero workflow duplication: binds directly to the canonical proof workflows.
- * 2. Strict preflight compatibility validation before exposing any executable facade.
- * 3. Enforces company enablement: disabled proofs are rejected immediately with PACK_PROOF_DISABLED.
- * 4. Pinned workflow attestation: verifies the prepared workflow plan fingerprint matches the pack manifest.
- * 5. Preserves admission enforcement: every guarded facade enforces requireCompanyAdmission().
+ * 2. Trusted registration evidence: derives Tool, Model Policy, Model Binding, and Adapter
+ *    evidence strictly from the proof's actual construction snapshot (never from static lists
+ *    or untrusted caller capability arrays).
+ * 3. Verified Evaluation profiles: confirms each pack's `evalProfileRef` resolves to a usable
+ *    canonical dataset/definition builder and registered graders before activation.
+ * 4. Atomic all-or-nothing selection: if any selected pack fails compatibility, the entire
+ *    selection is refused and zero activated packs are returned.
+ * 5. Preserves admission enforcement: every guarded facade enforces `requireCompanyAdmission()`.
  * 6. Pack metadata does NOT grant authority: execution remains strictly governed.
  */
 export function resolveCompanyCapabilityPacks(
@@ -92,9 +155,7 @@ export function resolveCompanyCapabilityPacks(
     );
   }
 
-  const availableTools = options.availableTools ?? STANDARD_PROOF_TOOLS;
-  const availableModelPolicies = options.availableModelPolicies ?? STANDARD_MODEL_POLICIES;
-
+  const evalProfileCatalog = options.evalProfileCatalog ?? createStandardEvalProfileCatalog();
   const activatedMap = new Map<string, ActivatedCompanyPack>();
 
   for (const ref of selection.packRefs) {
@@ -136,34 +197,60 @@ export function resolveCompanyCapabilityPacks(
     }
 
     const typedFacade = facade as {
-      workflow: { id: string; version: string };
-      planFingerprint: string;
+      readonly workflow: { readonly id: string; readonly version: string };
+      readonly planFingerprint: string;
+      readonly registrationSnapshot?: ProofRegistrationSnapshot;
     };
 
-    // Preflight compatibility check
-    validatePackCompatibility(pack, {
+    const snapshot = typedFacade.registrationSnapshot;
+    if (!snapshot || typeof snapshot !== "object") {
+      throw new CapabilityPackError(
+        "PACK_EVIDENCE_UNAVAILABLE",
+        `Proof '${proofName}' for company '${company.companyId}' does not provide a trusted registration snapshot`
+      );
+    }
+
+    // Verify evaluation profile registration in the trusted Eval profile catalog
+    verifyEvalProfileRegistration(evalProfileCatalog, pack.manifest.verification.evalProfileRef);
+    const registeredEvalProfiles = evalProfileCatalog.listProfileRefs();
+
+    // Primary preflight compatibility check against actual proof registration snapshot
+    const compatibilityReport = validatePackCompatibility(pack, {
       companyId: company.companyId,
       enabledProofs: company.enabledProofs,
       governanceRoles: company.manifest.governance.roles,
-      modelBindings: company.manifest.models.bindingRefs.map((id) => ({
-        id,
-        capabilities: ["model.structured_output"],
-      })),
       integrations: company.manifest.integrations,
-      workflow: {
-        id: typedFacade.workflow.id,
-        version: typedFacade.workflow.version,
-        planFingerprint: typedFacade.planFingerprint,
-      },
-      availableTools,
-      availableModelPolicies,
+      workflow: snapshot.workflow,
+      registeredTools: snapshot.tools,
+      registeredModelPolicies: snapshot.modelPolicies,
+      registeredModelBindings: snapshot.modelBindings,
+      registeredModelAdapters: snapshot.modelAdapters,
+      registeredEvalProfiles,
     });
+
+    // Optional cross-verification against host capability catalog if supplied
+    if (options.hostCapabilities) {
+      const hostModels = buildHostModelEvidence(company, options.hostCapabilities);
+      validatePackCompatibility(pack, {
+        companyId: company.companyId,
+        enabledProofs: company.enabledProofs,
+        governanceRoles: company.manifest.governance.roles,
+        integrations: company.manifest.integrations,
+        workflow: snapshot.workflow,
+        registeredTools: snapshot.tools,
+        registeredModelPolicies: snapshot.modelPolicies,
+        registeredModelBindings: hostModels.bindings,
+        registeredModelAdapters: hostModels.adapters,
+        registeredEvalProfiles,
+      });
+    }
 
     const activated: ActivatedCompanyPack = Object.freeze({
       pack,
       packRef: Object.freeze({ id: pack.manifest.id, version: pack.manifest.version }),
       packFingerprint: pack.fingerprint,
       workflowPlanFingerprint: typedFacade.planFingerprint,
+      compatibilityReport,
       facade,
     });
 
@@ -198,4 +285,3 @@ export type {
   DocumentIntelligenceFacade,
   OperationalRequestFacade,
 };
-

@@ -29,4 +29,4 @@ export { COMPANY_RESEARCH_DRAFT_SCHEMA, PLANNING_INSTRUCTIONS, PLANNING_POLICY_R
 export { buildCompanyResearchResult, escapeMarkdownInline, evidenceLimitations, renderCompanyResearchMarkdown } from "./render.js";
 export { COMPANY_RESEARCH_EXECUTORS, STATE_KEYS } from "./executors.js";
 export { COMPANY_RESEARCH_NODE_ORDER, DEDUPE_TOOL_REF, PROJECT_TOOL_REF, companyResearchWorkflow } from "./workflow.js";
-export { COMPANY_RESEARCH_MODEL_POLICIES, createCompanyResearchProof, type CompanyResearchProof, type CompanyResearchProofOptions, type CompanyResearchRunOutcome } from "./proof.js";
+export { COMPANY_RESEARCH_MODEL_POLICIES, createCompanyResearchProof, type CompanyResearchProof, type CompanyResearchProofOptions, type CompanyResearchRunOutcome, type ProofRegistrationSnapshot } from "./proof.js";

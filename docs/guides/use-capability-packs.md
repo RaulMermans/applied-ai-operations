@@ -98,55 +98,41 @@ Selection rules:
 
 ## 5. How Do I Validate Compatibility?
 
-Before activating or running any pack, run `validatePackCompatibility(pack, context)` to verify that the company configuration and host environment satisfy every requirement declared by the pack:
+Before activating or running any pack, run `validatePackCompatibility(pack, context)` using the trusted `ProofRegistrationSnapshot` from the composed proof and the verified `PackEvalProfileCatalog`:
 
 ```ts
 import {
   OPERATIONAL_REQUEST_PACK,
   validatePackCompatibility,
 } from "@aao/capability-packs";
-import { buildOperationalRequestWorkflowPlan } from "@aao/example-operational-request";
+import { createStandardEvalProfileCatalog } from "@aao/example-capability-packs";
 
-const workflowPlan = buildOperationalRequestWorkflowPlan();
+const evalCatalog = createStandardEvalProfileCatalog();
+const proofSnapshot = northstarAAO.getOperationalRequestProof().registrationSnapshot;
 
 const report = validatePackCompatibility(OPERATIONAL_REQUEST_PACK, {
   companyId: "northstar-commerce",
   enabledProofs: ["company_research", "document_intelligence", "operational_request"],
   governanceRoles: [
-    {
-      roleId: "requester",
-      permissions: ["read_only", "write_draft"],
-      canApprove: false,
-    },
-    {
-      roleId: "operations_approver",
-      permissions: ["read_only", "write_draft", "approve_requests"],
-      canApprove: true,
-    },
-  ],
-  modelBindings: [
-    {
-      id: "northstar-structured",
-      capabilities: ["model.structured_output"],
-    },
+    { id: "operations.requester" },
+    { id: "operations.approver" },
   ],
   integrations: {
     draftRepositoryRef: "repo.northstar.drafts",
   },
-  workflow: {
-    id: workflowPlan.id,
-    version: workflowPlan.version,
-    planFingerprint: workflowPlan.planFingerprint,
-  },
-  availableTools: [{ id: "draft.change_request.write", version: "1.0.0" }],
-  availableModelPolicies: [{ id: "operational_request.proposal.default", version: "1.0.0" }],
-  availableEvalProfiles: ["eval.operational_request.default@1.0.0"],
+  workflow: proofSnapshot.workflow,
+  registeredTools: proofSnapshot.tools,
+  registeredModelPolicies: proofSnapshot.modelPolicies,
+  registeredModelBindings: proofSnapshot.modelBindings,
+  registeredModelAdapters: proofSnapshot.modelAdapters,
+  registeredEvalProfiles: evalCatalog.listProfileRefs(),
 });
 
 console.log(report.compatible); // true
+console.log(report.verifiedRequirements);
 ```
 
-If any check fails, `validatePackCompatibility()` throws a deterministic `CapabilityPackError` before any workflow is composed or executed.
+All registration evidence fields (`registeredTools`, `registeredModelPolicies`, `registeredModelBindings`, and `registeredEvalProfiles`) are **mandatory**. Omitting any evidence category fails closed with `PACK_EVIDENCE_UNAVAILABLE`. If any requirement is unsatisfied, `validatePackCompatibility()` throws a deterministic `CapabilityPackError` before any workflow is activated or executed.
 
 ---
 
@@ -229,24 +215,21 @@ Pack metadata **declares** this requirement for preflight validation, while the 
 
 ## 8. How Do I Run the Pack's Evaluation Profile?
 
-Every Capability Pack references an exact `evalProfileRef`. Use `evaluatePackRun()` to run the canonical AAO Evaluation Runner (`@aao/evals`) against the live run trace and output:
+Every Capability Pack references an exact `evalProfileRef` registered in `PackEvalProfileCatalog`. Use `evaluatePackRun()` to run the canonical AAO Evaluation Runtime (`@aao/evaluation`) against the live run trace and execution evidence:
 
 ```ts
-import { evaluatePackRun } from "@aao/example-capability-packs";
+import {
+  evaluatePackRun,
+  EVAL_PROFILES,
+} from "@aao/example-capability-packs";
 
 const summary = await evaluatePackRun({
-  pack: researchPack.pack,
-  caseId: "eval.ns.company_research",
-  runEvidenceRef: "run://ns.research.001",
-  output: result.brief,
-  evidenceResolver: {
-    resolve(ref) {
-      return evidenceMap.get(ref);
-    },
-  },
+  profileRef: EVAL_PROFILES.companyResearch, // "aao.company-research.evals@1.0.0"
+  evidenceKey: "run://ns.research.001",
+  evidenceMap,
 });
 
-console.log(summary.passed); // true (passRate === 1)
+console.log(summary.allMatched); // true (5/5 cases passed)
 ```
 
 ---
@@ -255,63 +238,55 @@ console.log(summary.passed); // true (passRate === 1)
 
 To package an existing deterministic workflow into a Capability Pack:
 
-1. Build the canonical workflow plan and read its `id`, `version`, and deterministic `planFingerprint`.
+1. Prepare the canonical workflow plan and read its `id`, `version`, and deterministic `planFingerprint`.
 2. Call `defineCapabilityPack()` with a strict `CapabilityPackManifestV1` object:
 
 ```ts
 import { defineCapabilityPack } from "@aao/capability-packs";
-import { buildCompanyResearchWorkflowPlan } from "@aao/example-company-research";
-
-const plan = buildCompanyResearchWorkflowPlan();
 
 export const CUSTOM_RESEARCH_PACK = defineCapabilityPack({
   schemaVersion: 1,
   id: "aao.company-research",
   version: "1.0.0",
-  name: "AAO Company Research Pack",
+  name: "Company Research",
   description:
-    "Produces a structured, citation-backed company research brief from governed public web pages.",
+    "Research a company using governed public-web capabilities, bounded model planning/synthesis, and deterministic source-grounding validation.",
   category: "research",
-  tags: ["company-research", "citations", "public-web", "read-only"],
+  tags: ["company-research", "public-web", "grounding", "read-only"],
   workflow: {
-    id: plan.id,
-    version: plan.version,
-    planFingerprint: plan.planFingerprint,
+    id: "company_research.proof",
+    version: "1.0.0",
+    planFingerprint: "d316887874d40e7218ee0dbce3392db29ba8a666b36dcd5d513ebf0a885c2919",
   },
   requirements: {
     toolRefs: [
-      { id: "web.search", version: "1.0.0" },
-      { id: "web.fetch_page", version: "1.0.0" },
-      { id: "text.extract_sections", version: "1.0.0" },
+      { id: "public_web.search", version: "1.0.0" },
+      { id: "records.dedupe", version: "1.0.0" },
+      { id: "public_web.fetch_pages", version: "1.0.0" },
+      { id: "records.project", version: "1.0.0" },
     ],
-    modelPolicyRefs: [{ id: "company_research.brief.default", version: "1.0.0" }],
+    modelPolicyRefs: [
+      "company_research.planning",
+      "company_research.synthesis",
+    ],
     modelCapabilities: ["model.structured_output"],
     integrationSlots: [
       {
-        slot: "publicWebProviderRef",
-        kind: "public_web_provider",
-        required: true,
-        description: "Company-bound public web search and page fetch provider.",
+        slot: "public_web",
+        description: "Governed public-web provider for search and page fetching",
       },
     ],
     preliminaryPermissions: ["read_only"],
-    approval: {
-      required: false,
-    },
-  },
-  contracts: {
-    inputContractId: "aao.company-research.request@1.0.0",
-    outputContractId: "aao.company-research.brief@1.0.0",
   },
   execution: {
     outcomeClass: "read_only",
   },
   verification: {
-    evalProfileRef: "eval.company_research.default@1.0.0",
+    evalProfileRef: "aao.company-research.evals@1.0.0",
   },
   documentation: {
     summary:
-      "Executes the canonical 5-step Company Research workflow over governed public web tools.",
+      "Grounded company research using public-web search, deduplication, page fetching, structured synthesis, and deterministic citation validation.",
     limitations: [
       "Read-only public web research only; never writes to external systems.",
     ],
@@ -326,7 +301,7 @@ export const CUSTOM_RESEARCH_PACK = defineCapabilityPack({
 - Capability Packs are **immutable** once defined (`Object.isFrozen(pack) === true`).
 - If a workflow plan changes (altering its `planFingerprint`), or if required Tools, Model Policies, permissions, or Evaluation profiles change, you must publish a new explicit semantic version (`MAJOR.MINOR.PATCH`).
 - Existing companies pinned to `1.0.0` in their `CompanyPackSelectionV1` continue to validate against `1.0.0` until they explicitly update their selection.
-- If the underlying workflow code changes without updating the pack's `workflow.planFingerprint`, `validatePackCompatibility()` immediately fails preflight with `PACK_WORKFLOW_MISMATCH`.
+- If the underlying workflow code changes without updating the pack's `workflow.planFingerprint`, `validatePackCompatibility()` immediately fails preflight.
 
 ---
 
@@ -350,15 +325,14 @@ A Capability Pack **cannot**:
 |---|---|
 | **Business Problem** | Produce a structured, citation-backed company research brief from governed public web sources |
 | **Workflow Identity** | `company_research.proof@1.0.0` (`d316887874d40e7218ee0dbce3392db29ba8a666b36dcd5d513ebf0a885c2919`) |
-| **Tools** | `web.search@1.0.0`, `web.fetch_page@1.0.0`, `text.extract_sections@1.0.0` |
-| **Model Policy** | `company_research.brief.default@1.0.0` (`model.structured_output`) |
-| **Integration Requirements** | `publicWebProviderRef` (`public_web_provider`, required) |
+| **Tools** | `public_web.search@1.0.0`, `records.dedupe@1.0.0`, `public_web.fetch_pages@1.0.0`, `records.project@1.0.0` |
+| **Model Policies** | `company_research.planning`, `company_research.synthesis` (`model.structured_output`) |
+| **Integration Requirements** | `public_web` (`publicWebProviderRef`) |
 | **Preliminary Permissions** | `["read_only"]` |
-| **Approval** | `{ required: false }` |
-| **Input / Output Contracts** | `aao.company-research.request@1.0.0` -> `aao.company-research.brief@1.0.0` |
+| **Approval** | Not required |
 | **Outcome Class** | `read_only` |
-| **Evaluation Profile** | `eval.company_research.default@1.0.0` |
-| **Non-Goals** | No external system writes, no autonomous open-ended browsing outside governed `web.search` / `web.fetch_page` tools, no ungrounded claims without URL citations |
+| **Evaluation Profile** | `aao.company-research.evals@1.0.0` |
+| **Non-Goals** | No external system writes, no autonomous open-ended browsing outside governed tools, no ungrounded claims without URL citations |
 
 ### 12.2 `aao.document-intelligence@1.0.0`
 
@@ -366,14 +340,13 @@ A Capability Pack **cannot**:
 |---|---|
 | **Business Problem** | Extract structured fields and risk findings from local business documents with exact page and character-span evidence |
 | **Workflow Identity** | `document_intelligence.proof@1.0.0` (`ea415041aa2373ed43238e5da162cb8ceebcc6b5603dba20bab7b3dfbf9fd32c`) |
-| **Tools** | `document.load@1.0.0`, `document.extract_text@1.0.0`, `text.extract_sections@1.0.0` |
-| **Model Policy** | `document_intelligence.analysis.default@1.0.0` (`model.structured_output`) |
-| **Integration Requirements** | `documentSourceRef` (`document_source`, required) |
+| **Tools** | `document.extract_text@1.0.0` |
+| **Model Policies** | `document_intelligence.synthesis` (`model.structured_output`) |
+| **Integration Requirements** | `document_source` (`documentSourceProviderRef`) |
 | **Preliminary Permissions** | `["read_only"]` |
-| **Approval** | `{ required: false }` |
-| **Input / Output Contracts** | `aao.document-intelligence.request@1.0.0` -> `aao.document-intelligence.report@1.0.0` |
+| **Approval** | Not required |
 | **Outcome Class** | `read_only` |
-| **Evaluation Profile** | `eval.document_intelligence.default@1.0.0` |
+| **Evaluation Profile** | `aao.document-intelligence.evals@1.0.0` |
 | **Non-Goals** | No document mutation, no external network access, no claims or extracted fields that do not match exact page/span substrings in the source document |
 
 ### 12.3 `aao.operational-request@1.0.0`
@@ -382,12 +355,11 @@ A Capability Pack **cannot**:
 |---|---|
 | **Business Problem** | Validate an operational change request, generate a structured change proposal, pause for human Approval, and write an authorized local change draft |
 | **Workflow Identity** | `operational_request.proof@1.0.0` (`8323d4dca07e54cb66fa8dd7f0614cf17a2afcd501d39c99802bd0b07c0d9d73`) |
-| **Tools** | `draft.change_request.write@1.0.0` |
-| **Model Policy** | `operational_request.proposal.default@1.0.0` (`model.structured_output`) |
-| **Integration Requirements** | `draftRepositoryRef` (`draft_repository`, required) |
-| **Preliminary Permissions** | `["read_only", "write_draft"]` |
-| **Approval** | `{ required: true, actionClass: "operational_request.write_draft", approverRoles: ["operations_approver"], forbidSelfApproval: true }` |
-| **Input / Output Contracts** | `aao.operational-request.request@1.0.0` -> `aao.operational-request.result@1.0.0` |
+| **Tools** | `operations.create_change_draft@1.0.0` |
+| **Model Policies** | `operational_request.interpret` (`model.structured_output`) |
+| **Integration Requirements** | `draft_repository` (`draftRepositoryRef`) |
+| **Preliminary Permissions** | `["write_draft"]` |
+| **Approval** | `{ required: true, requiredRoleIds: ["operations.approver"], permissionClasses: ["write_draft"] }` |
 | **Outcome Class** | `draft_only` |
-| **Evaluation Profile** | `eval.operational_request.default@1.0.0` |
+| **Evaluation Profile** | `aao.operational-request.evals@1.0.0` |
 | **Non-Goals** | Never executes live mutations against external production systems (`externalExecution: "not_executed"`), never allows self-approval, never writes a draft before explicit human Approval |

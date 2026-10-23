@@ -1,7 +1,5 @@
 export {
   resolveCompanyCapabilityPacks,
-  STANDARD_PROOF_TOOLS,
-  STANDARD_MODEL_POLICIES,
   type ActivatedCompanyPack,
   type ActivatedCompanyPacks,
   type ResolveCompanyCapabilityPacksOptions,
@@ -16,6 +14,16 @@ export {
 
 export {
   EVAL_PROFILES,
+  STANDARD_EVAL_PROFILE_REGISTRATIONS,
   buildPackEvalDataset,
+  createPackEvalProfileCatalog,
+  createStandardEvalProfileCatalog,
+  verifyEvalProfileRegistration,
   evaluatePackRun,
+  type PackEvalDatasetPackage,
+  type PackEvalProfileDescriptor,
+  type PackEvalProfileRegistration,
+  type PackEvalProfileCatalog,
+  type CreatePackEvalProfileCatalogOptions,
+  type EvaluatePackRunResult,
 } from "./eval-profiles.js";

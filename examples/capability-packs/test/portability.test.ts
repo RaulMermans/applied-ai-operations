@@ -69,6 +69,10 @@ describe("Sprint 26 — Six-Scenario Capability Pack Adoption Matrix", () => {
       expect(nsPack.packFingerprint).toBe(arbPack.packFingerprint);
       expect(nsPack.workflowPlanFingerprint).toBe(arbPack.workflowPlanFingerprint);
       expect(nsPack.pack.identity).toBe(arbPack.pack.identity);
+      expect(nsPack.compatibilityReport.compatible).toBe(true);
+      expect(arbPack.compatibilityReport.compatible).toBe(true);
+      expect(nsPack.compatibilityReport.verifiedRequirements.evalProfiles).toBe(1);
+      expect(arbPack.compatibilityReport.verifiedRequirements.evalProfiles).toBe(1);
     }
 
     // ==============================================================

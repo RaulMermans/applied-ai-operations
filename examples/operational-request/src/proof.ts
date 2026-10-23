@@ -46,14 +46,45 @@ export interface OperationalRequestProofOptions {
   principalForRun: PrincipalForRun;
   draftRepository?: OperationalDraftRepository;
   tools?: readonly ToolDefinition[];
+  modelPolicies?: readonly ModelPolicySpec[];
   trace?: RuntimeTracePort;
   clock?: AAOClock;
   reliability?: Readonly<Record<string, ReliabilityPolicy>>;
 }
 
+export interface ProofRegistrationSnapshot {
+  readonly workflow: {
+    readonly id: string;
+    readonly version: string;
+    readonly planFingerprint: string;
+  };
+  readonly tools: ReadonlyArray<{
+    readonly id: string;
+    readonly version: string;
+  }>;
+  readonly modelPolicies: ReadonlyArray<string>;
+  readonly modelBindings: ReadonlyArray<{
+    readonly id: string;
+    readonly capabilities: ReadonlyArray<string>;
+    readonly adapterRef: {
+      readonly id: string;
+      readonly version: string;
+    };
+  }>;
+  readonly modelAdapters: ReadonlyArray<{
+    readonly id: string;
+    readonly version: string;
+    readonly capabilities: ReadonlyArray<{
+      readonly capability: string;
+      readonly support: "supported" | "unsupported";
+    }>;
+  }>;
+}
+
 export interface OperationalRequestProof {
   readonly workflow: Workflow;
   readonly planFingerprint: string;
+  readonly registrationSnapshot: ProofRegistrationSnapshot;
   readonly app: AAOApp;
   readonly draftRepository: OperationalDraftRepository;
   readonly approvals: AAOApprovals;
@@ -84,14 +115,19 @@ export function createOperationalRequestProof(
     approvalVerifier,
   });
   const tools = options.tools ? [...options.tools] : [draftTool];
+  const modelPolicies = options.modelPolicies
+    ? [...options.modelPolicies]
+    : [...OPERATIONAL_REQUEST_MODEL_POLICIES];
+  const modelAdapters = [...options.modelAdapters];
+  const modelBindings = [...options.modelBindings];
 
   const app = createAAO({
     governance: options.governance,
     principalForRun: options.principalForRun,
     tools,
-    modelAdapters: options.modelAdapters,
-    modelBindings: options.modelBindings,
-    modelPolicies: OPERATIONAL_REQUEST_MODEL_POLICIES,
+    modelAdapters,
+    modelBindings,
+    modelPolicies,
     deterministicExecutors: OPERATIONAL_REQUEST_EXECUTORS,
     ...(options.trace !== undefined ? { trace: options.trace } : {}),
     ...(options.clock !== undefined ? { clock: options.clock } : {}),
@@ -104,9 +140,44 @@ export function createOperationalRequestProof(
     options.reliability ? { reliability: { policiesByNodeId: options.reliability } } : undefined
   );
 
+  const registrationSnapshot: ProofRegistrationSnapshot = Object.freeze({
+    workflow: Object.freeze({
+      id: prepared.workflow.id,
+      version: prepared.workflow.version,
+      planFingerprint: prepared.planFingerprint,
+    }),
+    tools: Object.freeze(
+      tools.map((t) => Object.freeze({ id: t.spec.id, version: t.spec.version }))
+    ),
+    modelPolicies: Object.freeze(modelPolicies.map((p) => p.id)),
+    modelBindings: Object.freeze(
+      modelBindings.map((b) =>
+        Object.freeze({
+          id: b.id,
+          capabilities: Object.freeze([...b.capabilities]),
+          adapterRef: Object.freeze({ id: b.adapterRef.id, version: b.adapterRef.version }),
+        })
+      )
+    ),
+    modelAdapters: Object.freeze(
+      modelAdapters.map((a) =>
+        Object.freeze({
+          id: a.manifest.id,
+          version: a.manifest.version,
+          capabilities: Object.freeze(
+            a.manifest.capabilities.map((c) =>
+              Object.freeze({ capability: c.capability, support: c.support })
+            )
+          ),
+        })
+      )
+    ),
+  });
+
   return Object.freeze({
     workflow: prepared.workflow,
     planFingerprint: prepared.planFingerprint,
+    registrationSnapshot,
     app,
     draftRepository,
     approvals: app.approvals,

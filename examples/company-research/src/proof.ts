@@ -1,4 +1,4 @@
-import { createAAO, defineModelPolicy, type AAOClock, type GovernanceConfiguration, type JsonValue, type ModelAdapterDefinition, type ModelBindingDefinition, type ModelPolicySpec, type PrincipalForRun, type ReliabilityPolicy, type RuntimeFailure, type RuntimeTracePort, type Workflow, type WorkflowExecutionResult } from "@aao/framework";
+import { createAAO, defineModelPolicy, type AAOClock, type GovernanceConfiguration, type JsonValue, type ModelAdapterDefinition, type ModelBindingDefinition, type ModelPolicySpec, type PrincipalForRun, type ReliabilityPolicy, type RuntimeFailure, type RuntimeTracePort, type ToolDefinition, type Workflow, type WorkflowExecutionResult } from "@aao/framework";
 import { createPublicWebTools, type PublicWebProvider } from "@aao/integration-public-web";
 import { coreToolbox, selectToolboxTools } from "@aao/toolbox";
 import type { CompanyResearchRequestInput, CompanyResearchResult } from "./contracts.js";
@@ -23,6 +23,10 @@ export interface CompanyResearchProofOptions {
   governance: GovernanceConfiguration;
   /** The host's identity boundary, exactly as for `createAAO`. */
   principalForRun: PrincipalForRun;
+  /** Optional explicit Tool list override for registration testing. */
+  tools?: readonly ToolDefinition[];
+  /** Optional explicit Model Policy list override for registration testing. */
+  modelPolicies?: readonly ModelPolicySpec[];
   trace?: RuntimeTracePort;
   clock?: AAOClock;
   /** Trusted per-node Runtime reliability policy (for example `{ search: { maxAttempts: 2 } }`). Default: one attempt everywhere. */
@@ -33,9 +37,39 @@ export type CompanyResearchRunOutcome =
   | { status: "completed"; result: CompanyResearchResult; execution: WorkflowExecutionResult }
   | { status: "failed"; failure: Pick<RuntimeFailure, "code" | "nodeId" | "executorFailure">; execution: WorkflowExecutionResult };
 
+export interface ProofRegistrationSnapshot {
+  readonly workflow: {
+    readonly id: string;
+    readonly version: string;
+    readonly planFingerprint: string;
+  };
+  readonly tools: ReadonlyArray<{
+    readonly id: string;
+    readonly version: string;
+  }>;
+  readonly modelPolicies: ReadonlyArray<string>;
+  readonly modelBindings: ReadonlyArray<{
+    readonly id: string;
+    readonly capabilities: ReadonlyArray<string>;
+    readonly adapterRef: {
+      readonly id: string;
+      readonly version: string;
+    };
+  }>;
+  readonly modelAdapters: ReadonlyArray<{
+    readonly id: string;
+    readonly version: string;
+    readonly capabilities: ReadonlyArray<{
+      readonly capability: string;
+      readonly support: "supported" | "unsupported";
+    }>;
+  }>;
+}
+
 export interface CompanyResearchProof {
   readonly workflow: Workflow;
   readonly planFingerprint: string;
+  readonly registrationSnapshot: ProofRegistrationSnapshot;
   run(input: { runId: string; request: CompanyResearchRequestInput }): Promise<CompanyResearchRunOutcome>;
 }
 
@@ -54,18 +88,61 @@ export interface CompanyResearchProof {
  */
 export function createCompanyResearchProof(options: CompanyResearchProofOptions): CompanyResearchProof {
   const web = createPublicWebTools({ provider: options.researchProvider });
+  const tools = options.tools
+    ? [...options.tools]
+    : [web.search, web.fetchPages, ...selectToolboxTools(coreToolbox, [DEDUPE_TOOL_REF, PROJECT_TOOL_REF])];
+  const modelPolicies = options.modelPolicies
+    ? [...options.modelPolicies]
+    : [...COMPANY_RESEARCH_MODEL_POLICIES];
+  const modelAdapters = [...options.modelAdapters];
+  const modelBindings = [...options.modelBindings];
+
   const app = createAAO({
     governance: options.governance,
     principalForRun: options.principalForRun,
-    tools: [web.search, web.fetchPages, ...selectToolboxTools(coreToolbox, [DEDUPE_TOOL_REF, PROJECT_TOOL_REF])],
-    modelAdapters: options.modelAdapters,
-    modelBindings: options.modelBindings,
-    modelPolicies: COMPANY_RESEARCH_MODEL_POLICIES,
+    tools,
+    modelAdapters,
+    modelBindings,
+    modelPolicies,
     deterministicExecutors: COMPANY_RESEARCH_EXECUTORS,
     ...(options.trace !== undefined ? { trace: options.trace } : {}),
     ...(options.clock !== undefined ? { clock: options.clock } : {}),
   });
   const prepared = app.prepareWorkflow(companyResearchWorkflow, options.reliability ? { reliability: { policiesByNodeId: options.reliability } } : undefined);
+
+  const registrationSnapshot: ProofRegistrationSnapshot = Object.freeze({
+    workflow: Object.freeze({
+      id: prepared.workflow.id,
+      version: prepared.workflow.version,
+      planFingerprint: prepared.planFingerprint,
+    }),
+    tools: Object.freeze(
+      tools.map((t) => Object.freeze({ id: t.spec.id, version: t.spec.version }))
+    ),
+    modelPolicies: Object.freeze(modelPolicies.map((p) => p.id)),
+    modelBindings: Object.freeze(
+      modelBindings.map((b) =>
+        Object.freeze({
+          id: b.id,
+          capabilities: Object.freeze([...b.capabilities]),
+          adapterRef: Object.freeze({ id: b.adapterRef.id, version: b.adapterRef.version }),
+        })
+      )
+    ),
+    modelAdapters: Object.freeze(
+      modelAdapters.map((a) =>
+        Object.freeze({
+          id: a.manifest.id,
+          version: a.manifest.version,
+          capabilities: Object.freeze(
+            a.manifest.capabilities.map((c) =>
+              Object.freeze({ capability: c.capability, support: c.support })
+            )
+          ),
+        })
+      )
+    ),
+  });
 
   async function run(input: { runId: string; request: CompanyResearchRequestInput }): Promise<CompanyResearchRunOutcome> {
     const runId = input.runId;
@@ -77,5 +154,5 @@ export function createCompanyResearchProof(options: CompanyResearchProofOptions)
     return { status: "completed", result: execution.execution.state.values[STATE_KEYS.researchResult] as unknown as CompanyResearchResult, execution };
   }
 
-  return Object.freeze({ workflow: prepared.workflow, planFingerprint: prepared.planFingerprint, run });
+  return Object.freeze({ workflow: prepared.workflow, planFingerprint: prepared.planFingerprint, registrationSnapshot, run });
 }

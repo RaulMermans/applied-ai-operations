@@ -81,16 +81,65 @@ A Pack's `fingerprint` is the 64-character lowercase SHA-256 hex digest of `cano
 - `validateCompanyPackSelection(raw)`: Validates `CompanyPackSelectionV1` (`{ schemaVersion: 1, companyId, packRefs }`).
 - `validatePackCompatibility(pack, context)`: Performs preflight compatibility verification before any Run begins.
 
-## 5. Compatibility Validation & Failure Taxonomy
+## 5. Compatibility Validation, Registration Evidence & Failure Taxonomy
 
+### 5.1 Trusted Registration Snapshot (`ProofRegistrationSnapshot`)
+At proof construction (`createAAO()`), each proof captures a deep-frozen, read-only `ProofRegistrationSnapshot` derived from the actual objects registered with the runtime:
+
+```ts
+interface ProofRegistrationSnapshot {
+  readonly workflow: {
+    readonly id: string;
+    readonly version: string;
+    readonly planFingerprint: string;
+  };
+  readonly tools: readonly ExactToolRef[];
+  readonly modelPolicies: readonly string[];
+  readonly modelBindings: readonly VerifiedModelBinding[];
+  readonly modelAdapters: readonly VerifiedModelAdapter[];
+}
+```
+
+This boundary exposes only immutable identity and capability metadata—never `app`, `prepareWorkflow`, Tool handlers, Model Adapter implementations, or Approval verifiers. Static fallback inventories (`STANDARD_PROOF_TOOLS`, `STANDARD_MODEL_POLICIES`) are prohibited.
+
+### 5.2 Mandatory Compatibility Evidence
+`PackCompatibilityContext` requires explicit registration evidence for every dependency category:
+- `registeredTools`: `readonly ExactToolRef[]`
+- `registeredModelPolicies`: `readonly string[]`
+- `registeredModelBindings`: `readonly VerifiedModelBinding[]`
+- `registeredModelAdapters`: `readonly VerifiedModelAdapter[]` (or `adapterCapabilities` paired on each binding)
+- `registeredEvalProfiles`: `readonly string[]`
+
+Omitted, `undefined`, `null`, or malformed evidence arrays fail closed with `PACK_EVIDENCE_UNAVAILABLE`. Duplicate or conflicting registrations fail closed with `PACK_CAPABILITY_INCOMPATIBLE`.
+
+### 5.3 Binding + Adapter Capability Verification
+For every capability in `pack.manifest.requirements.modelCapabilities` (such as `model.structured_output`), preflight verifies that:
+1. At least one registered `ModelBindingDefinition` declares the capability in `binding.capabilities`;
+2. That binding's exact `adapterRef` (`id@version`) resolves to a registered `ModelAdapterDefinition`; and
+3. That adapter's `manifest.capabilities` also includes the required capability.
+
+### 5.4 Eval Profile Registration & Verification
+`PackEvalProfileCatalog` (`createPackEvalProfileCatalog`, `createStandardEvalProfileCatalog`) registers exact `evalId@MAJOR.MINOR.PATCH` profiles and runs `verifyEvalProfileRegistration()` at catalog construction time to confirm that:
+- The profile reference matches `ExactEvalProfileRefSchema`;
+- The suite builder produces a valid `EvalDatasetContract` and `EvalDefinitionContract` with supported mode (`offline_fixture` or `trace_replay`); and
+- Every referenced grader is registered in the canonical `EvaluatorRegistry`.
+
+During pack compatibility preflight, `pack.manifest.verification.evalProfileRef` must exist in `registeredEvalProfiles`, or validation fails closed with `PACK_VERIFICATION_PROFILE_MISSING` (without executing the Eval dataset during activation).
+
+### 5.5 Atomic Whole-Selection Validation
+`resolveCompanyCapabilityPacks()` validates all packs in `CompanyPackSelectionV1` before activating any facade. If even one selected pack fails compatibility, the entire selection is refused and zero packs are activated.
+
+### 5.6 Preflight Checklist
 Before a selected pack is exposed for execution, preflight validation checks:
-1. Workflow identity, version, and prepared `planFingerprint` match the pack manifest (`PACK_WORKFLOW_MISMATCH`).
-2. Underlying proof is enabled in the company's `enabledProofs` (`PACK_PROOF_DISABLED`).
-3. Required Tool definitions (`id@version`) are registered (`PACK_REQUIREMENT_MISSING`).
-4. Required Model Policies are available (`PACK_REQUIREMENT_MISSING`).
-5. Required Model Capabilities (e.g., `model.structured_output`) are supported by the company's model bindings (`PACK_CAPABILITY_INCOMPATIBLE`).
-6. Required Integration Slots (`public_web`, `document_source`, `draft_repository`) are bound (`PACK_REQUIREMENT_MISSING`).
-7. Required Governance approver roles exist when `approval.required` is true (`PACK_GOVERNANCE_INCOMPATIBLE`).
+1. Mandatory registration evidence is present and well-formed (`PACK_EVIDENCE_UNAVAILABLE`).
+2. Workflow identity, version, and prepared `planFingerprint` match the pack manifest (`PACK_WORKFLOW_MISMATCH` / `PACK_CAPABILITY_INCOMPATIBLE`).
+3. Underlying proof is enabled in the company's `enabledProofs` (`PACK_PROOF_DISABLED`).
+4. Required Tool definitions (`id@version`) are present in `registeredTools` (`PACK_REQUIREMENT_MISSING`).
+5. Required Model Policies are present in `registeredModelPolicies` (`PACK_REQUIREMENT_MISSING`).
+6. Required Model Capabilities are supported by a valid registered binding + adapter pair (`PACK_CAPABILITY_INCOMPATIBLE`).
+7. Required Integration Slots (`publicWebProviderRef`, `documentSourceRef`, `draftRepositoryRef`) are bound (`PACK_REQUIREMENT_MISSING`).
+8. Required Governance permissions and approver roles exist (`PACK_REQUIREMENT_MISSING` / `PACK_GOVERNANCE_INCOMPATIBLE`).
+9. Required `evalProfileRef` is present in `registeredEvalProfiles` (`PACK_VERIFICATION_PROFILE_MISSING`).
 
 ### Error Codes (`CapabilityPackErrorCode`)
 - `PACK_INVALID_MANIFEST`
@@ -98,6 +147,7 @@ Before a selected pack is exposed for execution, preflight validation checks:
 - `PACK_DUPLICATE_REF`
 - `PACK_NOT_FOUND`
 - `PACK_WORKFLOW_MISMATCH`
+- `PACK_EVIDENCE_UNAVAILABLE`
 - `PACK_REQUIREMENT_MISSING`
 - `PACK_CAPABILITY_INCOMPATIBLE`
 - `PACK_PROOF_DISABLED`
@@ -109,7 +159,7 @@ Before a selected pack is exposed for execution, preflight validation checks:
 
 Capability Pack metadata is **descriptive, never authoritative**:
 - Pack selection does not install software, download plugins, or execute arbitrary code.
-- Pack compatibility resolution confirms that a company has configured the necessary bindings; it does not authorize any principal.
+- Pack compatibility resolution confirms that a company has configured and registered the necessary capabilities; it does not authorize any principal.
 - Execution through an activated pack facade (`ActivatedCompanyPack.facade`) always enforces `requireCompanyAdmission()`, canonical Governance evaluation, Tool Runtime Authorization, and the Approval Engine.
 
 ## 7. Initial Flagship Capability Packs
@@ -118,7 +168,7 @@ Capability Pack metadata is **descriptive, never authoritative**:
 - **Workflow**: `company_research.proof@1.0.0` (`planFingerprint: d316887874d40e7218ee0dbce3392db29ba8a666b36dcd5d513ebf0a885c2919`)
 - **Tools**: `public_web.search@1.0.0`, `records.dedupe@1.0.0`, `public_web.fetch_pages@1.0.0`, `records.project@1.0.0`
 - **Model Policies**: `company_research.planning`, `company_research.synthesis` (`model.structured_output`)
-- **Integration Slot**: `public_web`
+- **Integration Slot**: `public_web` (`publicWebProviderRef`)
 - **Permissions & Approval**: `read_only`, no human approval required, outcome class `read_only`
 - **Eval Profile**: `aao.company-research.evals@1.0.0`
 
@@ -126,7 +176,7 @@ Capability Pack metadata is **descriptive, never authoritative**:
 - **Workflow**: `document_intelligence.proof@1.0.0` (`planFingerprint: ea415041aa2373ed43238e5da162cb8ceebcc6b5603dba20bab7b3dfbf9fd32c`)
 - **Tools**: `document.extract_text@1.0.0`
 - **Model Policies**: `document_intelligence.synthesis` (`model.structured_output`)
-- **Integration Slot**: `document_source`
+- **Integration Slot**: `document_source` (`documentSourceProviderRef`)
 - **Permissions & Approval**: `read_only`, no human approval required, outcome class `read_only`
 - **Eval Profile**: `aao.document-intelligence.evals@1.0.0`
 
@@ -134,6 +184,6 @@ Capability Pack metadata is **descriptive, never authoritative**:
 - **Workflow**: `operational_request.proof@1.0.0` (`planFingerprint: 8323d4dca07e54cb66fa8dd7f0614cf17a2afcd501d39c99802bd0b07c0d9d73`)
 - **Tools**: `operations.create_change_draft@1.0.0`
 - **Model Policies**: `operational_request.interpret` (`model.structured_output`)
-- **Integration Slot**: `draft_repository`
-- **Permissions & Approval**: `write_draft`, human approval required (`operations.approver`), outcome class `draft_only`
+- **Integration Slot**: `draft_repository` (`draftRepositoryRef`)
+- **Permissions & Approval**: `write_draft`, human approval required (`requiredRoleIds: ["operations.approver"]`), outcome class `draft_only`
 - **Eval Profile**: `aao.operational-request.evals@1.0.0`
