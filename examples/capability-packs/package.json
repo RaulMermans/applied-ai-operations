@@ -1,0 +1,50 @@
+{
+  "name": "@aao/example-capability-packs",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Sprint 26 proof application: Capability Packs & Reusable Business Templates demonstrating declarative capability packaging, multi-company resolution, and canonical AAO execution.",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./fixtures": {
+      "types": "./dist/fixtures/index.d.ts",
+      "default": "./dist/fixtures/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": ">=20.20.0 <21.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "proof": "node dist/demo/run.js",
+    "smoke:sprint26": "node smoke/sprint26.mjs"
+  },
+  "dependencies": {
+    "@aao/capability-packs": "workspace:*",
+    "@aao/config": "workspace:*",
+    "@aao/contracts": "workspace:*",
+    "@aao/example-company-portability": "workspace:*",
+    "@aao/example-company-research": "workspace:*",
+    "@aao/example-document-intelligence": "workspace:*",
+    "@aao/example-operational-request": "workspace:*",
+    "@aao/framework": "workspace:*",
+    "@aao/governance": "workspace:*",
+    "@aao/integration-documents": "workspace:*",
+    "@aao/integration-public-web": "workspace:*",
+    "@aao/toolbox": "workspace:*"
+  },
+  "devDependencies": {
+    "@aao/evaluation": "workspace:*",
+    "@aao/observability": "workspace:*",
+    "@types/node": "^22.15.3",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.3"
+  }
+}

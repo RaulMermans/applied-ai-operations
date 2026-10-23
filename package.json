@@ -23,6 +23,7 @@
     "proof:document-intelligence": "pnpm --silent --filter \"@aao/example-document-intelligence...\" run build 1>&2 && node examples/document-intelligence/dist/demo/run.js",
     "proof:operational-request": "pnpm --silent --filter \"@aao/example-operational-request...\" run build 1>&2 && node examples/operational-request/dist/demo/run.js",
     "proof:company-portability": "pnpm --silent --filter \"@aao/example-company-portability...\" run build 1>&2 && node examples/company-portability/dist/demo/run.js",
+    "proof:capability-packs": "pnpm --silent --filter \"@aao/example-capability-packs...\" run build 1>&2 && node examples/capability-packs/dist/demo/run.js",
     "check": "pnpm run typecheck && pnpm run lint && pnpm run build && pnpm run test && node packages/framework/dist/cli/main.js eval ci && node packages/framework/dist/cli/main.js eval adapters"
   },
   "devDependencies": {
