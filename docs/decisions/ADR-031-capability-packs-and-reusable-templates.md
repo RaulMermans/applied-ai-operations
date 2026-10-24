@@ -120,13 +120,24 @@ Compatibility preflight (`validatePackCompatibility()` and `resolveCompanyCapabi
 - **Verified Evaluation Profile Registration**: Before activation, the host verifies that `pack.manifest.verification.evalProfileRef` is registered in the `PackEvalProfileCatalog`, its dataset and definition contracts pass canonical validation, and every referenced grader is registered in the canonical `EvaluatorRegistry`. Unknown or unbuildable profiles fail preflight with `PACK_VERIFICATION_PROFILE_MISSING` without executing the Eval dataset during activation.
 - **Atomic Whole-Selection Validation**: When a company selects multiple Capability Packs, all selected packs must pass compatibility preflight before any pack is activated.
 
+### 10. Authoritative Registration Snapshot Integrity (Sprint 26D)
+
+Source review of Sprint 26C identified a remaining evidence-integrity defect: `ProofRegistrationOverride` in `createCompanyAAO()` permitted an optional `registrationSnapshot?: ProofRegistrationSnapshot` override (`options.proofRegistrations?.<proof>?.registrationSnapshot ?? proof.registrationSnapshot`). This created two competing sources of registration truth—actual registrations used to construct the executable proof versus caller-supplied registration metadata—allowing a stale or fabricated snapshot to mask missing Tools, missing Model Policies, or unsupported model bindings/adapters during compatibility validation.
+
+To establish a single authoritative registration evidence path:
+- **Removal of `registrationSnapshot` from Composition Overrides**: `registrationSnapshot` is removed from `ProofRegistrationOverride`. No caller-supplied snapshot or alternate metadata field may replace a constructed proof's registration evidence.
+- **Constructed Proof as the Sole Registration Authority**: Each guarded company facade (`companyResearchFacade`, `documentIntelligenceFacade`, `operationalRequestFacade`) receives `registrationSnapshot` unconditionally from its constructed proof (`companyResearchProof.registrationSnapshot`, `documentIntelligenceProof.registrationSnapshot`, `operationalRequestProof.registrationSnapshot`).
+- **Construction Inputs vs. Evidence Replacement**: Trusted host test overrides (`tools`, `modelPolicies`, `modelBindings`, `modelAdapters`) remain available on `ProofRegistrationOverride` because they are actual construction inputs passed into `createAAO()`, which then generates the truthful `ProofRegistrationSnapshot`. Overriding construction inputs tests real registration drift; overriding the resulting snapshot falsifies evidence and is prohibited.
+- **Fail-Closed Enforcement Without New Infrastructure**: Incompatible construction inputs either fail closed during `createAAO()` / `createCompanyAAO()` preparation (`AAOFrameworkError` / `CompanyConfigError`) or produce an authoritative snapshot that `validatePackCompatibility()` refuses (`PACK_REQUIREMENT_MISSING` / `PACK_CAPABILITY_INCOMPATIBLE`). No new Runtime, Tool Registry, Model Registry, or Evaluation Runtime was needed.
+
 ## Consequences
 
 ### Positive
 - Enterprises can adopt the three flagship workflows (`aao.company-research@1.0.0`, `aao.document-intelligence@1.0.0`, `aao.operational-request@1.0.0`) purely through validated configuration and host capability bindings.
 - Zero workflow graph duplication across companies or packs.
+- Every activated Capability Pack is guaranteed to be validated against the exact registrations of its executable proof, with no alternate metadata path capable of fabricating capability availability.
 - Missing tools, missing model policies, missing integration slots, disabled company proofs, and missing governance roles fail fast during preflight before any model or tool call occurs.
 
 ### Limitations & Non-Goals
-- **Local trusted host**: Pack definitions and workflows are resolved from local checked-in packages; there is no remote package registry or dynamic plugin downloading.
+- **Local trusted host**: Pack definitions, host capability catalogs, and proof factories run within a trusted local host process; AAO does not claim cross-process cryptographic attestation against a compromised host runtime.
 - **No pack-to-pack dependency graph**: Packs are self-contained units referencing canonical Tools, Model Policies, and Workflows directly.

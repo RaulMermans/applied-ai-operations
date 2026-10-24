@@ -25,6 +25,7 @@ import {
   NORTHSTAR_ACTORS,
   ARBOR_ACTORS,
 } from "@aao/example-company-portability";
+import { defineModelAdapter } from "@aao/framework";
 import {
   createInMemoryTraceStore,
   createTraceRecorder,
@@ -283,7 +284,7 @@ try {
 }
 assert(missingToolEvidenceFailed, "Step 11.1: Missing Tool evidence did not fail with PACK_EVIDENCE_UNAVAILABLE");
 
-// 11.2 Tool absent from actual registration -> FAIL
+// 11.2 Actual proof missing Tool + Previously valid snapshot supplied -> Pack activation refused
 let toolAbsentFromRegistrationFailed = false;
 try {
   const driftedAAO = createCompanyAAO({
@@ -293,9 +294,14 @@ try {
     proofRegistrations: {
       company_research: {
         tools: [],
+        registrationSnapshot: baseCRSnapshot,
       },
     },
   });
+  assert(
+    driftedAAO.getCompanyResearchProof().registrationSnapshot.tools.length === 0,
+    "Step 11.2: Fabricated snapshot replaced actual empty tool registration"
+  );
   resolveCompanyCapabilityPacks({
     company: driftedAAO,
     catalog,
@@ -308,9 +314,9 @@ try {
 } catch (err) {
   toolAbsentFromRegistrationFailed = err instanceof CapabilityPackError && err.code === "PACK_REQUIREMENT_MISSING";
 }
-assert(toolAbsentFromRegistrationFailed, "Step 11.2: Tool absent from actual registration did not fail with PACK_REQUIREMENT_MISSING");
+assert(toolAbsentFromRegistrationFailed, "Step 11.2: Tool absent from actual registration + fabricated snapshot did not fail with PACK_REQUIREMENT_MISSING");
 
-// 11.3 Missing Model Policy -> FAIL
+// 11.3 Actual proof missing Model Policy + Previously valid snapshot supplied -> Pack activation refused
 let missingModelPolicyFailed = false;
 try {
   const driftedPolicyAAO = createCompanyAAO({
@@ -320,9 +326,14 @@ try {
     proofRegistrations: {
       company_research: {
         modelPolicies: [],
+        registrationSnapshot: baseCRSnapshot,
       },
     },
   });
+  assert(
+    driftedPolicyAAO.getCompanyResearchProof().registrationSnapshot.modelPolicies.length === 0,
+    "Step 11.3: Fabricated snapshot replaced actual empty model policy registration"
+  );
   resolveCompanyCapabilityPacks({
     company: driftedPolicyAAO,
     catalog,
@@ -335,9 +346,17 @@ try {
 } catch (err) {
   missingModelPolicyFailed = err instanceof CapabilityPackError && err.code === "PACK_REQUIREMENT_MISSING";
 }
-assert(missingModelPolicyFailed, "Step 11.3: Missing Model Policy did not fail with PACK_REQUIREMENT_MISSING");
+assert(missingModelPolicyFailed, "Step 11.3: Missing Model Policy + fabricated snapshot did not fail with PACK_REQUIREMENT_MISSING");
 
-// 11.4 Model binding capability unsupported -> FAIL
+// 11.4 Actual model binding lacks capability + Stale capability metadata supplied -> Pack activation refused
+const validAdapterDef = env.hostCapabilities.getModelAdapter("aao.native-model");
+const textOnlyBinding = {
+  id: "northstar.model.text_only",
+  priority: 10,
+  capabilities: ["model.text_generation"],
+  adapterRef: { id: "aao.native-model", version: "1.0.0" },
+};
+
 let bindingCapUnsupportedFailed = false;
 try {
   const driftedBindingAAO = createCompanyAAO({
@@ -346,20 +365,9 @@ try {
     principalForRun: env.northstarPrincipalForRun,
     proofRegistrations: {
       company_research: {
-        registrationSnapshot: {
-          ...baseCRSnapshot,
-          modelBindings: baseCRSnapshot.modelBindings.map((b) => ({
-            ...b,
-            capabilities: ["model.text_generation"],
-          })),
-          modelAdapters: baseCRSnapshot.modelAdapters.map((a) => ({
-            ...a,
-            capabilities: [
-              { capability: "model.text_generation", support: "supported" },
-              { capability: "model.structured_output", support: "supported" },
-            ],
-          })),
-        },
+        modelBindings: [textOnlyBinding],
+        modelAdapters: [validAdapterDef],
+        registrationSnapshot: baseCRSnapshot,
       },
     },
   });
@@ -375,26 +383,35 @@ try {
 } catch (err) {
   bindingCapUnsupportedFailed = err instanceof CapabilityPackError && err.code === "PACK_CAPABILITY_INCOMPATIBLE";
 }
-assert(bindingCapUnsupportedFailed, "Step 11.4: Model binding capability unsupported did not fail with PACK_CAPABILITY_INCOMPATIBLE");
+assert(bindingCapUnsupportedFailed, "Step 11.4: Model binding capability unsupported + stale metadata did not fail with PACK_CAPABILITY_INCOMPATIBLE");
 
-// 11.5 Adapter capability unsupported -> FAIL
+// 11.5 Actual model adapter lacks capability + Stale capability metadata supplied -> Pack activation refused
 let adapterCapUnsupportedFailed = false;
 try {
+  const textOnlyAdapterDef = defineModelAdapter({
+    manifest: {
+      id: "aao.native-model",
+      version: "1.0.0",
+      kind: "model",
+      capabilities: [
+        { capability: "model.text_generation", support: "supported" },
+        { capability: "model.structured_output", support: "unsupported" },
+        { capability: "model.usage", support: "supported" },
+        { capability: "model.cancellation", support: "unsupported" },
+        { capability: "model.tool_call_response", support: "unsupported" },
+      ],
+    },
+    adapter: validAdapterDef.adapter,
+  });
   const driftedAdapterAAO = createCompanyAAO({
     manifest: NORTHSTAR_MANIFEST,
     hostCapabilities: env.hostCapabilities,
     principalForRun: env.northstarPrincipalForRun,
     proofRegistrations: {
       company_research: {
-        registrationSnapshot: {
-          ...baseCRSnapshot,
-          modelAdapters: baseCRSnapshot.modelAdapters.map((a) => ({
-            ...a,
-            capabilities: [
-              { capability: "model.structured_output", support: "unsupported" },
-            ],
-          })),
-        },
+        modelBindings: [textOnlyBinding],
+        modelAdapters: [textOnlyAdapterDef],
+        registrationSnapshot: baseCRSnapshot,
       },
     },
   });
@@ -410,7 +427,7 @@ try {
 } catch (err) {
   adapterCapUnsupportedFailed = err instanceof CapabilityPackError && err.code === "PACK_CAPABILITY_INCOMPATIBLE";
 }
-assert(adapterCapUnsupportedFailed, "Step 11.5: Adapter capability unsupported did not fail with PACK_CAPABILITY_INCOMPATIBLE");
+assert(adapterCapUnsupportedFailed, "Step 11.5: Adapter capability unsupported + stale metadata did not fail with PACK_CAPABILITY_INCOMPATIBLE");
 
 // 11.6 Unknown Eval profile -> PACK_VERIFICATION_PROFILE_MISSING
 let unknownEvalProfileFailed = false;

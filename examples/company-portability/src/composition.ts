@@ -49,7 +49,6 @@ export interface ProofRegistrationOverride {
   readonly modelPolicies?: readonly ModelPolicySpec[];
   readonly modelBindings?: readonly ModelBindingDefinition[];
   readonly modelAdapters?: readonly ModelAdapterDefinition[];
-  readonly registrationSnapshot?: ProofRegistrationSnapshot;
 }
 
 export interface CreateCompanyAAOOptions {
@@ -323,9 +322,7 @@ export function createCompanyAAO(options: CreateCompanyAAOOptions): ComposedComp
     ? Object.freeze({
         workflow: companyResearchProof.workflow,
         planFingerprint: companyResearchProof.planFingerprint,
-        registrationSnapshot:
-          options.proofRegistrations?.company_research?.registrationSnapshot ??
-          companyResearchProof.registrationSnapshot,
+        registrationSnapshot: companyResearchProof.registrationSnapshot,
         async run(input: {
           runId: string;
           request: CompanyResearchRequestInput;
@@ -341,9 +338,7 @@ export function createCompanyAAO(options: CreateCompanyAAOOptions): ComposedComp
       ? Object.freeze({
           workflow: documentIntelligenceProof.workflow,
           planFingerprint: documentIntelligenceProof.planFingerprint,
-          registrationSnapshot:
-            options.proofRegistrations?.document_intelligence?.registrationSnapshot ??
-            documentIntelligenceProof.registrationSnapshot,
+          registrationSnapshot: documentIntelligenceProof.registrationSnapshot,
           async run(input: {
             runId: string;
             request: DocumentIntelligenceRequestInput;
@@ -359,9 +354,7 @@ export function createCompanyAAO(options: CreateCompanyAAOOptions): ComposedComp
       ? Object.freeze({
           workflow: operationalRequestProof.workflow,
           planFingerprint: operationalRequestProof.planFingerprint,
-          registrationSnapshot:
-            options.proofRegistrations?.operational_request?.registrationSnapshot ??
-            operationalRequestProof.registrationSnapshot,
+          registrationSnapshot: operationalRequestProof.registrationSnapshot,
           approvals: operationalRequestProof.approvals,
           async execute(input: {
             runId: string;

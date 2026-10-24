@@ -9,7 +9,13 @@ import {
 import {
   createCompanyAAO,
   CompanyAdmissionError,
+  type ProofRegistrationOverride,
 } from "@aao/example-company-portability";
+import {
+  defineModelAdapter,
+  type ModelAdapterDefinition,
+  type ModelBindingDefinition,
+} from "@aao/framework";
 import {
   createInMemoryTraceStore,
   createTraceRecorder,
@@ -246,8 +252,9 @@ async function main() {
   process.stdout.write("9-12. Governance & Compatibility Refusal Demonstrations:\n");
 
   const baseCRSnapshot = northstarAAO.getCompanyResearchProof().registrationSnapshot;
+  const validAdapterDef = env.hostCapabilities.getModelAdapter("aao.native-model")!;
 
-  // 9. Missing Tool refusal demonstration
+  // 9. Missing Tool refusal & Registration integrity demonstration
   try {
     const missingToolAAO = createCompanyAAO({
       manifest: NORTHSTAR_MANIFEST,
@@ -256,9 +263,18 @@ async function main() {
       proofRegistrations: {
         company_research: {
           tools: [],
-        },
+          // Attempt to inject a previously valid registrationSnapshot claiming all tools exist
+          registrationSnapshot: baseCRSnapshot,
+        } as unknown as ProofRegistrationOverride,
       },
     });
+    const actualToolsCount = missingToolAAO.getCompanyResearchProof().registrationSnapshot.tools.length;
+    process.stdout.write(
+      `  - Registration integrity:\n` +
+        `    Actual Tool registration missing (registered=${actualToolsCount})\n` +
+        `    Fabricated snapshot supplied (claimed=${baseCRSnapshot.tools.length})\n` +
+        `    Fabricated snapshot ignored/rejected\n`
+    );
     resolveCompanyCapabilityPacks({
       company: missingToolAAO,
       catalog,
@@ -270,28 +286,43 @@ async function main() {
     });
   } catch (err) {
     if (err instanceof CapabilityPackError) {
-      process.stdout.write(`  - [9] Missing Tool registration refused: ${err.code} (${err.message})\n`);
+      process.stdout.write(`    Compatibility refused: ${err.code} (${err.message})\n`);
     }
   }
 
-  // 10. Missing Model capability refusal demonstration
+  // 10. Missing Model capability refusal demonstration (actual constructed adapter/binding)
   try {
+    const textOnlyBinding: ModelBindingDefinition = {
+      id: "northstar.model.text_only",
+      priority: 10,
+      capabilities: ["model.text_generation"],
+      adapterRef: { id: "aao.native-model", version: "1.0.0" },
+    };
+    const textOnlyAdapterDef: ModelAdapterDefinition = defineModelAdapter({
+      manifest: {
+        id: "aao.native-model",
+        version: "1.0.0",
+        kind: "model",
+        capabilities: [
+          { capability: "model.text_generation", support: "supported" },
+          { capability: "model.structured_output", support: "unsupported" },
+          { capability: "model.usage", support: "supported" },
+          { capability: "model.cancellation", support: "unsupported" },
+          { capability: "model.tool_call_response", support: "unsupported" },
+        ],
+      },
+      adapter: validAdapterDef.adapter,
+    });
     const missingModelCapAAO = createCompanyAAO({
       manifest: NORTHSTAR_MANIFEST,
       hostCapabilities: env.hostCapabilities,
       principalForRun: env.northstarPrincipalForRun,
       proofRegistrations: {
         company_research: {
-          registrationSnapshot: {
-            ...baseCRSnapshot,
-            modelAdapters: baseCRSnapshot.modelAdapters.map((a) => ({
-              ...a,
-              capabilities: [
-                { capability: "model.structured_output", support: "unsupported" as const },
-              ],
-            })),
-          },
-        },
+          modelBindings: [textOnlyBinding],
+          modelAdapters: [textOnlyAdapterDef],
+          registrationSnapshot: baseCRSnapshot,
+        } as unknown as ProofRegistrationOverride,
       },
     });
     resolveCompanyCapabilityPacks({
