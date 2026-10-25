@@ -95,3 +95,7 @@ Running with no arguments prints the usage to stderr and exits 1.
 - **No generic Workflow execution CLI** (`aao run <file>`). Running a Workflow needs trusted Tool handlers and a host identity boundary. Those are code, so execution goes through the library API ([quickstart](quickstart.md)). The CLI does no dynamic loading to make a file runner possible.
 - **No arbitrary adapter loading** (`aao adapters verify ./module.js`). A third-party adapter is verified through the library API (`@aao/framework/conformance`), which the developer imports explicitly.
 - **No other commands.** There is no project scaffolding (`aao init`, `create-aao`), plugin loading, environment discovery, publishing, or deployment.
+
+## `aao inspect` (Sprint 27, ADR-032)
+
+Read-only, offline: `inspect overview | companies | packs [--company] | workflows | runs [--company --status --limit] | run <run-id> | evals [--company --pack --run] | approvals [<id>]`, each with `--format text|json`. Without a host-supplied source the CLI inspects the bundled offline demonstration evidence. It never executes, approves, or writes.

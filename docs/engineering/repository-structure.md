@@ -188,3 +188,8 @@ The Evaluation Runtime (Sprint 17) with analytics, CI gates, and adapter verific
 Adapter verification drivers live with their substrates, as test-owned plain ESM that never imports `@aao/evaluation`: `packages/tool-runtime/conformance/`, `packages/mcp-connector/conformance/`, and `packages/model-runtime/conformance/`.
 
 Its production dependencies are `@aao/contracts`, `@aao/observability` (canonical validators only), `yaml`, and `zod`. No execution package depends on it, and its `src/` touches no filesystem or network. The committed definitions, datasets, fixtures, baselines, and gate policies live in [`evals/`](../../evals/README.md). See [ADR-022](../decisions/ADR-022-evaluation-runtime-and-portable-verification.md), [ADR-023](../decisions/ADR-023-eval-analytics-ci-gates-and-adapter-verification.md), [evaluation runtime](../architecture/evaluation-runtime.md), [eval analytics & CI](../architecture/eval-analytics-ci.md), and [adapter verification](../architecture/adapter-verification.md).
+
+## Sprint 27 additions
+
+- `packages/operator-inspection` — read-only inspection contracts, projections, service, and offline fixture source.
+- `examples/operator-inspection` — demo and compiled smoke.

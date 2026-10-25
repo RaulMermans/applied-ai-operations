@@ -177,3 +177,7 @@ The Evaluation Runtime smoke runs entirely from compiled `dist/` output in three
 Eval fixtures regenerate deterministically under `pnpm test`; see [`evals/README.md`](../../evals/README.md).
 
 The Core Toolbox catalog (`docs/generated/toolbox-core.json`, `docs/toolbox/core-tools.md`) is generated from the canonical Toolbox with `pnpm build && pnpm --filter @aao/toolbox catalog:generate`. After a Toolbox change, `test/generated-catalog.test.ts` fails until the regenerated files are committed.
+
+## Operator Control Center (Sprint 27)
+
+`pnpm dev:control-plane` serves the read-only Control Center at `http://127.0.0.1:4000/` (loopback only; inspection routes are disabled on other hosts). `pnpm proof:operator-inspection` prints the offline demo; `node examples/operator-inspection/smoke/sprint27.mjs` runs the compiled smoke.
