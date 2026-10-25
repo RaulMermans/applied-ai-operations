@@ -1,0 +1,1041 @@
+import { createHash } from "node:crypto";
+import {
+  ApprovalRecordSchema,
+  RunRecordSchema,
+  TRACE_TERMINAL_EVENT_TYPES,
+  WorkflowSchema,
+  canonicalJsonStringify,
+  type ApprovalRecord,
+  type JsonValue,
+  type PermissionClass,
+  type RunRecord,
+  type RunStatus,
+  type TraceEvent,
+  type Workflow,
+} from "@aao/contracts";
+import {
+  validateCompanyManifest,
+  type CompanyManifestV1,
+} from "@aao/config";
+import {
+  CapabilityPackError,
+  defineCapabilityPack,
+  getRequiredProofName,
+  validatePackCompatibility,
+  type CapabilityPack,
+  type CapabilityPackManifestV1,
+  type ExactToolRef,
+  type VerifiedModelAdapter,
+  type VerifiedModelBinding,
+} from "@aao/capability-packs";
+import { compileWorkflow } from "@aao/workflow-dsl";
+import { validateTrace } from "@aao/observability";
+import {
+  ApprovalSummarySchema,
+  CapabilityPackSummarySchema,
+  CompanySummarySchema,
+  EvaluationSummarySchema,
+  INSPECTION_LIMITS,
+  PackCompatibilitySummarySchema,
+  RunInspectionSchema,
+  RunSummarySchema,
+  TraceInspectionSchema,
+  WorkflowSummarySchema,
+  findForbiddenInspectionKeys,
+  type ApprovalSummary,
+  type BaselineComparisonStatus,
+  type CapabilityPackSummary,
+  type CompanySummary,
+  type EvaluationSummary,
+  type EvaluationSummaryStatus,
+  type OperatorRunStatus,
+  type PackCompatibilitySummary,
+  type RunInspection,
+  type RunSummary,
+  type TraceDiagnosticSummary,
+  type TraceEventSummary,
+  type TraceHealthStatus,
+  type TraceInspection,
+  type WorkflowEdgeSummary,
+  type WorkflowNodeSummary,
+  type WorkflowSummary,
+} from "./contracts.js";
+import { OperatorInspectionError } from "./errors.js";
+
+export function assertSafeInspectionPayload<T>(value: T): T {
+  const forbidden = findForbiddenInspectionKeys(value);
+  if (forbidden.length > 0) {
+    throw new OperatorInspectionError(
+      "INSPECTION_EVIDENCE_INVALID",
+      `Inspection projection blocked forbidden field(s): ${forbidden.slice(0, 5).join(", ")}`,
+      { details: { forbiddenFields: forbidden.slice(0, 10) } }
+    );
+  }
+  return value;
+}
+
+// --- 1. Company Summary Projection ---
+
+export interface ProjectCompanyInput {
+  readonly manifest: CompanyManifestV1 | unknown;
+  readonly selectedPackRefs?: readonly { id: string; version: string }[];
+  readonly compatibilitySummaries?: readonly PackCompatibilitySummary[];
+}
+
+export function projectCompanySummary(input: ProjectCompanyInput): CompanySummary {
+  let validated;
+  try {
+    validated = validateCompanyManifest(input.manifest);
+  } catch (err) {
+    throw new OperatorInspectionError(
+      "INSPECTION_EVIDENCE_INVALID",
+      err instanceof Error ? err.message : "Invalid company manifest",
+      { cause: err }
+    );
+  }
+
+  const { manifest, configFingerprint } = validated;
+  const enabledPackCount = input.selectedPackRefs
+    ? input.selectedPackRefs.length
+    : manifest.enabledProofs.length;
+
+  const verifiedCompatiblePackCount = input.compatibilitySummaries
+    ? input.compatibilitySummaries.filter(
+        (c) => c.companyId === manifest.companyId && c.status === "COMPATIBLE" && c.verified
+      ).length
+    : 0;
+
+  const summary: CompanySummary = {
+    companyId: manifest.companyId,
+    displayName: manifest.displayName,
+    schemaVersion: manifest.schemaVersion,
+    configurationFingerprint: configFingerprint,
+    enabledProofs: [...manifest.enabledProofs],
+    enabledPackCount,
+    verifiedCompatiblePackCount,
+    modelBindingRefs: [...manifest.models.bindingRefs],
+    integrationRefs: {
+      ...(manifest.integrations.publicWebProviderRef
+        ? { publicWebProviderRef: manifest.integrations.publicWebProviderRef }
+        : {}),
+      ...(manifest.integrations.documentSourceProviderRef
+        ? { documentSourceProviderRef: manifest.integrations.documentSourceProviderRef }
+        : {}),
+      ...(manifest.integrations.draftRepositoryRef
+        ? { draftRepositoryRef: manifest.integrations.draftRepositoryRef }
+        : {}),
+    },
+  };
+
+  return assertSafeInspectionPayload(CompanySummarySchema.parse(summary));
+}
+
+// --- 2. Capability Pack Summary Projection ---
+
+export function projectCapabilityPackSummary(
+  packOrManifest: CapabilityPack | CapabilityPackManifestV1 | unknown
+): CapabilityPackSummary {
+  let pack: CapabilityPack;
+  try {
+    if (
+      packOrManifest !== null &&
+      typeof packOrManifest === "object" &&
+      "manifest" in packOrManifest &&
+      "fingerprint" in packOrManifest &&
+      "identity" in packOrManifest
+    ) {
+      const candidate = packOrManifest as CapabilityPack;
+      pack = defineCapabilityPack(candidate.manifest);
+    } else {
+      pack = defineCapabilityPack(packOrManifest);
+    }
+  } catch (err) {
+    throw new OperatorInspectionError(
+      "INSPECTION_EVIDENCE_INVALID",
+      err instanceof Error ? err.message : "Invalid capability pack manifest",
+      { cause: err }
+    );
+  }
+
+  const m = pack.manifest;
+  const summary: CapabilityPackSummary = {
+    id: m.id,
+    version: m.version,
+    identity: pack.identity,
+    packFingerprint: pack.fingerprint,
+    name: m.name,
+    description: m.description,
+    category: m.category,
+    tags: [...m.tags],
+    outcomeClass: m.execution.outcomeClass,
+    workflow: {
+      id: m.workflow.id,
+      version: m.workflow.version,
+      planFingerprint: m.workflow.planFingerprint,
+    },
+    requirements: {
+      toolRefs: m.requirements.toolRefs.map((t) => ({ id: t.id, version: t.version })),
+      modelPolicyRefs: [...m.requirements.modelPolicyRefs],
+      modelCapabilities: [...m.requirements.modelCapabilities],
+      integrationSlots: m.requirements.integrationSlots.map((s) => ({
+        slot: s.slot,
+        description: s.description,
+      })),
+      preliminaryPermissions: [...m.requirements.preliminaryPermissions],
+      approval: m.requirements.approval
+        ? {
+            required: m.requirements.approval.required,
+            requiredRoleIds: [...m.requirements.approval.requiredRoleIds],
+            permissionClasses: [...m.requirements.approval.permissionClasses],
+          }
+        : { required: false },
+    },
+    evalProfileRef: m.verification.evalProfileRef,
+  };
+
+  return assertSafeInspectionPayload(CapabilityPackSummarySchema.parse(summary));
+}
+
+// --- 3. Verified Compatibility Projection ---
+
+export interface TrustedProofRegistrationEvidence {
+  readonly workflow?: {
+    readonly id: string;
+    readonly version: string;
+    readonly planFingerprint: string;
+  };
+  readonly registeredTools?: readonly ExactToolRef[];
+  readonly registeredModelPolicies?: readonly string[];
+  readonly registeredModelBindings?: readonly VerifiedModelBinding[];
+  readonly registeredModelAdapters?: readonly VerifiedModelAdapter[];
+  readonly registeredEvalProfiles?: readonly string[];
+}
+
+export interface ProjectPackCompatibilityInput {
+  readonly companyManifest: CompanyManifestV1 | unknown;
+  readonly pack: CapabilityPack | CapabilityPackManifestV1;
+  readonly selectedByCompany?: boolean;
+  /**
+   * Trusted registration snapshot for this company and proof category.
+   * When omitted or incomplete, compatibility is reported as NOT_VERIFIED
+   * (unless the proof itself is disabled).
+   */
+  readonly registrationEvidence?: TrustedProofRegistrationEvidence;
+}
+
+export function projectPackCompatibilitySummary(
+  input: ProjectPackCompatibilityInput
+): PackCompatibilitySummary {
+  let validatedCompany;
+  try {
+    validatedCompany = validateCompanyManifest(input.companyManifest);
+  } catch (err) {
+    throw new OperatorInspectionError(
+      "INSPECTION_EVIDENCE_INVALID",
+      err instanceof Error ? err.message : "Invalid company manifest for compatibility check",
+      { cause: err }
+    );
+  }
+
+  let pack: CapabilityPack;
+  try {
+    pack =
+      "manifest" in input.pack && "fingerprint" in input.pack
+        ? defineCapabilityPack((input.pack as CapabilityPack).manifest)
+        : defineCapabilityPack(input.pack);
+  } catch (err) {
+    throw new OperatorInspectionError(
+      "INSPECTION_EVIDENCE_INVALID",
+      err instanceof Error ? err.message : "Invalid pack manifest for compatibility check",
+      { cause: err }
+    );
+  }
+
+  const manifest = validatedCompany.manifest;
+  const m = pack.manifest;
+  const requiredProof = getRequiredProofName(m.id);
+  const enabledByCompany = (manifest.enabledProofs as readonly string[]).includes(requiredProof);
+  const selectedByCompany = input.selectedByCompany ?? enabledByCompany;
+
+  // If the proof is disabled by company configuration, it is deterministically INCOMPATIBLE.
+  if (!enabledByCompany) {
+    const summary: PackCompatibilitySummary = {
+      companyId: manifest.companyId,
+      packId: pack.ref.id,
+      packVersion: pack.ref.version,
+      packIdentity: pack.identity,
+      packName: m.name,
+      packFingerprint: pack.fingerprint,
+      workflowId: m.workflow.id,
+      workflowVersion: m.workflow.version,
+      planFingerprint: m.workflow.planFingerprint,
+      enabledByCompany: false,
+      selectedByCompany,
+      verified: false,
+      status: "INCOMPATIBLE",
+      reasonCode: "PACK_PROOF_DISABLED",
+      diagnostic: `Company '${manifest.companyId}' does not enable proof '${requiredProof}'.`,
+    };
+    return assertSafeInspectionPayload(PackCompatibilitySummarySchema.parse(summary));
+  }
+
+  // If no trusted registration evidence was supplied, never assume COMPATIBLE from configuration alone!
+  if (!input.registrationEvidence) {
+    const summary: PackCompatibilitySummary = {
+      companyId: manifest.companyId,
+      packId: pack.ref.id,
+      packVersion: pack.ref.version,
+      packIdentity: pack.identity,
+      packName: m.name,
+      packFingerprint: pack.fingerprint,
+      workflowId: m.workflow.id,
+      workflowVersion: m.workflow.version,
+      planFingerprint: m.workflow.planFingerprint,
+      enabledByCompany: true,
+      selectedByCompany,
+      verified: false,
+      status: "NOT_VERIFIED",
+      reasonCode: "PACK_EVIDENCE_UNAVAILABLE",
+      diagnostic: `Trusted ProofRegistrationSnapshot evidence is unavailable for '${manifest.companyId}' (${pack.identity}); compatibility cannot be assumed from configuration alone.`,
+    };
+    return assertSafeInspectionPayload(PackCompatibilitySummarySchema.parse(summary));
+  }
+
+  try {
+    const report = validatePackCompatibility(pack, {
+      companyId: manifest.companyId,
+      enabledProofs: manifest.enabledProofs,
+      governanceRoles: manifest.governance.roles,
+      integrations: manifest.integrations,
+      workflow: input.registrationEvidence.workflow as NonNullable<
+        TrustedProofRegistrationEvidence["workflow"]
+      >,
+      registeredTools: input.registrationEvidence.registeredTools as readonly ExactToolRef[],
+      registeredModelPolicies:
+        input.registrationEvidence.registeredModelPolicies as readonly string[],
+      registeredModelBindings:
+        input.registrationEvidence.registeredModelBindings as readonly VerifiedModelBinding[],
+      registeredModelAdapters: input.registrationEvidence.registeredModelAdapters,
+      registeredEvalProfiles:
+        input.registrationEvidence.registeredEvalProfiles as readonly string[],
+    });
+
+    const summary: PackCompatibilitySummary = {
+      companyId: manifest.companyId,
+      packId: pack.ref.id,
+      packVersion: pack.ref.version,
+      packIdentity: pack.identity,
+      packName: m.name,
+      packFingerprint: pack.fingerprint,
+      workflowId: m.workflow.id,
+      workflowVersion: m.workflow.version,
+      planFingerprint: m.workflow.planFingerprint,
+      enabledByCompany: true,
+      selectedByCompany,
+      verified: true,
+      status: "COMPATIBLE",
+      verifiedRequirements: {
+        tools: report.verifiedRequirements.tools,
+        modelPolicies: report.verifiedRequirements.modelPolicies,
+        modelCapabilities: report.verifiedRequirements.modelCapabilities,
+        integrations: report.verifiedRequirements.integrations,
+        evalProfiles: report.verifiedRequirements.evalProfiles,
+      },
+    };
+    return assertSafeInspectionPayload(PackCompatibilitySummarySchema.parse(summary));
+  } catch (err) {
+    if (err instanceof CapabilityPackError) {
+      const isUnverified = err.code === "PACK_EVIDENCE_UNAVAILABLE";
+      const summary: PackCompatibilitySummary = {
+        companyId: manifest.companyId,
+        packId: pack.ref.id,
+        packVersion: pack.ref.version,
+        packIdentity: pack.identity,
+        packName: m.name,
+        packFingerprint: pack.fingerprint,
+        workflowId: m.workflow.id,
+        workflowVersion: m.workflow.version,
+        planFingerprint: m.workflow.planFingerprint,
+        enabledByCompany: true,
+        selectedByCompany,
+        verified: false,
+        status: isUnverified ? "NOT_VERIFIED" : "INCOMPATIBLE",
+        reasonCode: err.code,
+        diagnostic: err.message.slice(0, INSPECTION_LIMITS.MAX_STRING_LENGTH),
+      };
+      return assertSafeInspectionPayload(PackCompatibilitySummarySchema.parse(summary));
+    }
+    throw new OperatorInspectionError(
+      "INSPECTION_EVIDENCE_INVALID",
+      err instanceof Error ? err.message : "Unexpected error during compatibility verification",
+      { cause: err }
+    );
+  }
+}
+
+// --- 4. Workflow Inspection Projection ---
+
+export function computeCompiledWorkflowFingerprint(workflow: Workflow): {
+  planFingerprint: string;
+  terminalNodeIds: string[];
+} {
+  const compiled = compileWorkflow(workflow);
+  if (!compiled.ok) {
+    const diagText = compiled.diagnostics.map((d) => `${d.code}: ${d.message}`).join("; ");
+    throw new OperatorInspectionError(
+      "INSPECTION_EVIDENCE_INVALID",
+      `Workflow '${workflow.id}@${workflow.version}' failed compilation: ${diagText}`
+    );
+  }
+  const planFingerprint = createHash("sha256")
+    .update(canonicalJsonStringify(compiled.plan as unknown as JsonValue), "utf8")
+    .digest("hex");
+
+  return {
+    planFingerprint,
+    terminalNodeIds: [...compiled.plan.terminalNodeIds],
+  };
+}
+
+function formatRefFromConfig(ref: unknown): string | undefined {
+  if (typeof ref === "string" && ref.length > 0) {
+    return ref;
+  }
+  if (ref !== null && typeof ref === "object" && !Array.isArray(ref)) {
+    const obj = ref as Record<string, unknown>;
+    if (typeof obj.id === "string" && typeof obj.version === "string") {
+      return `${obj.id}@${obj.version}`;
+    }
+    if (typeof obj.id === "string") {
+      return obj.id;
+    }
+  }
+  return undefined;
+}
+
+export function projectWorkflowSummary(
+  rawWorkflow: Workflow | unknown,
+  options?: { expectedPlanFingerprint?: string }
+): WorkflowSummary {
+  const parsed = WorkflowSchema.safeParse(rawWorkflow);
+  if (!parsed.success) {
+    throw new OperatorInspectionError(
+      "INSPECTION_EVIDENCE_INVALID",
+      `Invalid Workflow definition: ${parsed.error.issues.map((i) => i.message).join("; ")}`
+    );
+  }
+
+  const workflow = parsed.data;
+  const { planFingerprint, terminalNodeIds } = computeCompiledWorkflowFingerprint(workflow);
+
+  if (
+    options?.expectedPlanFingerprint &&
+    options.expectedPlanFingerprint !== planFingerprint
+  ) {
+    throw new OperatorInspectionError(
+      "INSPECTION_EVIDENCE_INVALID",
+      `Workflow '${workflow.id}@${workflow.version}' plan fingerprint '${planFingerprint}' does not match expected '${options.expectedPlanFingerprint}'.`
+    );
+  }
+
+  const toolRefSet = new Set<string>();
+  const modelPolicySet = new Set<string>();
+  const agentRefSet = new Set<string>();
+  const approverRoleSet = new Set<string>();
+  const nodeKindSet = new Set<Workflow["nodes"][number]["kind"]>();
+
+  const nodes: WorkflowNodeSummary[] = workflow.nodes.map((node) => {
+    nodeKindSet.add(node.kind);
+    const cfg = node.config as Record<string, unknown>;
+
+    const toolRef = formatRefFromConfig(cfg.toolRef ?? cfg.tool);
+    if (toolRef) {
+      toolRefSet.add(toolRef);
+    }
+
+    const modelPolicyId =
+      typeof cfg.modelPolicyId === "string"
+        ? cfg.modelPolicyId
+        : typeof cfg.modelPolicyRef === "string"
+          ? cfg.modelPolicyRef
+          : undefined;
+    if (modelPolicyId) {
+      modelPolicySet.add(modelPolicyId);
+    }
+
+    const agentRef = formatRefFromConfig(cfg.agentRef ?? cfg.agent);
+    if (agentRef) {
+      agentRefSet.add(agentRef);
+    }
+
+    const executorRef =
+      formatRefFromConfig(cfg.executorRef) ??
+      (typeof cfg.executorId === "string"
+        ? cfg.executorId
+        : typeof cfg.operation === "string"
+          ? cfg.operation
+          : undefined);
+
+    const requiredApproverRoleIds = Array.isArray(cfg.requiredApproverRoleIds)
+      ? cfg.requiredApproverRoleIds.filter((r): r is string => typeof r === "string")
+      : undefined;
+    if (requiredApproverRoleIds) {
+      for (const r of requiredApproverRoleIds) {
+        approverRoleSet.add(r);
+      }
+    }
+
+    const permissionClasses = Array.isArray(cfg.permissionClasses)
+      ? cfg.permissionClasses.filter(
+          (p): p is PermissionClass =>
+            p === "read_only" || p === "write_draft" || p === "external_side_effect"
+        )
+      : undefined;
+
+    const nodeSummary: WorkflowNodeSummary = {
+      id: node.id,
+      kind: node.kind,
+      ...(node.name ? { name: node.name } : {}),
+      ...(toolRef ? { toolRef } : {}),
+      ...(modelPolicyId ? { modelPolicyId } : {}),
+      ...(agentRef ? { agentRef } : {}),
+      ...(executorRef ? { executorRef } : {}),
+      ...(requiredApproverRoleIds && requiredApproverRoleIds.length > 0
+        ? { requiredApproverRoleIds }
+        : {}),
+      ...(permissionClasses && permissionClasses.length > 0 ? { permissionClasses } : {}),
+    };
+    return nodeSummary;
+  });
+
+  const edges: WorkflowEdgeSummary[] = workflow.edges.map((e) => ({
+    sourceNodeId: e.sourceNodeId,
+    targetNodeId: e.targetNodeId,
+    conditional: e.condition !== undefined && Object.keys(e.condition).length > 0,
+  }));
+
+  const summary: WorkflowSummary = {
+    workflowId: workflow.id,
+    version: workflow.version,
+    name: workflow.name,
+    ...(workflow.description ? { description: workflow.description.slice(0, 500) } : {}),
+    planFingerprint,
+    nodeCount: workflow.nodes.length,
+    entryNodeId: workflow.entryNodeId,
+    terminalNodeIds,
+    nodeKinds: [...nodeKindSet],
+    nodeIds: workflow.nodes.map((n) => n.id),
+    nodes,
+    edges,
+    toolRefs: [...toolRefSet].sort(),
+    modelPolicyRefs: [...modelPolicySet].sort(),
+    agentRefs: [...agentRefSet].sort(),
+    requiredApproverRoleIds: [...approverRoleSet].sort(),
+  };
+
+  return assertSafeInspectionPayload(WorkflowSummarySchema.parse(summary));
+}
+
+// --- 5. Approval Summary Projection ---
+
+export function projectApprovalSummary(rawRecord: ApprovalRecord | unknown): ApprovalSummary {
+  const parsed = ApprovalRecordSchema.safeParse(rawRecord);
+  if (!parsed.success) {
+    throw new OperatorInspectionError(
+      "INSPECTION_EVIDENCE_INVALID",
+      `Invalid ApprovalRecord: ${parsed.error.issues.map((i) => i.message).join("; ")}`
+    );
+  }
+  const r = parsed.data;
+  const summary: ApprovalSummary = {
+    approvalId: r.approvalId,
+    runId: r.runId,
+    nodeId: r.nodeId,
+    status: r.status,
+    requiredApproverRoleIds: [...r.requiredApproverRoleIds],
+    permissionClasses: [...r.permissionClasses],
+    allowSelfApproval: r.allowSelfApproval,
+    requestedBy: { id: r.requestedBy.id, type: r.requestedBy.type },
+    requestedAt: r.requestedAt,
+    ...(r.resolvedBy ? { resolvedBy: { id: r.resolvedBy.id, type: r.resolvedBy.type } } : {}),
+    ...(r.resolvedAt ? { resolvedAt: r.resolvedAt } : {}),
+    requestFingerprint: r.requestFingerprint,
+  };
+  return assertSafeInspectionPayload(ApprovalSummarySchema.parse(summary));
+}
+
+// --- 6. Evaluation Summary Projection ---
+
+export interface RawEvaluationEvidence {
+  readonly evalProfileRef: string;
+  readonly packIdentity?: string;
+  readonly workflowId?: string;
+  readonly companyId?: string;
+  readonly runId?: string;
+  readonly datasetRef?: string;
+  readonly graderRefs?: readonly string[];
+  /**
+   * When false or omitted without execution counts, represents a registered/configured
+   * Evaluation profile that has NOT been executed yet.
+   */
+  readonly executed: boolean;
+  readonly executedAt?: string;
+  readonly totalCases?: number;
+  readonly passedCases?: number;
+  readonly failedCases?: number;
+  readonly allMatched?: boolean;
+  readonly failureCodes?: readonly string[];
+  readonly baselineComparisonStatus?: BaselineComparisonStatus;
+}
+
+export function projectEvaluationSummary(input: RawEvaluationEvidence): EvaluationSummary {
+  if (!input || typeof input.evalProfileRef !== "string" || input.evalProfileRef.trim() === "") {
+    throw new OperatorInspectionError(
+      "INSPECTION_EVIDENCE_INVALID",
+      "Evaluation evidence is missing a valid evalProfileRef."
+    );
+  }
+
+  let status: EvaluationSummaryStatus;
+  let passRate: number | undefined;
+  let totalCases: number | undefined;
+  let passedCases: number | undefined;
+  let failedCases: number | undefined;
+
+  if (!input.executed) {
+    status = "REGISTERED";
+  } else {
+    totalCases = input.totalCases ?? 0;
+    passedCases = input.passedCases ?? 0;
+    failedCases = input.failedCases ?? Math.max(0, totalCases - passedCases);
+    if (passedCases + failedCases !== totalCases || totalCases <= 0) {
+      throw new OperatorInspectionError(
+        "INSPECTION_EVIDENCE_INVALID",
+        `Executed evaluation '${input.evalProfileRef}' has inconsistent case counts (total=${totalCases}, passed=${passedCases}, failed=${failedCases}).`
+      );
+    }
+    passRate = Number((passedCases / totalCases).toFixed(4));
+    const allPassed =
+      failedCases === 0 &&
+      passedCases === totalCases &&
+      (input.allMatched === undefined || input.allMatched === true);
+    status = allPassed ? "PASSED" : "FAILED";
+  }
+
+  const summary: EvaluationSummary = {
+    evalProfileRef: input.evalProfileRef,
+    ...(input.packIdentity ? { packIdentity: input.packIdentity } : {}),
+    ...(input.workflowId ? { workflowId: input.workflowId } : {}),
+    ...(input.companyId ? { companyId: input.companyId } : {}),
+    ...(input.runId ? { runId: input.runId } : {}),
+    ...(input.datasetRef ? { datasetRef: input.datasetRef } : {}),
+    graderRefs: [...(input.graderRefs ?? [])],
+    status,
+    executed: input.executed,
+    ...(input.executed && input.executedAt ? { executedAt: input.executedAt } : {}),
+    ...(input.executed && totalCases !== undefined ? { totalCases } : {}),
+    ...(input.executed && passedCases !== undefined ? { passedCases } : {}),
+    ...(input.executed && failedCases !== undefined ? { failedCases } : {}),
+    ...(input.executed && passRate !== undefined ? { passRate } : {}),
+    failureCodes: [...(input.failureCodes ?? [])],
+    ...(input.baselineComparisonStatus
+      ? { baselineComparisonStatus: input.baselineComparisonStatus }
+      : {}),
+  };
+
+  return assertSafeInspectionPayload(EvaluationSummarySchema.parse(summary));
+}
+
+// --- 7. Trace Inspection Projection ---
+
+function projectSingleTraceEvent(event: TraceEvent): TraceEventSummary {
+  const p = event.payload as Record<string, unknown>;
+
+  let reasonCode: string | undefined;
+  if (typeof p.code === "string") {
+    reasonCode = p.code;
+  } else if (typeof p.causeCode === "string") {
+    reasonCode = p.causeCode;
+  } else if (
+    p.access !== null &&
+    typeof p.access === "object" &&
+    typeof (p.access as Record<string, unknown>).reasonCode === "string"
+  ) {
+    reasonCode = (p.access as Record<string, unknown>).reasonCode as string;
+  }
+
+  const toolRef = formatRefFromConfig(p.toolRef);
+  const agentRef = formatRefFromConfig(p.agentRef);
+  const modelPolicyRef =
+    typeof p.modelPolicyRef === "string" ? p.modelPolicyRef : undefined;
+  const modelBindingId =
+    typeof p.modelBindingId === "string" ? p.modelBindingId : undefined;
+  const approvalId = typeof p.approvalId === "string" ? p.approvalId : undefined;
+  const approvalDecisionStatus =
+    event.type === "approval.resolved" &&
+    (p.status === "approved" ||
+      p.status === "rejected" ||
+      p.status === "expired" ||
+      p.status === "cancelled")
+      ? p.status
+      : undefined;
+
+  let tokenUsage: TraceEventSummary["tokenUsage"];
+  if (p.usage !== null && typeof p.usage === "object") {
+    const u = p.usage as Record<string, unknown>;
+    tokenUsage = {
+      ...(typeof u.inputTokens === "number" ? { inputTokens: u.inputTokens } : {}),
+      ...(typeof u.outputTokens === "number" ? { outputTokens: u.outputTokens } : {}),
+      ...(typeof u.totalTokens === "number" ? { totalTokens: u.totalTokens } : {}),
+    };
+  }
+
+  const attempt =
+    typeof p.attempt === "number"
+      ? p.attempt
+      : typeof p.attemptCount === "number"
+        ? p.attemptCount
+        : undefined;
+  const maxAttempts = typeof p.maxAttempts === "number" ? p.maxAttempts : undefined;
+  const recoveryReplay =
+    typeof p.recoveryReplay === "boolean" ? p.recoveryReplay : undefined;
+
+  return {
+    sequence: event.sequence,
+    eventId: event.eventId,
+    traceId: event.traceId,
+    runId: event.runId,
+    type: event.type,
+    occurredAt: event.occurredAt,
+    workflowId: event.workflowId,
+    workflowVersion: event.workflowVersion,
+    ...(event.nodeId ? { nodeId: event.nodeId } : {}),
+    spanId: event.spanId,
+    ...(event.parentSpanId ? { parentSpanId: event.parentSpanId } : {}),
+    ...(event.status ? { status: event.status } : {}),
+    ...(reasonCode ? { reasonCode } : {}),
+    ...(toolRef ? { toolRef } : {}),
+    ...(modelPolicyRef ? { modelPolicyRef } : {}),
+    ...(modelBindingId ? { modelBindingId } : {}),
+    ...(agentRef ? { agentRef } : {}),
+    ...(approvalId ? { approvalId } : {}),
+    ...(approvalDecisionStatus ? { approvalDecisionStatus } : {}),
+    ...(tokenUsage && Object.keys(tokenUsage).length > 0 ? { tokenUsage } : {}),
+    ...(attempt !== undefined ? { attempt } : {}),
+    ...(maxAttempts !== undefined ? { maxAttempts } : {}),
+    ...(recoveryReplay !== undefined ? { recoveryReplay } : {}),
+  };
+}
+
+export interface ProjectTraceInspectionOptions {
+  readonly runId: string;
+  readonly events: readonly TraceEvent[] | undefined;
+  readonly maxEvents?: number;
+  readonly throwOnCorrupt?: boolean;
+}
+
+export function projectTraceInspection(
+  options: ProjectTraceInspectionOptions
+): TraceInspection {
+  const maxEvents = Math.min(
+    options.maxEvents ?? INSPECTION_LIMITS.MAX_TRACE_EVENTS,
+    INSPECTION_LIMITS.MAX_TRACE_EVENTS
+  );
+
+  if (!options.events || options.events.length === 0) {
+    const empty: TraceInspection = {
+      runId: options.runId,
+      health: "unavailable",
+      eventCount: 0,
+      returnedEventCount: 0,
+      truncated: false,
+      diagnostics: [],
+      events: [],
+    };
+    return assertSafeInspectionPayload(TraceInspectionSchema.parse(empty));
+  }
+
+  const validation = validateTrace(options.events, { runId: options.runId });
+  if (!validation.valid) {
+    const diagnostics: TraceDiagnosticSummary[] = validation.issues.map((d) => ({
+      code: d.code,
+      message: `Trace integrity check failed: ${d.code}${d.nodeId ? ` (node ${d.nodeId})` : ""}`.slice(
+        0,
+        INSPECTION_LIMITS.MAX_STRING_LENGTH
+      ),
+      ...(d.sequence !== undefined ? { sequence: d.sequence } : {}),
+    }));
+
+    if (options.throwOnCorrupt) {
+      throw new OperatorInspectionError(
+        "INSPECTION_TRACE_CORRUPT",
+        `Trace for run '${options.runId}' failed integrity validation (${diagnostics.map((d) => d.code).join(", ")}).`,
+        {
+          details: {
+            runId: options.runId,
+            diagnosticCodes: diagnostics.map((d) => d.code),
+          },
+        }
+      );
+    }
+
+    const corruptInspection: TraceInspection = {
+      runId: options.runId,
+      health: "corrupt",
+      eventCount: options.events.length,
+      returnedEventCount: 0,
+      truncated: false,
+      diagnostics,
+      events: [],
+    };
+    return assertSafeInspectionPayload(TraceInspectionSchema.parse(corruptInspection));
+  }
+
+  const events = options.events;
+  const first = events[0]!;
+  const traceRun = {
+    runId: options.runId,
+    traceId: first.traceId,
+    workflowId: first.workflowId,
+    workflowVersion: first.workflowVersion,
+    events: [...events],
+    terminal: events.find((e) =>
+      (TRACE_TERMINAL_EVENT_TYPES as readonly string[]).includes(e.type)
+    ),
+  };
+  const boundedEvents = traceRun.events.slice(0, maxEvents).map(projectSingleTraceEvent);
+  const truncated = traceRun.events.length > maxEvents;
+
+  const firstEvent = traceRun.events[0];
+  const lastEvent = traceRun.events[traceRun.events.length - 1];
+  const terminalEventType = traceRun.terminal?.type as
+    | "run.completed"
+    | "run.failed"
+    | "run.cancelled"
+    | undefined;
+
+  const inspection: TraceInspection = {
+    runId: traceRun.runId,
+    traceId: traceRun.traceId,
+    workflowId: traceRun.workflowId,
+    workflowVersion: traceRun.workflowVersion,
+    health: "healthy",
+    eventCount: traceRun.events.length,
+    returnedEventCount: boundedEvents.length,
+    truncated,
+    ...(terminalEventType ? { terminalEventType } : {}),
+    ...(firstEvent ? { startedAt: firstEvent.occurredAt } : {}),
+    ...(terminalEventType && lastEvent ? { finishedAt: lastEvent.occurredAt } : {}),
+    diagnostics: [],
+    events: boundedEvents,
+  };
+
+  return assertSafeInspectionPayload(TraceInspectionSchema.parse(inspection));
+}
+
+// --- 8. Run Summary & Run Inspection Projections ---
+
+export function mapAuthoritativeRunStatus(status: RunStatus): OperatorRunStatus {
+  switch (status) {
+    case "COMPLETED":
+      return "COMPLETED";
+    case "FAILED":
+      return "FAILED";
+    case "CANCELLED":
+      return "CANCELLED";
+    case "WAITING_FOR_APPROVAL":
+      return "WAITING";
+    case "CREATED":
+    case "VALIDATING":
+    case "QUEUED":
+    case "RUNNING":
+    case "RETRYING":
+      return "RUNNING";
+  }
+}
+
+export interface KnownRunEvidence {
+  readonly runId: string;
+  readonly companyId?: string;
+  readonly packIdentity?: string;
+  /**
+   * Authoritative Run record from Runtime or Durability.
+   * When undefined, inspection MUST report status = "UNKNOWN" and statusSource = "unavailable",
+   * even if trace events exist.
+   */
+  readonly authoritativeRun?: RunRecord;
+  readonly traceEvents?: readonly TraceEvent[];
+  readonly approvalRecords?: readonly ApprovalRecord[];
+  readonly evaluations?: readonly RawEvaluationEvidence[];
+  readonly workflow?: Workflow;
+}
+
+export function projectRunSummary(evidence: KnownRunEvidence): RunSummary {
+  let validatedRun: RunRecord | undefined;
+  if (evidence.authoritativeRun !== undefined) {
+    const parsed = RunRecordSchema.safeParse(evidence.authoritativeRun);
+    if (!parsed.success) {
+      throw new OperatorInspectionError(
+        "INSPECTION_EVIDENCE_INVALID",
+        `Invalid authoritative RunRecord for '${evidence.runId}': ${parsed.error.issues.map((i) => i.message).join("; ")}`
+      );
+    }
+    validatedRun = parsed.data;
+  }
+
+  const traceInspection = projectTraceInspection({
+    runId: evidence.runId,
+    events: evidence.traceEvents,
+    throwOnCorrupt: false,
+  });
+
+  const workflowId =
+    validatedRun?.workflowId ??
+    traceInspection.workflowId ??
+    evidence.workflow?.id ??
+    "workflow.unknown";
+  const workflowVersion =
+    validatedRun?.workflowVersion ??
+    traceInspection.workflowVersion ??
+    evidence.workflow?.version ??
+    "0.0.0";
+
+  // Authoritative status rule: NEVER infer COMPLETED, RUNNING, or WAITING from Trace alone.
+  let status: OperatorRunStatus;
+  let statusSource: "authoritative_runtime" | "unavailable";
+  let statusReason: string | undefined;
+
+  if (validatedRun) {
+    status = mapAuthoritativeRunStatus(validatedRun.status);
+    statusSource = "authoritative_runtime";
+    if (validatedRun.status === "WAITING_FOR_APPROVAL") {
+      statusReason = "WAITING_FOR_APPROVAL";
+    }
+  } else {
+    status = "UNKNOWN";
+    statusSource = "unavailable";
+    statusReason = "AUTHORITATIVE_RUN_STATE_UNAVAILABLE";
+  }
+
+  // Collect approval IDs from authoritative records + trace observations
+  const approvalIdSet = new Set<string>();
+  if (evidence.approvalRecords) {
+    for (const r of evidence.approvalRecords) {
+      if (r.runId === evidence.runId) {
+        approvalIdSet.add(r.approvalId);
+      }
+    }
+  }
+  for (const ev of traceInspection.events) {
+    if (ev.approvalId) {
+      approvalIdSet.add(ev.approvalId);
+    }
+  }
+
+  // Determine overall trace health relative to run existence
+  let traceHealth: TraceHealthStatus = traceInspection.health;
+  if (validatedRun && traceInspection.health === "unavailable") {
+    traceHealth = "degraded";
+  }
+
+  // Evaluation summary status for this run if present
+  let evaluationStatus: EvaluationSummaryStatus | undefined;
+  if (evidence.evaluations && evidence.evaluations.length > 0) {
+    const projectedEvals = evidence.evaluations.map(projectEvaluationSummary);
+    if (projectedEvals.some((e) => e.status === "FAILED")) {
+      evaluationStatus = "FAILED";
+    } else if (projectedEvals.every((e) => e.status === "PASSED")) {
+      evaluationStatus = "PASSED";
+    } else {
+      evaluationStatus = projectedEvals[0]?.status;
+    }
+  }
+
+  const startedAt = validatedRun?.createdAt ?? traceInspection.startedAt;
+  const finishedAt =
+    validatedRun &&
+    (validatedRun.status === "COMPLETED" ||
+      validatedRun.status === "FAILED" ||
+      validatedRun.status === "CANCELLED")
+      ? validatedRun.updatedAt
+      : traceInspection.finishedAt;
+
+  const summary: RunSummary = {
+    runId: evidence.runId,
+    workflowId,
+    workflowVersion,
+    ...(evidence.companyId ? { companyId: evidence.companyId } : {}),
+    ...(evidence.packIdentity ? { packIdentity: evidence.packIdentity } : {}),
+    status,
+    statusSource,
+    ...(statusReason ? { statusReason } : {}),
+    ...(validatedRun?.currentNodeId ? { currentNodeId: validatedRun.currentNodeId } : {}),
+    ...(startedAt ? { startedAt } : {}),
+    ...(finishedAt ? { finishedAt } : {}),
+    traceAvailable: traceInspection.health === "healthy" && traceInspection.eventCount > 0,
+    traceHealth,
+    ...(traceInspection.eventCount > 0 ? { traceEventCount: traceInspection.eventCount } : {}),
+    approvalIds: [...approvalIdSet].sort(),
+    ...(evaluationStatus ? { evaluationStatus } : {}),
+  };
+
+  return assertSafeInspectionPayload(RunSummarySchema.parse(summary));
+}
+
+export function projectRunInspection(evidence: KnownRunEvidence): RunInspection {
+  const summary = projectRunSummary(evidence);
+  const trace = projectTraceInspection({
+    runId: evidence.runId,
+    events: evidence.traceEvents,
+    throwOnCorrupt: false,
+  });
+
+  const workflow = evidence.workflow
+    ? projectWorkflowSummary(evidence.workflow)
+    : undefined;
+
+  // Authoritative approvals ONLY: never fabricate an ApprovalSummary from a trace event!
+  const approvals: ApprovalSummary[] = (evidence.approvalRecords ?? [])
+    .filter((r) => r.runId === evidence.runId)
+    .map(projectApprovalSummary)
+    .sort((a, b) => a.approvalId.localeCompare(b.approvalId));
+
+  const authoritativeApprovalIds = new Set(approvals.map((a) => a.approvalId));
+
+  const evaluations: EvaluationSummary[] = (evidence.evaluations ?? [])
+    .map(projectEvaluationSummary)
+    .sort((a, b) => a.evalProfileRef.localeCompare(b.evalProfileRef));
+
+  const diagnostics: string[] = [];
+  if (summary.statusSource === "unavailable") {
+    diagnostics.push(
+      `Authoritative Run state is unavailable for '${evidence.runId}'; Run status is reported as UNKNOWN and is not inferred from Trace events.`
+    );
+  }
+  if (trace.health === "corrupt") {
+    diagnostics.push(
+      `Trace for '${evidence.runId}' failed integrity checks (${trace.diagnostics.map((d) => d.code).join(", ")}); events are withheld.`
+    );
+  } else if (!summary.traceAvailable) {
+    diagnostics.push(`Trace events are unavailable for Run '${evidence.runId}'.`);
+  }
+
+  for (const approvalId of summary.approvalIds) {
+    if (!authoritativeApprovalIds.has(approvalId)) {
+      diagnostics.push(
+        `Approval '${approvalId}' was referenced in Trace events, but its authoritative ApprovalRecord is unavailable; approval status is not inferred from Trace.`
+      );
+    }
+  }
+
+  const inspection: RunInspection = {
+    summary,
+    ...(workflow ? { workflow } : {}),
+    trace,
+    approvals,
+    evaluations,
+    diagnostics,
+  };
+
+  return assertSafeInspectionPayload(RunInspectionSchema.parse(inspection));
+}
