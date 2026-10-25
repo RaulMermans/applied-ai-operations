@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@aao/config": "workspace:*",
+    "@aao/operator-inspection": "workspace:*",
     "fastify": "^5.2.1"
   }
 }

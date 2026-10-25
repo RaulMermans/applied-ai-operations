@@ -1,4 +1,5 @@
-import { loadControlPlaneConfig } from "@aao/config";
+import { isLoopbackHost, loadControlPlaneConfig } from "@aao/config";
+import { createCanonicalDemoInspectionSource } from "@aao/operator-inspection";
 import { buildApp } from "./app.js";
 
 function log(event: string, extra: Record<string, unknown> = {}): void {
@@ -7,7 +8,13 @@ function log(event: string, extra: Record<string, unknown> = {}): void {
 
 async function main(): Promise<void> {
   const config = loadControlPlaneConfig(process.env);
-  const app = buildApp();
+  // Inspection routes are enabled only on a loopback host. The source is the trusted,
+  // offline demonstration fixture host (not live operational evidence).
+  const inspectionSource = isLoopbackHost(config.host)
+    ? await createCanonicalDemoInspectionSource()
+    : undefined;
+  if (inspectionSource === undefined) log("inspection_disabled", { reason: "non_loopback_host" });
+  const app = buildApp(inspectionSource ? { inspectionSource } : {});
 
   await app.listen({ host: config.host, port: config.port });
   log("started", { environment: config.env, port: config.port });
