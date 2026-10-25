@@ -37,7 +37,7 @@ describe("aao --help and command errors", () => {
     const result = await cli("--help");
     expect(result).toEqual({ exitCode: 0, stdout: HELP, stderr: "" });
     const commands = [...HELP.matchAll(/^\s+aao (.+?)(?:\s+[[<-]|$)/gm)].map((match) => match[1]);
-    expect(commands).toEqual(["workflow validate", "workflow compile", "eval ci", "eval adapters", "eval baseline propose", "adapters matrix", "--help"]);
+    expect(commands).toEqual(["workflow validate", "workflow compile", "eval ci", "eval adapters", "eval baseline propose", "adapters matrix", "inspect companies", "inspect packs", "inspect workflows", "inspect runs", "inspect run", "inspect evals", "inspect approvals", "inspect overview", "--help"]);
     expect(HELP).not.toMatch(/aao (run|init|serve|deploy|publish|plugin|adapter )|adapters (verify|load|install|discover)/);
     expect((await cli("eval", "ci", "--help")).exitCode).toBe(0);
   });
@@ -219,5 +219,34 @@ describe("aao eval", () => {
     expect(globalThis.fetch).toBe(original);
     await repoCli("eval", "ci");
     expect(globalThis.fetch).toBe(original);
+  });
+});
+
+describe("aao inspect (read-only)", () => {
+  it("overview, companies, packs, workflows, runs, evals and approvals succeed offline and write nothing", async () => {
+    const before = hashTree(join(repositoryRoot, "docs"));
+    for (const sub of ["overview", "companies", "packs", "workflows", "runs", "evals", "approvals"]) {
+      const result = await repoCli("inspect", sub);
+      expect(result.exitCode, sub).toBe(0);
+      expect(result.stderr).toBe("");
+      expect(result.stdout.length).toBeGreaterThan(0);
+    }
+    expect(hashTree(join(repositoryRoot, "docs"))).toBe(before);
+  }, 60_000);
+
+  it("json output is deterministic and shows UNKNOWN for a run lacking authoritative state", async () => {
+    const a = await repoCli("inspect", "run", "run.arbor.cr.incomplete", "--format", "json");
+    const b = await repoCli("inspect", "run", "run.arbor.cr.incomplete", "--format", "json");
+    expect(a.stdout).toBe(b.stdout);
+    expect(JSON.parse(a.stdout).summary).toMatchObject({ status: "UNKNOWN", statusSource: "unavailable" });
+  });
+
+  it("refuses unknown subcommands, options, and unknown runs with concise errors", async () => {
+    expect((await repoCli("inspect", "execute")).stderr).toContain("AAO_CLI_UNKNOWN_COMMAND");
+    expect((await repoCli("inspect", "runs", "--path", "/tmp")).stderr).toContain("AAO_CLI_UNKNOWN_OPTION");
+    const missing = await repoCli("inspect", "run", "run.nope");
+    expect(missing.exitCode).toBe(1);
+    expect(missing.stderr).toContain("INSPECTION_NOT_FOUND");
+    noStack(missing.stderr);
   });
 });

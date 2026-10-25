@@ -46,6 +46,7 @@
     "@aao/mcp-connector": "workspace:*",
     "@aao/model-runtime": "workspace:*",
     "@aao/observability": "workspace:*",
+    "@aao/operator-inspection": "workspace:*",
     "@aao/runtime": "workspace:*",
     "@aao/tool-runtime": "workspace:*",
     "@aao/workflow-dsl": "workspace:*"

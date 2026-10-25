@@ -1,15 +1,17 @@
-// The canonical `aao` CLI (Sprint 19, ADR-024; docs/framework/cli.md).
+// The canonical `aao` CLI (Sprint 19, ADR-024; Extended in Sprint 27, ADR-032; docs/framework/cli.md).
 // One TypeScript implementation; `pnpm eval:*` are aliases to it. Every
 // command is explicit and offline-safe: no project config, no plugin or
 // module loading, no environment discovery, and no generic workflow runner
 // (a Workflow file carries no trusted Tool code — execution is the library
 // API's job).
+import type { OperatorInspectionSource } from "@aao/operator-inspection";
 import { AAO_FRAMEWORK_API_VERSION } from "../version.js";
 import { formatOption, parseOptions } from "./args.js";
 import { runAdaptersMatrix, runEvalAdapters } from "./eval/adapters.js";
 import { proposeBaseline } from "./eval/baseline.js";
 import { runEvalCi } from "./eval/ci.js";
 import { installNetworkGuard } from "./eval/network-guard.js";
+import { runInspectCommand } from "./inspect.js";
 import { CliError, cliErrorResult, type CliResult, type CommandOutput } from "./output.js";
 import { compileWorkflowFile, validateWorkflowFile } from "./workflow.js";
 
@@ -22,13 +24,22 @@ Usage:
   aao eval adapters [--format text|json]
   aao eval baseline propose --id <baseline-id> --version <version> [--root <dir>]
   aao adapters matrix [--format json|markdown]
+  aao inspect companies [--format text|json]
+  aao inspect packs [--company <company-id>] [--format text|json]
+  aao inspect workflows [--format text|json]
+  aao inspect runs [--company <company-id>] [--status <status>] [--limit <n>] [--format text|json]
+  aao inspect run <run-id> [--format text|json]
+  aao inspect evals [--company <company-id>] [--pack <pack-ref>] [--run <run-id>] [--format text|json]
+  aao inspect approvals [<approval-id>] [--format text|json]
+  aao inspect overview [--format text|json]
   aao --help
 
 Workflow files are .yaml, .yml, or .json; they are validated and compiled, never executed.
 eval ci and eval baseline read evals/ under --root (default: the current directory).
 eval adapters and adapters matrix verify the official adapters against the canonical
 conformance suite shipped with @aao/adapters, so they read no project files.
-Every Eval and adapter command runs offline and never writes files.
+inspect commands project read-only metadata from validated AAO contracts and evidence.
+Every Eval, adapter, and inspect command runs offline and never writes files.
 
 Exit codes: 0 success (eval ci: PASS or WARN); 1 invalid workflow, gate failure, or error.
 `;
@@ -36,12 +47,14 @@ Exit codes: 0 success (eval ci: PASS or WARN); 1 invalid workflow, gate failure,
 export interface CliContext {
   /** Base for relative workflow paths and the default eval root. */
   cwd: string;
+  /** Optional host-supplied read-only inspection source. */
+  inspectionSource?: OperatorInspectionSource;
 }
 
 const ok = (output: CommandOutput): CliResult => ({ exitCode: output.exitCode, stdout: output.output, stderr: "" });
 const isHelp = (args: readonly string[]) => args.includes("--help") || args.includes("-h");
 
-/** Eval commands run under the offline guard: any network attempt fails the command, whatever it printed. */
+/** Eval and inspect commands run under the offline guard: any network attempt fails the command, whatever it printed. */
 async function offline(command: () => Promise<CommandOutput>): Promise<CliResult> {
   const guard = installNetworkGuard();
   try {
@@ -103,6 +116,10 @@ async function adaptersCommand(args: readonly string[]): Promise<CliResult> {
   return offline(() => runAdaptersMatrix({ format }));
 }
 
+async function inspectCommand(args: readonly string[], context: CliContext): Promise<CliResult> {
+  return offline(() => runInspectCommand(args, context.inspectionSource));
+}
+
 /**
  * Runs one CLI invocation and returns what to print. Never throws: usage
  * errors become `ERROR <code>` on stderr with exit 1, and an unexpected
@@ -118,6 +135,7 @@ export async function runCli(argv: readonly string[], context: CliContext): Prom
     if (group === "workflow") return await workflowCommand(rest, context);
     if (group === "eval") return await evalCommand(rest, context);
     if (group === "adapters") return await adaptersCommand(rest);
+    if (group === "inspect") return await inspectCommand(rest, context);
     if (group?.startsWith("-")) throw new CliError("AAO_CLI_UNKNOWN_OPTION", `unknown option ${group}`);
     throw new CliError("AAO_CLI_UNKNOWN_COMMAND", `unknown command "${group}"`);
   } catch (error) {
