@@ -25,6 +25,7 @@ import {
   type CapabilityPack,
   type CapabilityPackManifestV1,
   type ExactToolRef,
+  type ProofRegistrationSnapshot,
   type VerifiedModelAdapter,
   type VerifiedModelBinding,
 } from "@aao/capability-packs";
@@ -49,6 +50,7 @@ import {
   type EvaluationSummary,
   type EvaluationSummaryStatus,
   type OperatorRunStatus,
+  type OperatorSourceProvenance,
   type PackCompatibilitySummary,
   type RunInspection,
   type RunSummary,
@@ -199,16 +201,17 @@ export function projectCapabilityPackSummary(
 // --- 3. Verified Compatibility Projection ---
 
 export interface TrustedProofRegistrationEvidence {
-  readonly workflow?: {
-    readonly id: string;
-    readonly version: string;
-    readonly planFingerprint: string;
-  };
-  readonly registeredTools?: readonly ExactToolRef[];
-  readonly registeredModelPolicies?: readonly string[];
-  readonly registeredModelBindings?: readonly VerifiedModelBinding[];
-  readonly registeredModelAdapters?: readonly VerifiedModelAdapter[];
-  readonly registeredEvalProfiles?: readonly string[];
+  readonly snapshot?: ProofRegistrationSnapshot;
+  readonly workflow?: ProofRegistrationSnapshot["workflow"];
+  readonly tools?: ReadonlyArray<ExactToolRef>;
+  readonly registeredTools?: ReadonlyArray<ExactToolRef>;
+  readonly modelPolicies?: ReadonlyArray<string>;
+  readonly registeredModelPolicies?: ReadonlyArray<string>;
+  readonly modelBindings?: ReadonlyArray<VerifiedModelBinding>;
+  readonly registeredModelBindings?: ReadonlyArray<VerifiedModelBinding>;
+  readonly modelAdapters?: ReadonlyArray<VerifiedModelAdapter>;
+  readonly registeredModelAdapters?: ReadonlyArray<VerifiedModelAdapter>;
+  readonly registeredEvalProfiles?: ReadonlyArray<string>;
 }
 
 export interface ProjectPackCompatibilityInput {
@@ -301,23 +304,51 @@ export function projectPackCompatibilitySummary(
     return assertSafeInspectionPayload(PackCompatibilitySummarySchema.parse(summary));
   }
 
+  const evidence = input.registrationEvidence;
+  const snapshot = "snapshot" in evidence && evidence.snapshot ? evidence.snapshot : undefined;
+  const workflow = snapshot?.workflow ?? evidence.workflow;
+  const tools = snapshot?.tools ?? evidence.registeredTools ?? evidence.tools;
+  const modelPolicies =
+    snapshot?.modelPolicies ?? evidence.registeredModelPolicies ?? evidence.modelPolicies;
+  const modelBindings =
+    snapshot?.modelBindings ?? evidence.registeredModelBindings ?? evidence.modelBindings;
+  const modelAdapters =
+    snapshot?.modelAdapters ?? evidence.registeredModelAdapters ?? evidence.modelAdapters;
+  const evalProfiles = evidence.registeredEvalProfiles ?? [];
+
+  if (!workflow || !tools || !modelPolicies || !modelBindings) {
+    const summary: PackCompatibilitySummary = {
+      companyId: manifest.companyId,
+      packId: pack.ref.id,
+      packVersion: pack.ref.version,
+      packIdentity: pack.identity,
+      packName: m.name,
+      packFingerprint: pack.fingerprint,
+      workflowId: m.workflow.id,
+      workflowVersion: m.workflow.version,
+      planFingerprint: m.workflow.planFingerprint,
+      enabledByCompany: true,
+      selectedByCompany,
+      verified: false,
+      status: "NOT_VERIFIED",
+      reasonCode: "PACK_EVIDENCE_UNAVAILABLE",
+      diagnostic: `Trusted ProofRegistrationSnapshot evidence is unavailable for '${manifest.companyId}' (${pack.identity}); compatibility cannot be assumed from configuration alone.`,
+    };
+    return assertSafeInspectionPayload(PackCompatibilitySummarySchema.parse(summary));
+  }
+
   try {
     const report = validatePackCompatibility(pack, {
       companyId: manifest.companyId,
       enabledProofs: manifest.enabledProofs,
       governanceRoles: manifest.governance.roles,
       integrations: manifest.integrations,
-      workflow: input.registrationEvidence.workflow as NonNullable<
-        TrustedProofRegistrationEvidence["workflow"]
-      >,
-      registeredTools: input.registrationEvidence.registeredTools as readonly ExactToolRef[],
-      registeredModelPolicies:
-        input.registrationEvidence.registeredModelPolicies as readonly string[],
-      registeredModelBindings:
-        input.registrationEvidence.registeredModelBindings as readonly VerifiedModelBinding[],
-      registeredModelAdapters: input.registrationEvidence.registeredModelAdapters,
-      registeredEvalProfiles:
-        input.registrationEvidence.registeredEvalProfiles as readonly string[],
+      workflow: workflow as NonNullable<ProofRegistrationSnapshot["workflow"]>,
+      registeredTools: tools as readonly ExactToolRef[],
+      registeredModelPolicies: modelPolicies as readonly string[],
+      registeredModelBindings: modelBindings as readonly VerifiedModelBinding[],
+      registeredModelAdapters: modelAdapters as readonly VerifiedModelAdapter[] | undefined,
+      registeredEvalProfiles: evalProfiles as readonly string[],
     });
 
     const summary: PackCompatibilitySummary = {
@@ -982,7 +1013,10 @@ export function projectRunSummary(evidence: KnownRunEvidence): RunSummary {
   return assertSafeInspectionPayload(RunSummarySchema.parse(summary));
 }
 
-export function projectRunInspection(evidence: KnownRunEvidence): RunInspection {
+export function projectRunInspection(
+  evidence: KnownRunEvidence,
+  provenance?: OperatorSourceProvenance
+): RunInspection {
   const summary = projectRunSummary(evidence);
   const trace = projectTraceInspection({
     runId: evidence.runId,
@@ -1029,6 +1063,7 @@ export function projectRunInspection(evidence: KnownRunEvidence): RunInspection 
   }
 
   const inspection: RunInspection = {
+    ...(provenance ? { provenance } : {}),
     summary,
     ...(workflow ? { workflow } : {}),
     trace,

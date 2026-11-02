@@ -180,7 +180,11 @@ export function formatApprovalsText(approvals: readonly ApprovalSummary[]): stri
 
 export function formatOverviewText(overview: OverviewInspection): string {
   const c = overview.counts;
+  const p = overview.provenance;
   const lines: string[] = [
+    "AAO Operator Inspection",
+    `Source: ${p?.label ?? "DEMO DATA — NOT LIVE OPERATIONS"}`,
+    "",
     "AAO Operator Control Center Overview (Read-Only)",
     `  Companies: ${c.companies ?? "UNAVAILABLE"}`,
     `  Capability Packs: ${c.capabilityPacks ?? "UNAVAILABLE"}`,

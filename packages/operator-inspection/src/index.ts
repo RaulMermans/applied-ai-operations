@@ -11,6 +11,8 @@ export {
 export {
   INSPECTION_LIMITS,
   SourceAvailabilityStatusSchema,
+  OperatorSourceModeSchema,
+  OperatorSourceProvenanceSchema,
   SourceStatusSummarySchema,
   CompanyIntegrationRefsSummarySchema,
   CompanySummarySchema,
@@ -40,6 +42,8 @@ export {
   OverviewInspectionSchema,
   findForbiddenInspectionKeys,
   type SourceAvailabilityStatus,
+  type OperatorSourceMode,
+  type OperatorSourceProvenance,
   type SourceStatusSummary,
   type CompanyIntegrationRefsSummary,
   type CompanySummary,
@@ -106,6 +110,10 @@ export {
 export {
   CANONICAL_NORTHSTAR_MANIFEST,
   CANONICAL_ARBOR_MANIFEST,
+  CANONICAL_CAPABILITY_PACKS,
+  COMPANY_RESEARCH_PACK,
+  DOCUMENT_INTELLIGENCE_PACK,
+  OPERATIONAL_REQUEST_PACK,
   CANONICAL_COMPANY_RESEARCH_WORKFLOW,
   CANONICAL_DOCUMENT_INTELLIGENCE_WORKFLOW,
   CANONICAL_OPERATIONAL_REQUEST_WORKFLOW,
@@ -113,9 +121,12 @@ export {
   CANONICAL_APPROVAL_RECORDS,
   CANONICAL_EVALUATION_RESULTS,
   CANONICAL_RUN_RECORDS,
+  CANONICAL_DEMO_PROVENANCE,
   createVerifiedRegistrationEvidenceForCompany,
   buildCanonicalTraceFixtures,
   createCanonicalDemoInspectionSource,
+  type CanonicalDemoInspectionSourceOptions,
+  type RegistrationEvidenceOverrides,
 } from "./canonical-fixture-source.js";
 
 export {

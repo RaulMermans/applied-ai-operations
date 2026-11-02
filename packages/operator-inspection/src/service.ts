@@ -21,6 +21,7 @@ import {
   EvaluationSummarySchema,
   INSPECTION_LIMITS,
   OperatorRunStatusSchema,
+  OperatorSourceProvenanceSchema,
   OverviewInspectionSchema,
   PackCompatibilitySummarySchema,
   RunInspectionSchema,
@@ -32,6 +33,7 @@ import {
   type CapabilityPackSummary,
   type CompanySummary,
   type EvaluationSummary,
+  type OperatorSourceProvenance,
   type OverviewInspection,
   type PackCompatibilitySummary,
   type RunInspection,
@@ -58,6 +60,7 @@ import {
 } from "./projections.js";
 
 export interface OperatorInspectionSource {
+  getProvenance?(): Promise<OperatorSourceProvenance>;
   getSourceStatuses?(): Promise<readonly SourceStatusSummary[]>;
   listCompanies?(): Promise<readonly CompanySummary[]>;
   listCapabilityPacks?(): Promise<readonly CapabilityPackSummary[]>;
@@ -132,6 +135,7 @@ function assertBoundedResponseSize<T>(payload: T): T {
 }
 
 export interface OperatorInspectionService {
+  getProvenance(): Promise<OperatorSourceProvenance>;
   getOverview(): Promise<OverviewInspection>;
   listCompanies(): Promise<CompanySummary[]>;
   listCapabilityPacks(query?: unknown): Promise<{
@@ -151,6 +155,22 @@ export interface OperatorInspectionService {
 export function createOperatorInspectionService(
   source: OperatorInspectionSource
 ): OperatorInspectionService {
+  const getProvenance = async (): Promise<OperatorSourceProvenance> => {
+    if (typeof source.getProvenance === "function") {
+      try {
+        const prov = await source.getProvenance();
+        return assertSafeInspectionPayload(OperatorSourceProvenanceSchema.parse(prov));
+      } catch (err) {
+        throw normalizeInspectionError(err);
+      }
+    }
+    return {
+      mode: "unavailable",
+      label: "UNAVAILABLE — Source provenance not configured",
+      description: "Inspection source does not provide authoritative provenance declaration.",
+    };
+  };
+
   const ensureSourceMethod = <K extends keyof OperatorInspectionSource>(
     methodName: K,
     sourceLabel: string
@@ -333,7 +353,11 @@ export function createOperatorInspectionService(
           `Run '${parsedId.data}' was not found in known inspection sources.`
         );
       }
-      const validated = RunInspectionSchema.parse(found);
+      const provenance = found.provenance ?? (await getProvenance());
+      const validated = RunInspectionSchema.parse({
+        ...found,
+        ...(provenance ? { provenance } : {}),
+      });
       return assertBoundedResponseSize(validated);
     } catch (err) {
       throw normalizeInspectionError(err);
@@ -626,8 +650,10 @@ export function createOperatorInspectionService(
     }
 
     // Never invent aggregate counts when a source is unavailable: use null!
+    const provenance = await getProvenance();
     const overview: OverviewInspection = {
       readOnly: true,
+      provenance,
       sources,
       counts: {
         companies: companiesRes.available ? companiesRes.items.length : null,
@@ -659,6 +685,7 @@ export function createOperatorInspectionService(
   };
 
   return Object.freeze({
+    getProvenance,
     getOverview,
     listCompanies,
     listCapabilityPacks,
@@ -689,6 +716,7 @@ export interface CompanyInspectionRegistration {
 }
 
 export interface EvidenceBackedInspectionSourceConfig {
+  readonly provenance?: OperatorSourceProvenance;
   readonly companies?: readonly CompanyInspectionRegistration[];
   readonly capabilityPacks?: readonly (CapabilityPack | CapabilityPackManifestV1)[];
   readonly workflows?: readonly Workflow[];
@@ -702,6 +730,12 @@ export interface EvidenceBackedInspectionSourceConfig {
 export function createEvidenceBackedInspectionSource(
   config: EvidenceBackedInspectionSourceConfig
 ): OperatorInspectionSource {
+  const provenance: OperatorSourceProvenance = config.provenance ?? {
+    mode: "demo",
+    label: "DEMO DATA — NOT LIVE OPERATIONS",
+    description: "Canonical AAO demonstration fixtures",
+  };
+
   const resolveRunTraceEvents = async (
     runEvidence: KnownRunEvidence
   ): Promise<readonly TraceEvent[] | undefined> => {
@@ -759,6 +793,7 @@ export function createEvidenceBackedInspectionSource(
   };
 
   const source: OperatorInspectionSource = {
+    getProvenance: async () => provenance,
     ...(config.sourceStatuses
       ? {
           getSourceStatuses: async () => config.sourceStatuses!,
@@ -869,13 +904,16 @@ export function createEvidenceBackedInspectionSource(
                     traceEvents?.[0]?.workflowId)
               );
 
-            return projectRunInspection({
-              ...runEv,
-              traceEvents,
-              approvalRecords,
-              evaluations,
-              workflow,
-            });
+            return projectRunInspection(
+              {
+                ...runEv,
+                traceEvents,
+                approvalRecords,
+                evaluations,
+                workflow,
+              },
+              provenance
+            );
           },
 
           getRunTraceInspection: async (

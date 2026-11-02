@@ -41,6 +41,18 @@ export const SourceAvailabilityStatusSchema = z.enum([
 ]);
 export type SourceAvailabilityStatus = z.infer<typeof SourceAvailabilityStatusSchema>;
 
+export const OperatorSourceModeSchema = z.enum(["demo", "live", "unavailable"]);
+export type OperatorSourceMode = z.infer<typeof OperatorSourceModeSchema>;
+
+export const OperatorSourceProvenanceSchema = z
+  .object({
+    mode: OperatorSourceModeSchema,
+    label: z.string().min(1).max(INSPECTION_LIMITS.MAX_STRING_LENGTH),
+    description: boundedTextSchema.optional(),
+  })
+  .strict();
+export type OperatorSourceProvenance = z.infer<typeof OperatorSourceProvenanceSchema>;
+
 export const SourceStatusSummarySchema = z
   .object({
     sourceId: z.enum([
@@ -455,6 +467,7 @@ export type RunSummary = z.infer<typeof RunSummarySchema>;
 
 export const RunInspectionSchema = z
   .object({
+    provenance: OperatorSourceProvenanceSchema.optional(),
     summary: RunSummarySchema,
     workflow: WorkflowSummarySchema.optional(),
     trace: TraceInspectionSchema,
@@ -485,6 +498,7 @@ export type OverviewCounts = z.infer<typeof OverviewCountsSchema>;
 export const OverviewInspectionSchema = z
   .object({
     readOnly: z.literal(true),
+    provenance: OperatorSourceProvenanceSchema,
     sources: z.array(SourceStatusSummarySchema),
     counts: OverviewCountsSchema,
     companies: z.array(CompanySummarySchema),

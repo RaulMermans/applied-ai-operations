@@ -11,21 +11,28 @@ import {
   formatRunsText,
   formatWorkflowsText,
   type OperatorInspectionSource,
+  type OperatorSourceProvenance,
 } from "@aao/operator-inspection";
 import { formatOption, parseOptions } from "./args.js";
 import { CliError, type CommandOutput } from "./output.js";
 
-function toJsonOutput(value: unknown): CommandOutput {
+function toJsonOutput(value: unknown, provenance: OperatorSourceProvenance): CommandOutput {
+  const payload =
+    value !== null && typeof value === "object" && !Array.isArray(value)
+      ? { source: provenance, ...value }
+      : { source: provenance, data: value };
   return {
     exitCode: 0,
-    output: `${JSON.stringify(value, null, 2)}\n`,
+    output: `${JSON.stringify(payload, null, 2)}\n`,
   };
 }
 
-function toTextOutput(text: string): CommandOutput {
+function toTextOutput(text: string, provenance: OperatorSourceProvenance): CommandOutput {
+  const alreadyPrefixed = text.startsWith("AAO Operator Inspection");
+  const prefix = alreadyPrefixed ? "" : `AAO Operator Inspection\nSource: ${provenance.label}\n\n`;
   return {
     exitCode: 0,
-    output: text,
+    output: `${prefix}${text}`,
   };
 }
 
@@ -59,14 +66,15 @@ export async function runInspectCommand(
   try {
     const source = customSource ?? (await createCanonicalDemoInspectionSource());
     const service = createOperatorInspectionService(source);
+    const provenance = await service.getProvenance();
 
     if (sub === "companies") {
       const parsed = parseOptions(rest, { values: ["--format"] });
       const format = formatOption(parsed, ["text", "json"], "text");
       const companies = await service.listCompanies();
       return format === "json"
-        ? toJsonOutput({ companies })
-        : toTextOutput(formatCompaniesText(companies));
+        ? toJsonOutput({ companies }, provenance)
+        : toTextOutput(formatCompaniesText(companies), provenance);
     }
 
     if (sub === "packs") {
@@ -77,8 +85,8 @@ export async function runInspectCommand(
         companyId !== undefined ? { companyId } : {}
       );
       return format === "json"
-        ? toJsonOutput(result)
-        : toTextOutput(formatPacksText(result));
+        ? toJsonOutput(result, provenance)
+        : toTextOutput(formatPacksText(result), provenance);
     }
 
     if (sub === "workflows") {
@@ -86,8 +94,8 @@ export async function runInspectCommand(
       const format = formatOption(parsed, ["text", "json"], "text");
       const workflows = await service.listWorkflows();
       return format === "json"
-        ? toJsonOutput({ workflows })
-        : toTextOutput(formatWorkflowsText(workflows));
+        ? toJsonOutput({ workflows }, provenance)
+        : toTextOutput(formatWorkflowsText(workflows), provenance);
     }
 
     if (sub === "runs") {
@@ -107,8 +115,8 @@ export async function runInspectCommand(
       }
       const runs = await service.listKnownRuns(query);
       return format === "json"
-        ? toJsonOutput({ runs })
-        : toTextOutput(formatRunsText(runs));
+        ? toJsonOutput({ runs }, provenance)
+        : toTextOutput(formatRunsText(runs), provenance);
     }
 
     if (sub === "run") {
@@ -117,8 +125,8 @@ export async function runInspectCommand(
       const runId = parsed.positionals[0]!;
       const runInspection = await service.getRunInspection(runId);
       return format === "json"
-        ? toJsonOutput(runInspection)
-        : toTextOutput(formatRunInspectionText(runInspection));
+        ? toJsonOutput(runInspection, provenance)
+        : toTextOutput(formatRunInspectionText(runInspection), provenance);
     }
 
     if (sub === "evals") {
@@ -138,8 +146,8 @@ export async function runInspectCommand(
       }
       const evaluations = await service.listKnownEvaluationResults(query);
       return format === "json"
-        ? toJsonOutput({ evaluations })
-        : toTextOutput(formatEvaluationsText(evaluations));
+        ? toJsonOutput({ evaluations }, provenance)
+        : toTextOutput(formatEvaluationsText(evaluations), provenance);
     }
 
     if (sub === "approvals") {
@@ -152,13 +160,13 @@ export async function runInspectCommand(
       if (hasPositional) {
         const approval = await service.getApprovalSummary(parsed.positionals[0]!);
         return format === "json"
-          ? toJsonOutput({ approval })
-          : toTextOutput(formatApprovalsText([approval]));
+          ? toJsonOutput({ approval }, provenance)
+          : toTextOutput(formatApprovalsText([approval]), provenance);
       }
       const approvals = await service.listKnownApprovals();
       return format === "json"
-        ? toJsonOutput({ approvals })
-        : toTextOutput(formatApprovalsText(approvals));
+        ? toJsonOutput({ approvals }, provenance)
+        : toTextOutput(formatApprovalsText(approvals), provenance);
     }
 
     if (sub === "overview") {
@@ -166,8 +174,8 @@ export async function runInspectCommand(
       const format = formatOption(parsed, ["text", "json"], "text");
       const overview = await service.getOverview();
       return format === "json"
-        ? toJsonOutput(overview)
-        : toTextOutput(formatOverviewText(overview));
+        ? toJsonOutput(overview, provenance)
+        : toTextOutput(formatOverviewText(overview), provenance);
     }
   } catch (err) {
     handleInspectionError(err);

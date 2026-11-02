@@ -6,10 +6,19 @@ import {
   COMPANY_RESEARCH_PACK,
   DOCUMENT_INTELLIGENCE_PACK,
   OPERATIONAL_REQUEST_PACK,
+  type ExactToolRef,
   type VerifiedModelAdapter,
   type VerifiedModelBinding,
 } from "@aao/capability-packs";
+
+export {
+  CANONICAL_CAPABILITY_PACKS,
+  COMPANY_RESEARCH_PACK,
+  DOCUMENT_INTELLIGENCE_PACK,
+  OPERATIONAL_REQUEST_PACK,
+};
 import { createInMemoryTraceStore, createTraceRecorder } from "@aao/observability";
+import type { OperatorSourceProvenance } from "./contracts.js";
 import type {
   KnownRunEvidence,
   RawEvaluationEvidence,
@@ -365,8 +374,52 @@ const REGISTERED_EVAL_PROFILES = Object.freeze([
   "aao.operational-request.evals@1.0.0",
 ]);
 
+const CANONICAL_CR_TOOLS: readonly ExactToolRef[] = Object.freeze([
+  Object.freeze({ id: "public_web.search", version: "1.0.0" }),
+  Object.freeze({ id: "records.dedupe", version: "1.0.0" }),
+  Object.freeze({ id: "public_web.fetch_pages", version: "1.0.0" }),
+  Object.freeze({ id: "records.project", version: "1.0.0" }),
+]);
+
+const CANONICAL_CR_POLICIES: readonly string[] = Object.freeze([
+  "company_research.planning",
+  "company_research.synthesis",
+]);
+
+const CANONICAL_DI_TOOLS: readonly ExactToolRef[] = Object.freeze([
+  Object.freeze({ id: "document.extract_text", version: "1.0.0" }),
+]);
+
+const CANONICAL_DI_POLICIES: readonly string[] = Object.freeze([
+  "document_intelligence.synthesis",
+]);
+
+const CANONICAL_OR_TOOLS: readonly ExactToolRef[] = Object.freeze([
+  Object.freeze({ id: "operations.create_change_draft", version: "1.0.0" }),
+]);
+
+const CANONICAL_OR_POLICIES: readonly string[] = Object.freeze([
+  "operational_request.interpret",
+]);
+
+export interface RegistrationEvidenceOverrides {
+  readonly company_research?: {
+    readonly tools?: readonly ExactToolRef[];
+    readonly modelPolicies?: readonly string[];
+  };
+  readonly document_intelligence?: {
+    readonly tools?: readonly ExactToolRef[];
+    readonly modelPolicies?: readonly string[];
+  };
+  readonly operational_request?: {
+    readonly tools?: readonly ExactToolRef[];
+    readonly modelPolicies?: readonly string[];
+  };
+}
+
 export function createVerifiedRegistrationEvidenceForCompany(
-  companyId: "northstar-commerce" | "arbor-consulting"
+  companyId: "northstar-commerce" | "arbor-consulting",
+  overrides?: RegistrationEvidenceOverrides
 ): Readonly<Record<string, TrustedProofRegistrationEvidence>> {
   const bindings =
     companyId === "northstar-commerce"
@@ -380,36 +433,36 @@ export function createVerifiedRegistrationEvidenceForCompany(
   return Object.freeze({
     company_research: {
       workflow: {
-        id: COMPANY_RESEARCH_PACK.manifest.workflow.id,
-        version: COMPANY_RESEARCH_PACK.manifest.workflow.version,
-        planFingerprint: COMPANY_RESEARCH_PACK.manifest.workflow.planFingerprint,
+        id: CANONICAL_COMPANY_RESEARCH_WORKFLOW.id,
+        version: CANONICAL_COMPANY_RESEARCH_WORKFLOW.version,
+        planFingerprint: CANONICAL_COMPANY_RESEARCH_WORKFLOW.id ? COMPANY_RESEARCH_PACK.manifest.workflow.planFingerprint : "",
       },
-      registeredTools: COMPANY_RESEARCH_PACK.manifest.requirements.toolRefs,
-      registeredModelPolicies: COMPANY_RESEARCH_PACK.manifest.requirements.modelPolicyRefs,
+      registeredTools: overrides?.company_research?.tools ?? CANONICAL_CR_TOOLS,
+      registeredModelPolicies: overrides?.company_research?.modelPolicies ?? CANONICAL_CR_POLICIES,
       registeredModelBindings: bindings,
       registeredModelAdapters: adapters,
       registeredEvalProfiles: REGISTERED_EVAL_PROFILES,
     },
     document_intelligence: {
       workflow: {
-        id: DOCUMENT_INTELLIGENCE_PACK.manifest.workflow.id,
-        version: DOCUMENT_INTELLIGENCE_PACK.manifest.workflow.version,
+        id: CANONICAL_DOCUMENT_INTELLIGENCE_WORKFLOW.id,
+        version: CANONICAL_DOCUMENT_INTELLIGENCE_WORKFLOW.version,
         planFingerprint: DOCUMENT_INTELLIGENCE_PACK.manifest.workflow.planFingerprint,
       },
-      registeredTools: DOCUMENT_INTELLIGENCE_PACK.manifest.requirements.toolRefs,
-      registeredModelPolicies: DOCUMENT_INTELLIGENCE_PACK.manifest.requirements.modelPolicyRefs,
+      registeredTools: overrides?.document_intelligence?.tools ?? CANONICAL_DI_TOOLS,
+      registeredModelPolicies: overrides?.document_intelligence?.modelPolicies ?? CANONICAL_DI_POLICIES,
       registeredModelBindings: bindings,
       registeredModelAdapters: adapters,
       registeredEvalProfiles: REGISTERED_EVAL_PROFILES,
     },
     operational_request: {
       workflow: {
-        id: OPERATIONAL_REQUEST_PACK.manifest.workflow.id,
-        version: OPERATIONAL_REQUEST_PACK.manifest.workflow.version,
+        id: CANONICAL_OPERATIONAL_REQUEST_WORKFLOW.id,
+        version: CANONICAL_OPERATIONAL_REQUEST_WORKFLOW.version,
         planFingerprint: OPERATIONAL_REQUEST_PACK.manifest.workflow.planFingerprint,
       },
-      registeredTools: OPERATIONAL_REQUEST_PACK.manifest.requirements.toolRefs,
-      registeredModelPolicies: OPERATIONAL_REQUEST_PACK.manifest.requirements.modelPolicyRefs,
+      registeredTools: overrides?.operational_request?.tools ?? CANONICAL_OR_TOOLS,
+      registeredModelPolicies: overrides?.operational_request?.modelPolicies ?? CANONICAL_OR_POLICIES,
       registeredModelBindings: bindings,
       registeredModelAdapters: adapters,
       registeredEvalProfiles: REGISTERED_EVAL_PROFILES,
@@ -1221,7 +1274,27 @@ export const CANONICAL_RUN_RECORDS: Readonly<Record<string, RunRecord>> = Object
   },
 });
 
-export async function createCanonicalDemoInspectionSource(): Promise<OperatorInspectionSource> {
+export const CANONICAL_DEMO_PROVENANCE: OperatorSourceProvenance = Object.freeze({
+  mode: "demo",
+  label: "DEMO DATA — NOT LIVE OPERATIONS",
+  description: "Canonical AAO demonstration fixtures",
+});
+
+export interface CanonicalDemoInspectionSourceOptions {
+  /**
+   * Optional authoritative or test registration evidence.
+   * When omitted (default), companies have no proof registration snapshot,
+   * so compatibility truthfully reports NOT_VERIFIED.
+   */
+  readonly registrationEvidenceByCompany?: Readonly<
+    Record<string, Readonly<Record<string, TrustedProofRegistrationEvidence | undefined>>>
+  >;
+  readonly provenance?: OperatorSourceProvenance;
+}
+
+export async function createCanonicalDemoInspectionSource(
+  options: CanonicalDemoInspectionSourceOptions = {}
+): Promise<OperatorInspectionSource> {
   const { tracesByRunId } = await buildCanonicalTraceFixtures();
 
   const allPackRefs = CANONICAL_CAPABILITY_PACKS.map((p) => ({
@@ -1282,18 +1355,19 @@ export async function createCanonicalDemoInspectionSource(): Promise<OperatorIns
   ];
 
   return createEvidenceBackedInspectionSource({
+    provenance: options.provenance ?? CANONICAL_DEMO_PROVENANCE,
     companies: [
       {
         manifest: CANONICAL_NORTHSTAR_MANIFEST,
         selectedPackRefs: allPackRefs,
         registrationEvidenceByPack:
-          createVerifiedRegistrationEvidenceForCompany("northstar-commerce"),
+          options.registrationEvidenceByCompany?.["northstar-commerce"],
       },
       {
         manifest: CANONICAL_ARBOR_MANIFEST,
         selectedPackRefs: allPackRefs,
         registrationEvidenceByPack:
-          createVerifiedRegistrationEvidenceForCompany("arbor-consulting"),
+          options.registrationEvidenceByCompany?.["arbor-consulting"],
       },
     ],
     capabilityPacks: CANONICAL_CAPABILITY_PACKS,
