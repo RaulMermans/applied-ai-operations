@@ -2,6 +2,7 @@ import process from "node:process";
 import {
   createCanonicalDemoInspectionSource,
   createOperatorInspectionService,
+  formatApprovalsText,
   formatCompaniesText,
   formatEvaluationsText,
   formatOverviewText,
@@ -20,6 +21,7 @@ async function main(): Promise<void> {
   process.stdout.write(formatWorkflowsText(await service.listWorkflows()) + "\n");
   process.stdout.write(formatRunsText(await service.listKnownRuns()) + "\n");
   process.stdout.write(formatRunInspectionText(await service.getRunInspection("run.arbor.cr.incomplete")) + "\n");
+  process.stdout.write(formatApprovalsText(await service.listKnownApprovals()) + "\n");
   process.stdout.write(formatEvaluationsText(await service.listKnownEvaluationResults()) + "\n");
   process.stdout.write("Demo completed successfully (no execution, approval, or write occurred).\n");
 }

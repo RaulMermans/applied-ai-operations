@@ -31,7 +31,18 @@ describe("companies and packs", () => {
     expect(companies.map((c) => c.companyId)).toEqual(["arbor-consulting", "northstar-commerce"]);
     expect(findForbiddenInspectionKeys(companies)).toEqual([]);
     expect(JSON.stringify(companies)).not.toMatch(/governance|actors|policies/);
-    expect(companies[0]!.verifiedCompatiblePackCount).toBe(3);
+    expect(companies[0]!.verifiedCompatiblePackCount).toBe(0);
+
+    const verifiedSvc = createOperatorInspectionService(
+      await createCanonicalDemoInspectionSource({
+        registrationEvidenceByCompany: {
+          "arbor-consulting": createVerifiedRegistrationEvidenceForCompany("arbor-consulting"),
+          "northstar-commerce": createVerifiedRegistrationEvidenceForCompany("northstar-commerce"),
+        },
+      })
+    );
+    const verifiedCompanies = await verifiedSvc.listCompanies();
+    expect(verifiedCompanies[0]!.verifiedCompatiblePackCount).toBe(3);
   });
 
   it("projects the three canonical packs deterministically", async () => {
@@ -68,6 +79,54 @@ describe("verified compatibility", () => {
       registrationEvidence: { ...ns.company_research!, registeredTools: [] },
     });
     expect(s).toMatchObject({ status: "INCOMPATIBLE", reasonCode: "PACK_REQUIREMENT_MISSING" });
+  });
+
+  it("INCOMPATIBLE when a required model policy is not registered", () => {
+    const s = projectPackCompatibilitySummary({
+      companyManifest: CANONICAL_NORTHSTAR_MANIFEST,
+      pack: COMPANY_RESEARCH_PACK,
+      registrationEvidence: { ...ns.company_research!, registeredModelPolicies: [] },
+    });
+    expect(s).toMatchObject({ status: "INCOMPATIBLE", reasonCode: "PACK_REQUIREMENT_MISSING" });
+  });
+
+  it("pack requirements are not copied into registration evidence", () => {
+    // Supplying evidence with empty tools must NOT be backfilled with pack.manifest.requirements
+    const evidenceWithEmptyTools = {
+      ...ns.company_research!,
+      registeredTools: [],
+    };
+    const s = projectPackCompatibilitySummary({
+      companyManifest: CANONICAL_NORTHSTAR_MANIFEST,
+      pack: COMPANY_RESEARCH_PACK,
+      registrationEvidence: evidenceWithEmptyTools,
+    });
+    expect(s.status).toBe("INCOMPATIBLE");
+    expect(s.reasonCode).toBe("PACK_REQUIREMENT_MISSING");
+  });
+
+  it("synthetic requirements cannot manufacture verified readiness", () => {
+    // If pack requires a tool that is not in the trusted snapshot, it is never COMPATIBLE
+    const modifiedPack = {
+      ...COMPANY_RESEARCH_PACK,
+      manifest: {
+        ...COMPANY_RESEARCH_PACK.manifest,
+        requirements: {
+          ...COMPANY_RESEARCH_PACK.manifest.requirements,
+          toolRefs: [
+            ...COMPANY_RESEARCH_PACK.manifest.requirements.toolRefs,
+            { id: "unprovided.phantom.tool", version: "1.0.0" },
+          ],
+        },
+      },
+    };
+    const s = projectPackCompatibilitySummary({
+      companyManifest: CANONICAL_NORTHSTAR_MANIFEST,
+      pack: modifiedPack as unknown as typeof COMPANY_RESEARCH_PACK,
+      registrationEvidence: ns.company_research,
+    });
+    expect(s.status).toBe("INCOMPATIBLE");
+    expect(s.verified).toBe(false);
   });
 
   it("INCOMPATIBLE when the company disables the proof", () => {
@@ -162,10 +221,54 @@ describe("evaluations and overview", () => {
     expect(overview.sources.every((s) => s.status === "unavailable")).toBe(true);
   });
 
-  it("full overview reflects real evidence counts", async () => {
-    const o = await (await service()).getOverview();
-    expect(o.counts).toMatchObject({ companies: 2, capabilityPacks: 3, compatiblePackBindings: 6, workflows: 3, knownRuns: 6, knownApprovals: 2, knownEvaluations: 4 });
+  it("full overview reflects real evidence counts and provenance", async () => {
+    const svc = await service();
+    const o = await svc.getOverview();
+    expect(o.counts).toMatchObject({
+      companies: 2,
+      capabilityPacks: 3,
+      compatiblePackBindings: 0,
+      unverifiedPackBindings: 6,
+      workflows: 3,
+      knownRuns: 6,
+      knownApprovals: 2,
+      knownEvaluations: 4,
+    });
     expect(o.readOnly).toBe(true);
+    expect(o.provenance.mode).toBe("demo");
+    expect(o.provenance.label).toContain("DEMO DATA");
+
+    // When configured with independent proof evidence
+    const verifiedSvc = createOperatorInspectionService(
+      await createCanonicalDemoInspectionSource({
+        registrationEvidenceByCompany: {
+          "northstar-commerce": createVerifiedRegistrationEvidenceForCompany("northstar-commerce"),
+          "arbor-consulting": createVerifiedRegistrationEvidenceForCompany("arbor-consulting"),
+        },
+      })
+    );
+    const verifiedOverview = await verifiedSvc.getOverview();
+    expect(verifiedOverview.counts.compatiblePackBindings).toBe(6);
+    expect(verifiedOverview.counts.unverifiedPackBindings).toBe(0);
+  });
+
+  it("demo mode visible in projected run metadata", async () => {
+    const run = await (await service()).getRunInspection("run.northstar.cr.001");
+    expect(run.provenance?.mode).toBe("demo");
+    expect(run.provenance?.label).toContain("DEMO DATA");
+  });
+
+  it("inspection operations execute zero models, tools, or workflows", async () => {
+    // Pure projections and reads only; verify that calling inspect methods does not execute side-effects
+    const svc = await service();
+    const overview = await svc.getOverview();
+    const companies = await svc.listCompanies();
+    const runs = await svc.listKnownRuns();
+    const runDetail = await svc.getRunInspection("run.northstar.cr.001");
+    expect(overview.readOnly).toBe(true);
+    expect(companies.length).toBe(2);
+    expect(runs.length).toBe(6);
+    expect(runDetail.summary.status).toBe("COMPLETED");
   });
 
   it("is deterministic across invocations", async () => {

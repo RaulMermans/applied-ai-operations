@@ -51,14 +51,86 @@ describe("control center inspection API", () => {
     expect(ok.headers["access-control-allow-origin"]).toBeUndefined();
   });
 
-  it("renders the UI with explicit states, escaping, and no mutation controls", async () => {
+  it("renders the UI with explicit states, escaping, links, and no mutation controls", async () => {
     const a = await make();
     const html = (await a.inject({ method: "GET", url: "/", headers })).body;
     expect(html).toContain("READ-ONLY SURFACE");
+    expect(html).toContain("DEMO DATA — NOT LIVE OPERATIONS");
     expect(html).toContain("UNKNOWN");
-    expect(html).toContain("COMPATIBLE");
+    expect(html).toContain("NOT_VERIFIED");
+    expect(html).toContain('/control-center/runs/run.northstar.cr.001');
     expect(html).not.toMatch(/<form|<button|<input|method="post"/i);
     expect((await a.inject({ method: "GET", url: "/control-center", headers })).statusCode).toBe(200);
+  });
+
+  it("serves read-only browser run detail with authoritative status and timeline", async () => {
+    const a = await make();
+    const res = await a.inject({
+      method: "GET",
+      url: "/control-center/runs/run.northstar.cr.001",
+      headers,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toContain("text/html");
+    const html = res.body;
+    expect(html).toContain("DEMO DATA — NOT LIVE OPERATIONS");
+    expect(html).toContain("run.northstar.cr.001");
+    expect(html).toContain("COMPLETED");
+    expect(html).toContain("Trace Timeline");
+    expect(html).toContain("/control-center");
+    expect(html).not.toMatch(/<form|<button|<input|method="post"/i);
+  });
+
+  it("browser run detail reports UNKNOWN for incomplete runs", async () => {
+    const a = await make();
+    const res = await a.inject({
+      method: "GET",
+      url: "/control-center/runs/run.arbor.cr.incomplete",
+      headers,
+    });
+    expect(res.statusCode).toBe(200);
+    const html = res.body;
+    expect(html).toContain("UNKNOWN");
+    expect(html).toContain("unavailable");
+  });
+
+  it("browser run detail returns safe 404 with INSPECTION_RUN_NOT_FOUND and no stack trace", async () => {
+    const a = await make();
+    const res = await a.inject({
+      method: "GET",
+      url: "/control-center/runs/run.missing.404",
+      headers,
+    });
+    expect(res.statusCode).toBe(404);
+    const html = res.body;
+    expect(html).toContain("INSPECTION_RUN_NOT_FOUND");
+    expect(html).toContain("was not found in known inspection sources");
+    expect(html).not.toMatch(/\.ts:\d+|\.js:\d+|at\s+async\s+/);
+  });
+
+  it("refuses mutating methods and non-loopback hosts on browser run detail routes", async () => {
+    const a = await make();
+    for (const method of ["POST", "PUT", "PATCH", "DELETE"] as const) {
+      const res = await a.inject({
+        method,
+        url: "/control-center/runs/run.northstar.cr.001",
+        headers,
+      });
+      expect(res.statusCode).toBe(405);
+    }
+    const evilHost = await a.inject({
+      method: "GET",
+      url: "/control-center/runs/run.northstar.cr.001",
+      headers: { host: "evil.example" },
+    });
+    expect(evilHost.statusCode).toBe(403);
+
+    const evilOrigin = await a.inject({
+      method: "GET",
+      url: "/control-center/runs/run.northstar.cr.001",
+      headers: { ...headers, origin: "https://evil.example" },
+    });
+    expect(evilOrigin.statusCode).toBe(403);
   });
 
   it("keeps health endpoints working", async () => {

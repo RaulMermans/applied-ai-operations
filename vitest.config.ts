@@ -44,9 +44,11 @@ export default defineConfig({
       workspaceSourceAlias("@aao/tool-runtime", "./packages/tool-runtime/src/index.ts"),
       workspaceSourceAlias("@aao/substrate-contracts", "./packages/substrate-contracts/src/index.ts"),
       workspaceSourceAlias("@aao/workflow-dsl", "./packages/workflow-dsl/src/index.ts"),
+      workspaceSourceAlias("@aao/operator-inspection", "./packages/operator-inspection/src/index.ts"),
     ],
   },
   test: {
     include: ["packages/**/test/**/*.test.ts", "apps/**/test/**/*.test.ts", "examples/**/test/**/*.test.ts"],
+    testTimeout: 15_000,
   },
 });
