@@ -6,7 +6,11 @@ import {
   type OperatorInspectionService,
   type OperatorInspectionSource,
 } from "@aao/operator-inspection";
-import { renderControlCenterHtml } from "./ui.js";
+import {
+  renderControlCenterHtml,
+  renderNotFoundHtml,
+  renderRunDetailHtml,
+} from "./ui.js";
 
 /** A small, deterministic health payload. No decorative timestamps. */
 function healthPayload(): { service: string; status: "ok" } {
@@ -70,7 +74,10 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   // Read-only guard: loopback Host/Origin only, GET only, no CORS headers ever emitted.
   app.addHook("onRequest", async (request, reply) => {
     const path = request.url.split("?")[0] ?? "";
-    const inspected = path.startsWith("/api/v1/inspection") || path === "/" || path === "/control-center";
+    const inspected =
+      path.startsWith("/api/v1/inspection") ||
+      path === "/" ||
+      path.startsWith("/control-center");
     if (!inspected) return;
     if (!isLoopbackRequest(request)) {
       return reply.code(403).send({ error: { code: "INSPECTION_INVALID_REQUEST", message: "Control Center accepts loopback requests only." } });
@@ -121,6 +128,36 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   };
   app.get("/", page);
   app.get("/control-center", page);
+
+  app.get("/control-center/runs/:runId", async (request: FastifyRequest, reply: FastifyReply) => {
+    const { runId } = request.params as { runId: string };
+    try {
+      const runInspection = await service.getRunInspection(runId);
+      const provenance = await service.getProvenance();
+      return reply
+        .header("content-type", "text/html; charset=utf-8")
+        .header("content-security-policy", "default-src 'none'; style-src 'unsafe-inline'")
+        .header("x-content-type-options", "nosniff")
+        .send(renderRunDetailHtml(runInspection, provenance));
+    } catch (err) {
+      const normalized = normalizeInspectionError(err);
+      if (normalized.code === "INSPECTION_NOT_FOUND" || normalized.code === "INSPECTION_INVALID_REQUEST") {
+        const provenance = await service.getProvenance();
+        return reply
+          .code(normalized.code === "INSPECTION_NOT_FOUND" ? 404 : 400)
+          .header("content-type", "text/html; charset=utf-8")
+          .header("content-security-policy", "default-src 'none'; style-src 'unsafe-inline'")
+          .header("x-content-type-options", "nosniff")
+          .send(
+            renderNotFoundHtml(
+              `INSPECTION_RUN_NOT_FOUND: Run '${runId}' was not found in known inspection sources.`,
+              provenance
+            )
+          );
+      }
+      return sendError(reply, err);
+    }
+  });
 
   return app;
 }

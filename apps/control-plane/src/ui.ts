@@ -1,4 +1,5 @@
 import type {
+  OperatorSourceProvenance,
   OverviewInspection,
   RunInspection,
 } from "@aao/operator-inspection";
@@ -110,7 +111,7 @@ export function renderControlCenterHtml(
           .map(
             (r) =>
               `<tr data-run-id="${escapeHtml(r.runId)}">
-                <td><code>${escapeHtml(r.runId)}</code></td>
+                <td><a href="/control-center/runs/${encodeURIComponent(r.runId)}"><code>${escapeHtml(r.runId)}</code></a></td>
                 <td><span class="badge run-${escapeHtml(r.status.toLowerCase())}">${escapeHtml(r.status)}</span>${r.statusReason ? `<br/><small><code>${escapeHtml(r.statusReason)}</code></small>` : ""}</td>
                 <td><code>${escapeHtml(r.statusSource)}</code></td>
                 <td><code>${escapeHtml(r.companyId ?? "—")}</code></td>
@@ -218,6 +219,22 @@ export function renderControlCenterHtml(
       border-bottom: 2px solid #e2e8f0;
       padding-bottom: 16px;
       margin-bottom: 24px;
+    }
+    .header-badges {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      align-items: flex-end;
+    }
+    .demo-banner {
+      background: #fef3c7;
+      color: #92400e;
+      border: 1px solid #fde68a;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 0.85rem;
+      letter-spacing: 0.02em;
     }
     .readonly-banner {
       background: #e0f2fe;
@@ -334,8 +351,11 @@ export function renderControlCenterHtml(
       <h1>AAO Control Center</h1>
       <p>Operator Inspection Surface &amp; Control Center Foundation (Sprint 27)</p>
     </div>
-    <div class="readonly-banner" data-readonly-indicator="true">
-      READ-ONLY SURFACE • ZERO EXECUTION OR APPROVAL MUTATION AUTHORITY
+    <div class="header-badges">
+      ${overview.provenance?.mode !== "live" ? `<div class="demo-banner" data-demo-indicator="true">DEMO DATA — NOT LIVE OPERATIONS</div>` : ""}
+      <div class="readonly-banner" data-readonly-indicator="true">
+        READ-ONLY SURFACE • ZERO EXECUTION OR APPROVAL MUTATION AUTHORITY
+      </div>
     </div>
   </header>
 
@@ -525,6 +545,484 @@ export function renderControlCenterHtml(
     </table>
 
     ${runDetailSection}
+  </section>
+</body>
+</html>`;
+}
+
+export function renderRunDetailHtml(
+  runInspection: RunInspection,
+  provenance?: OperatorSourceProvenance
+): string {
+  const s = runInspection.summary;
+  const t = runInspection.trace;
+  const isDemo = (provenance ?? runInspection.provenance)?.mode !== "live";
+
+  const diagnosticsBox =
+    runInspection.diagnostics.length > 0
+      ? `<div class="diagnostics-box" data-diagnostics="true">
+          <strong>Diagnostics:</strong>
+          <ul>
+            ${runInspection.diagnostics.map((d) => `<li>${escapeHtml(d)}</li>`).join("")}
+          </ul>
+        </div>`
+      : "";
+
+  const traceDiagnosticsBox =
+    t.diagnostics.length > 0
+      ? `<div class="diagnostics-box" data-trace-diagnostics="true">
+          <strong>Trace Integrity Diagnostics:</strong>
+          <ul>
+            ${t.diagnostics.map((d) => `<li><code>${escapeHtml(d.code)}</code>: ${escapeHtml(d.message)}</li>`).join("")}
+          </ul>
+        </div>`
+      : "";
+
+  const timelineRows =
+    t.events.length === 0
+      ? `<tr><td colspan="6" class="empty-state">${t.health === "corrupt" ? "Trace events are withheld due to corrupt trace integrity." : "No trace events available for this run."}</td></tr>`
+      : t.events
+          .map(
+            (ev) =>
+              `<tr data-event-seq="${ev.sequence}">
+                <td>${ev.sequence}</td>
+                <td><code>${escapeHtml(ev.occurredAt)}</code></td>
+                <td><code>${escapeHtml(ev.type)}</code></td>
+                <td><code>${escapeHtml(ev.nodeId ?? "—")}</code></td>
+                <td><code>${escapeHtml(ev.status ?? "—")}</code></td>
+                <td><code>${escapeHtml(ev.reasonCode ?? ev.toolRef ?? ev.modelPolicyRef ?? ev.approvalId ?? "—")}</code></td>
+              </tr>`
+          )
+          .join("\n");
+
+  const approvalRows =
+    runInspection.approvals.length === 0
+      ? `<tr><td colspan="6" class="empty-state">No known approval records for this run.</td></tr>`
+      : runInspection.approvals
+          .map(
+            (a) =>
+              `<tr data-approval-id="${escapeHtml(a.approvalId)}">
+                <td><code>${escapeHtml(a.approvalId)}</code></td>
+                <td><span class="badge approval-${escapeHtml(a.status)}">${escapeHtml(a.status.toUpperCase())}</span></td>
+                <td><code>${escapeHtml(a.nodeId)}</code></td>
+                <td><code>${escapeHtml(a.requestedBy.id)}</code> (${escapeHtml(a.requestedAt)})</td>
+                <td><code>${escapeHtml(a.requiredApproverRoleIds.join(", "))}</code></td>
+                <td>${a.resolvedBy ? `<code>${escapeHtml(a.resolvedBy.id)}</code> (${escapeHtml(a.resolvedAt ?? "")})` : "Pending human decision"}</td>
+              </tr>`
+          )
+          .join("\n");
+
+  const evaluationRows =
+    runInspection.evaluations.length === 0
+      ? `<tr><td colspan="5" class="empty-state">No evaluation records for this run.</td></tr>`
+      : runInspection.evaluations
+          .map(
+            (e) =>
+              `<tr data-eval-profile="${escapeHtml(e.evalProfileRef)}">
+                <td><code>${escapeHtml(e.evalProfileRef)}</code></td>
+                <td><span class="badge eval-${escapeHtml(e.status.toLowerCase())}">${escapeHtml(e.status)}</span></td>
+                <td>${e.executed ? "Executed Report" : "Registered Profile Only (Not Run)"}</td>
+                <td>${e.executed && e.totalCases !== undefined ? `${e.passedCases}/${e.totalCases} (${((e.passRate ?? 0) * 100).toFixed(0)}%)` : "—"}</td>
+                <td>${e.baselineComparisonStatus ? `<code>${escapeHtml(e.baselineComparisonStatus)}</code>` : "—"}</td>
+              </tr>`
+          )
+          .join("\n");
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AAO Control Center — Run Detail: ${escapeHtml(s.runId)}</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    body {
+      margin: 0;
+      padding: 24px;
+      background: #f8fafc;
+      color: #0f172a;
+      line-height: 1.45;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #e2e8f0;
+      padding-bottom: 16px;
+      margin-bottom: 24px;
+    }
+    .header-badges {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      align-items: flex-end;
+    }
+    .demo-banner {
+      background: #fef3c7;
+      color: #92400e;
+      border: 1px solid #fde68a;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 0.85rem;
+      letter-spacing: 0.02em;
+    }
+    .readonly-banner {
+      background: #e0f2fe;
+      color: #0369a1;
+      border: 1px solid #bae6fd;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.85rem;
+    }
+    nav {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    nav a {
+      text-decoration: none;
+      color: #1e293b;
+      background: #e2e8f0;
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+    section {
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 24px;
+    }
+    h1, h2, h3 {
+      margin-top: 0;
+    }
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .metric-card {
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      padding: 12px;
+    }
+    .metric-card .label {
+      font-size: 0.8rem;
+      color: #475569;
+      text-transform: uppercase;
+    }
+    .metric-card .value {
+      font-size: 1.4rem;
+      font-weight: 700;
+      margin-top: 4px;
+    }
+    .metric-card .value-id {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-top: 4px;
+      word-break: break-all;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 16px;
+      font-size: 0.9rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 8px 10px;
+      border-bottom: 1px solid #e2e8f0;
+      vertical-align: top;
+    }
+    th {
+      background: #f8fafc;
+      font-weight: 600;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      background: #e2e8f0;
+    }
+    .compat-compatible, .run-completed, .eval-passed, .status-available, .approval-approved {
+      background: #dcfce7;
+      color: #166534;
+    }
+    .compat-not_verified, .run-waiting, .eval-registered, .eval-not_run, .status-degraded, .approval-pending {
+      background: #fef9c3;
+      color: #854d0e;
+    }
+    .compat-incompatible, .run-failed, .eval-failed, .status-invalid, .trace-corrupt, .approval-rejected {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+    .run-unknown, .compat-unavailable, .status-unavailable, .trace-unavailable {
+      background: #f1f5f9;
+      color: #475569;
+    }
+    .empty-state {
+      color: #64748b;
+      font-style: italic;
+      padding: 12px;
+    }
+    .diagnostics-box {
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      padding: 10px 14px;
+      border-radius: 6px;
+      margin-bottom: 12px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>AAO Control Center</h1>
+      <p>Run Detail Inspection: <code>${escapeHtml(s.runId)}</code></p>
+    </div>
+    <div class="header-badges">
+      ${isDemo ? `<div class="demo-banner" data-demo-indicator="true">DEMO DATA — NOT LIVE OPERATIONS</div>` : ""}
+      <div class="readonly-banner" data-readonly-indicator="true">
+        READ-ONLY SURFACE • ZERO EXECUTION OR APPROVAL MUTATION AUTHORITY
+      </div>
+    </div>
+  </header>
+
+  <nav aria-label="Control Center Navigation">
+    <a href="/control-center">&larr; Back to Control Center Overview</a>
+    <a href="#section-identity">Run Identity</a>
+    <a href="#section-timeline">Trace Timeline</a>
+    <a href="#section-approvals">Approvals</a>
+    <a href="#section-evaluations">Evaluations</a>
+  </nav>
+
+  <section id="section-identity" data-section="run-identity">
+    <h2>Run Identity &amp; Execution Summary</h2>
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="label">Run ID</div>
+        <div class="value-id"><code>${escapeHtml(s.runId)}</code></div>
+      </div>
+      <div class="metric-card">
+        <div class="label">Authoritative Status</div>
+        <div class="value"><span class="badge run-${escapeHtml(s.status.toLowerCase())}">${escapeHtml(s.status)}</span></div>
+        <small>Source: <code>${escapeHtml(s.statusSource)}</code></small>
+      </div>
+      <div class="metric-card">
+        <div class="label">Trace Health</div>
+        <div class="value"><span class="badge trace-${escapeHtml(s.traceHealth)}}">${escapeHtml(s.traceHealth)}</span></div>
+        <small>${t.returnedEventCount}/${t.eventCount} events ${t.truncated ? "(truncated)" : ""}</small>
+      </div>
+      <div class="metric-card">
+        <div class="label">Workflow</div>
+        <div class="value-id"><code>${escapeHtml(s.workflowId)}@${escapeHtml(s.workflowVersion)}</code></div>
+      </div>
+      <div class="metric-card">
+        <div class="label">Company</div>
+        <div class="value-id"><code>${escapeHtml(s.companyId ?? "—")}</code></div>
+      </div>
+      <div class="metric-card">
+        <div class="label">Capability Pack</div>
+        <div class="value-id"><code>${escapeHtml(s.packIdentity ?? "—")}</code></div>
+      </div>
+    </div>
+
+    ${diagnosticsBox}
+    ${traceDiagnosticsBox}
+
+    <table>
+      <thead>
+        <tr><th>Property</th><th>Observed Evidence</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>Run ID</strong></td><td><code>${escapeHtml(s.runId)}</code></td></tr>
+        <tr><td><strong>Company ID</strong></td><td><code>${escapeHtml(s.companyId ?? "—")}</code></td></tr>
+        <tr><td><strong>Workflow Reference</strong></td><td><code>${escapeHtml(s.workflowId)}@${escapeHtml(s.workflowVersion)}</code></td></tr>
+        <tr><td><strong>Canonical Run Status</strong></td><td><span class="badge run-${escapeHtml(s.status.toLowerCase())}">${escapeHtml(s.status)}</span> ${s.statusReason ? `(<code>${escapeHtml(s.statusReason)}</code>)` : ""}</td></tr>
+        <tr><td><strong>Status Source</strong></td><td><code>${escapeHtml(s.statusSource)}</code></td></tr>
+        <tr><td><strong>Trace Health</strong></td><td><span class="badge trace-${escapeHtml(s.traceHealth)}">${escapeHtml(s.traceHealth)}</span></td></tr>
+        <tr><td><strong>Event Counts</strong></td><td>${t.returnedEventCount} returned / ${t.eventCount} total (${t.truncated ? "bounded/truncated" : "complete"})</td></tr>
+        <tr><td><strong>Current / Terminal Node</strong></td><td><code>${escapeHtml(s.currentNodeId ?? "—")}</code></td></tr>
+        <tr><td><strong>Started At</strong></td><td><code>${escapeHtml(s.startedAt ?? t.startedAt ?? "—")}</code></td></tr>
+        <tr><td><strong>Finished At</strong></td><td><code>${escapeHtml(s.finishedAt ?? t.finishedAt ?? "—")}</code></td></tr>
+        <tr><td><strong>Evidence Availability</strong></td><td>Trace available: <strong>${s.traceAvailable ? "yes" : "no"}</strong> | Authoritative Runtime state: <strong>${s.statusSource === "authoritative_runtime" ? "yes" : "no"}</strong></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="section-timeline" data-section="trace-timeline">
+    <h2>Trace Timeline (Bounded Chronological Projections)</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Seq</th>
+          <th>Timestamp</th>
+          <th>Event</th>
+          <th>Node</th>
+          <th>Outcome</th>
+          <th>Diagnostic</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${timelineRows}
+      </tbody>
+    </table>
+  </section>
+
+  <section id="section-approvals" data-section="run-approvals">
+    <h2>Authoritative Approval Records</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Approval ID</th>
+          <th>Status</th>
+          <th>Node</th>
+          <th>Requested By</th>
+          <th>Required Roles</th>
+          <th>Resolution</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${approvalRows}
+      </tbody>
+    </table>
+  </section>
+
+  <section id="section-evaluations" data-section="run-evaluations">
+    <h2>Evaluation Results &amp; Profiles</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Eval Profile Ref</th>
+          <th>Status</th>
+          <th>Execution State</th>
+          <th>Case Summary</th>
+          <th>Baseline</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${evaluationRows}
+      </tbody>
+    </table>
+  </section>
+</body>
+</html>`;
+}
+
+export function renderNotFoundHtml(
+  message: string,
+  provenance?: OperatorSourceProvenance
+): string {
+  const isDemo = provenance?.mode !== "live";
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AAO Control Center — Not Found</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    body {
+      margin: 0;
+      padding: 24px;
+      background: #f8fafc;
+      color: #0f172a;
+      line-height: 1.45;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #e2e8f0;
+      padding-bottom: 16px;
+      margin-bottom: 24px;
+    }
+    .header-badges {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      align-items: flex-end;
+    }
+    .demo-banner {
+      background: #fef3c7;
+      color: #92400e;
+      border: 1px solid #fde68a;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 0.85rem;
+      letter-spacing: 0.02em;
+    }
+    .readonly-banner {
+      background: #e0f2fe;
+      color: #0369a1;
+      border: 1px solid #bae6fd;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.85rem;
+    }
+    nav {
+      margin-bottom: 20px;
+    }
+    nav a {
+      text-decoration: none;
+      color: #1e293b;
+      background: #e2e8f0;
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+    section {
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 24px;
+    }
+    .error-code {
+      color: #991b1b;
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>AAO Control Center</h1>
+      <p>Operator Inspection Surface</p>
+    </div>
+    <div class="header-badges">
+      ${isDemo ? `<div class="demo-banner" data-demo-indicator="true">DEMO DATA — NOT LIVE OPERATIONS</div>` : ""}
+      <div class="readonly-banner" data-readonly-indicator="true">
+        READ-ONLY SURFACE • ZERO EXECUTION OR APPROVAL MUTATION AUTHORITY
+      </div>
+    </div>
+  </header>
+
+  <nav>
+    <a href="/control-center">&larr; Back to Control Center Overview</a>
+  </nav>
+
+  <section>
+    <div class="error-code">INSPECTION_RUN_NOT_FOUND</div>
+    <p>${escapeHtml(message)}</p>
   </section>
 </body>
 </html>`;
