@@ -8,6 +8,8 @@ import type {
   RunInspection,
   RunSummary,
   WorkflowSummary,
+  IntegrationDiagnosticReport,
+  AdvancedRunInspection,
 } from "./contracts.js";
 
 export function formatCompaniesText(companies: readonly CompanySummary[]): string {
@@ -200,5 +202,109 @@ export function formatOverviewText(overview: OverviewInspection): string {
       `    - ${src.sourceId}: ${src.status}${src.reasonCode ? ` (${src.reasonCode})` : ""}`
     );
   }
+  return `${lines.join("\n")}\n`;
+}
+
+export function formatIntegrationDiagnosticsText(report: IntegrationDiagnosticReport): string {
+  const lines: string[] = [
+    `Integration Diagnostics: ${report.companyDisplayName ?? report.companyId} x ${report.packIdentity}`,
+    `  Workflow: ${report.workflowId}@${report.workflowVersion} (plan: ${report.planFingerprint.slice(0, 16)}...)`,
+    `  Overall Readiness: ${report.status}${report.reasonCode ? ` [${report.reasonCode}]` : ""}`,
+    "",
+    `  Requirements Checklist (${report.requirements.length}):`,
+  ];
+
+  for (const req of report.requirements) {
+    const diagPart = req.diagnostic ? ` — ${req.diagnostic}` : "";
+    lines.push(`    [${req.status}] ${req.category}: ${req.name}${diagPart}`);
+  }
+
+  if (report.diagnostics.length > 0) {
+    lines.push("");
+    lines.push(`  Diagnostics (${report.diagnostics.length}):`);
+    for (const d of report.diagnostics) {
+      lines.push(`    ! [${d.code}] ${d.message}`);
+    }
+  }
+
+  if (report.nextSteps.length > 0) {
+    lines.push("");
+    lines.push("  Next Steps:");
+    for (const step of report.nextSteps) {
+      lines.push(`    - ${step}`);
+    }
+  }
+
+  return `${lines.join("\n")}\n`;
+}
+
+export function formatAdvancedRunInspectionNodesText(inspection: AdvancedRunInspection): string {
+  const tokenStr = inspection.tokenUsage?.recorded
+    ? `input=${inspection.tokenUsage.inputTokens ?? 0}, output=${inspection.tokenUsage.outputTokens ?? 0}, total=${inspection.tokenUsage.totalTokens ?? 0}`
+    : "NOT RECORDED";
+
+  const lines: string[] = [
+    `Run Node Execution: ${inspection.runId}`,
+    `  Workflow: ${inspection.workflowId}@${inspection.workflowVersion} | Status: ${inspection.authoritativeStatus} [${inspection.statusSource}]`,
+    `  Trace Health: ${inspection.evidenceHealth} (events=${inspection.eventCount}) | Token Usage: ${tokenStr}`,
+    "",
+    `  Nodes (${inspection.nodes.length}):`,
+  ];
+
+  for (const n of inspection.nodes) {
+    const detailParts: string[] = [`kind=${n.nodeKind}`];
+    if (n.totalAttempts > 0) detailParts.push(`attempts=${n.totalAttempts}`);
+    if (n.toolRef) detailParts.push(`tool=${n.toolRef}`);
+    if (n.modelPolicyRef) detailParts.push(`policy=${n.modelPolicyRef}`);
+    if (n.approvalId) detailParts.push(`approval=${n.approvalId}${n.approvalStatus ? ` (${n.approvalStatus})` : ""}`);
+    if (n.tokenUsage?.recorded) detailParts.push(`tokens=${n.tokenUsage.totalTokens ?? 0}`);
+    lines.push(`    - [${n.status}] ${n.nodeId} (${detailParts.join(", ")})`);
+  }
+
+  if (inspection.diagnostics.length > 0) {
+    lines.push("");
+    lines.push(`  Diagnostics (${inspection.diagnostics.length}):`);
+    for (const d of inspection.diagnostics) {
+      lines.push(`    ! [${d.code}] ${d.observed}`);
+      lines.push(`      Explanation: ${d.explanation}`);
+      lines.push(`      Suggested check: ${d.suggestedCheck}`);
+    }
+  }
+
+  return `${lines.join("\n")}\n`;
+}
+
+export function formatAdvancedRunInspectionTimelineText(inspection: AdvancedRunInspection): string {
+  const tokenStr = inspection.tokenUsage?.recorded
+    ? `input=${inspection.tokenUsage.inputTokens ?? 0}, output=${inspection.tokenUsage.outputTokens ?? 0}, total=${inspection.tokenUsage.totalTokens ?? 0}`
+    : "NOT RECORDED";
+
+  const lines: string[] = [
+    `Run Execution Timeline: ${inspection.runId}`,
+    `  Workflow: ${inspection.workflowId}@${inspection.workflowVersion} | Status: ${inspection.authoritativeStatus}`,
+    `  Trace Health: ${inspection.evidenceHealth} (events=${inspection.eventCount}) | Token Usage: ${tokenStr}`,
+    "",
+    `  Execution Attempts (${inspection.attempts.length}):`,
+  ];
+
+  for (const a of inspection.attempts) {
+    const nodePart = a.nodeId ? ` [node=${a.nodeId}]` : "";
+    const attPart = ` (attempt=${a.attempt})`;
+    const codePart = a.reasonCode ? ` code=${a.reasonCode}` : "";
+    const replayPart = a.recoveryReplay ? " (recovery/replay)" : "";
+    lines.push(
+      `    [seq=${a.sequence}]${nodePart} ${a.kind}: ${a.status}${attPart}${codePart}${replayPart} (${a.occurredAt})`
+    );
+  }
+
+  if (inspection.diagnostics.length > 0) {
+    lines.push("");
+    lines.push(`  Diagnostics (${inspection.diagnostics.length}):`);
+    for (const d of inspection.diagnostics) {
+      lines.push(`    ! [${d.code}] ${d.observed}`);
+      lines.push(`      Suggested check: ${d.suggestedCheck}`);
+    }
+  }
+
   return `${lines.join("\n")}\n`;
 }

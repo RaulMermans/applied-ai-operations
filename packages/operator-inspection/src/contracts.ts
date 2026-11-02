@@ -559,3 +559,188 @@ export function findForbiddenInspectionKeys(
   }
   return found;
 }
+
+// --- 11. Guided Integration Diagnostics ---
+
+export const IntegrationDiagnosticStatusSchema = z.enum([
+  "READY",
+  "BLOCKED",
+  "NOT_VERIFIED",
+  "UNAVAILABLE",
+]);
+export type IntegrationDiagnosticStatus = z.infer<typeof IntegrationDiagnosticStatusSchema>;
+
+export const IntegrationRequirementCategorySchema = z.enum([
+  "workflow",
+  "tool",
+  "model_policy",
+  "model_capability",
+  "integration",
+  "governance",
+  "approval",
+  "evaluation",
+]);
+export type IntegrationRequirementCategory = z.infer<typeof IntegrationRequirementCategorySchema>;
+
+export const IntegrationRequirementStatusSchema = z.enum([
+  "SATISFIED",
+  "MISSING",
+  "INCOMPATIBLE",
+  "NOT_VERIFIED",
+  "UNAVAILABLE",
+]);
+export type IntegrationRequirementStatus = z.infer<typeof IntegrationRequirementStatusSchema>;
+
+export const IntegrationRequirementDiagnosticSchema = z
+  .object({
+    category: IntegrationRequirementCategorySchema,
+    name: z.string().min(1).max(INSPECTION_LIMITS.MAX_STRING_LENGTH),
+    requiredRef: z.string().min(1).max(INSPECTION_LIMITS.MAX_STRING_LENGTH),
+    status: IntegrationRequirementStatusSchema,
+    reasonCode: z.string().max(128).optional(),
+    diagnostic: boundedTextSchema.optional(),
+    remediation: boundedTextSchema.optional(),
+  })
+  .strict();
+export type IntegrationRequirementDiagnostic = z.infer<typeof IntegrationRequirementDiagnosticSchema>;
+
+export const IntegrationDiagnosticSchema = z
+  .object({
+    code: z.string().min(1).max(128),
+    category: z.string().min(1).max(64),
+    message: boundedTextSchema,
+    remediation: boundedTextSchema.optional(),
+  })
+  .strict();
+export type IntegrationDiagnostic = z.infer<typeof IntegrationDiagnosticSchema>;
+
+export const IntegrationDiagnosticReportSchema = z
+  .object({
+    companyId: identifierSchema,
+    companyDisplayName: z.string().min(1).max(120).optional(),
+    packIdentity: z.string().min(3).max(200),
+    packName: z.string().min(1).max(128).optional(),
+    workflowId: WorkflowIdSchema,
+    workflowVersion: entityVersionSchema,
+    planFingerprint: hex64Schema,
+    status: IntegrationDiagnosticStatusSchema,
+    reasonCode: z.string().max(128).optional(),
+    requirements: z.array(IntegrationRequirementDiagnosticSchema),
+    diagnostics: z.array(IntegrationDiagnosticSchema),
+    nextSteps: z.array(boundedTextSchema),
+    sourceProvenance: OperatorSourceProvenanceSchema,
+  })
+  .strict();
+export type IntegrationDiagnosticReport = z.infer<typeof IntegrationDiagnosticReportSchema>;
+
+// --- 12. Advanced Run Inspection ---
+
+export const NodeExecutionStatusSchema = z.enum([
+  "OBSERVED_COMPLETED",
+  "OBSERVED_FAILED",
+  "OBSERVED_STARTED",
+  "NOT_OBSERVED",
+  "EVIDENCE_INCOMPLETE",
+]);
+export type NodeExecutionStatus = z.infer<typeof NodeExecutionStatusSchema>;
+
+export const TokenUsageSummarySchema = z
+  .object({
+    inputTokens: z.number().int().nonnegative().optional(),
+    outputTokens: z.number().int().nonnegative().optional(),
+    totalTokens: z.number().int().nonnegative().optional(),
+    recorded: z.boolean(),
+  })
+  .strict();
+export type TokenUsageSummary = z.infer<typeof TokenUsageSummarySchema>;
+
+export const NodeAttemptInspectionSchema = z
+  .object({
+    attempt: z.number().int().min(1),
+    kind: z.enum(["tool", "model", "approval", "node", "unknown"]),
+    status: z.enum(["completed", "failed", "started", "waiting"]),
+    startedAt: isoTimestampSchema.optional(),
+    finishedAt: isoTimestampSchema.optional(),
+    durationMs: z.number().int().nonnegative().optional(),
+    toolRef: z.string().max(200).optional(),
+    modelPolicyRef: ModelPolicyIdSchema.optional(),
+    modelBindingId: identifierSchema.optional(),
+    approvalId: ApprovalIdSchema.optional(),
+    reasonCode: z.string().max(128).optional(),
+    recoveryReplay: z.boolean().optional(),
+    tokenUsage: TokenUsageSummarySchema.optional(),
+  })
+  .strict();
+export type NodeAttemptInspection = z.infer<typeof NodeAttemptInspectionSchema>;
+
+export const NodeExecutionInspectionSchema = z
+  .object({
+    nodeId: NodeIdSchema,
+    nodeKind: NodeKindSchema.or(z.literal("unknown")),
+    name: z.string().min(1).max(200).optional(),
+    status: NodeExecutionStatusSchema,
+    planned: z.boolean(),
+    executed: z.boolean(),
+    attempts: z.array(NodeAttemptInspectionSchema),
+    totalAttempts: z.number().int().nonnegative(),
+    toolRef: z.string().max(200).optional(),
+    modelPolicyRef: ModelPolicyIdSchema.optional(),
+    modelBindingId: identifierSchema.optional(),
+    approvalId: ApprovalIdSchema.optional(),
+    approvalStatus: ApprovalStatusSchema.optional(),
+    startedAt: isoTimestampSchema.optional(),
+    finishedAt: isoTimestampSchema.optional(),
+    durationMs: z.number().int().nonnegative().optional(),
+    tokenUsage: TokenUsageSummarySchema.optional(),
+    diagnostics: z.array(boundedTextSchema),
+  })
+  .strict();
+export type NodeExecutionInspection = z.infer<typeof NodeExecutionInspectionSchema>;
+
+export const ExecutionAttemptSummarySchema = z
+  .object({
+    sequence: z.number().int().nonnegative(),
+    nodeId: NodeIdSchema.optional(),
+    kind: z.string().min(1).max(64),
+    attempt: z.number().int().min(1),
+    status: z.string().min(1).max(64),
+    reasonCode: z.string().max(128).optional(),
+    recoveryReplay: z.boolean().optional(),
+    occurredAt: isoTimestampSchema,
+  })
+  .strict();
+export type ExecutionAttemptSummary = z.infer<typeof ExecutionAttemptSummarySchema>;
+
+export const RunDiagnosticSchema = z
+  .object({
+    code: z.string().min(1).max(128),
+    severity: z.enum(["info", "warning", "error"]),
+    observed: boundedTextSchema,
+    explanation: boundedTextSchema,
+    suggestedCheck: boundedTextSchema,
+  })
+  .strict();
+export type RunDiagnostic = z.infer<typeof RunDiagnosticSchema>;
+
+export const AdvancedRunInspectionSchema = z
+  .object({
+    runId: RunIdSchema,
+    workflowId: WorkflowIdSchema,
+    workflowVersion: entityVersionSchema,
+    companyId: identifierSchema.optional(),
+    packIdentity: z.string().min(3).max(200).optional(),
+    authoritativeStatus: OperatorRunStatusSchema,
+    statusSource: z.enum(["authoritative_runtime", "unavailable"]),
+    statusReason: z.string().max(256).optional(),
+    evidenceHealth: TraceHealthStatusSchema,
+    eventCount: z.number().int().nonnegative(),
+    nodes: z.array(NodeExecutionInspectionSchema),
+    attempts: z.array(ExecutionAttemptSummarySchema),
+    approvals: z.array(ApprovalSummarySchema),
+    evaluations: z.array(EvaluationSummarySchema),
+    tokenUsage: TokenUsageSummarySchema.optional(),
+    diagnostics: z.array(RunDiagnosticSchema),
+    provenance: OperatorSourceProvenanceSchema,
+  })
+  .strict();
+export type AdvancedRunInspection = z.infer<typeof AdvancedRunInspectionSchema>;

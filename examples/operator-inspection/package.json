@@ -11,7 +11,8 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "proof": "node dist/demo/run.js",
-    "smoke:sprint27": "node smoke/sprint27.mjs"
+    "smoke:sprint27": "node smoke/sprint27.mjs",
+    "smoke:sprint28": "node smoke/sprint28.mjs"
   },
   "dependencies": {
     "@aao/operator-inspection": "workspace:*"

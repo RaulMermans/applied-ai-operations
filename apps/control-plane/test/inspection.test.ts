@@ -137,4 +137,73 @@ describe("control center inspection API", () => {
     const a = await make();
     expect((await a.inject({ method: "GET", url: "/health/live" })).statusCode).toBe(200);
   });
+
+  it("serves integration diagnostics API and browser routes", async () => {
+    const a = await make();
+    // JSON API
+    const apiRes = await a.inject({
+      method: "GET",
+      url: "/api/v1/inspection/companies/northstar-commerce/packs/aao.company-research@1.0.0/diagnostics",
+      headers,
+    });
+    expect(apiRes.statusCode).toBe(200);
+    const json = apiRes.json();
+    expect(json.status).toBe("NOT_VERIFIED");
+    expect(json.requirements.length).toBeGreaterThan(0);
+    expect(json.sourceProvenance.mode).toBe("demo");
+
+    // Browser UI
+    const uiRes = await a.inject({
+      method: "GET",
+      url: "/control-center/companies/northstar-commerce/packs/aao.company-research@1.0.0",
+      headers,
+    });
+    expect(uiRes.statusCode).toBe(200);
+    expect(uiRes.headers["content-type"]).toContain("text/html");
+    const html = uiRes.body;
+    expect(html).toContain("Integration Readiness Overview");
+    expect(html).toContain("Requirements Checklist");
+    expect(html).toContain("Actionable Next Steps");
+    expect(html).toContain("READ-ONLY SURFACE");
+    expect(html).not.toMatch(/<form|<button|<input|method="post"/i);
+
+    // 404 for unknown pack
+    const notFoundRes = await a.inject({
+      method: "GET",
+      url: "/control-center/companies/northstar-commerce/packs/pack.unknown@1.0.0",
+      headers,
+    });
+    expect(notFoundRes.statusCode).toBe(404);
+  });
+
+  it("serves advanced run analysis API and enhanced browser run detail with node selection", async () => {
+    const a = await make();
+    // JSON API
+    const analysisRes = await a.inject({
+      method: "GET",
+      url: "/api/v1/inspection/runs/run.northstar.cr.001/analysis",
+      headers,
+    });
+    expect(analysisRes.statusCode).toBe(200);
+    const json = analysisRes.json();
+    expect(json.runId).toBe("run.northstar.cr.001");
+    expect(json.authoritativeStatus).toBe("COMPLETED");
+    expect(json.nodes.length).toBeGreaterThan(0);
+    expect(json.attempts.length).toBeGreaterThan(0);
+
+    // Enhanced browser run detail with node selection
+    const uiRes = await a.inject({
+      method: "GET",
+      url: "/control-center/runs/run.northstar.cr.001?nodeId=plan",
+      headers,
+    });
+    expect(uiRes.statusCode).toBe(200);
+    const html = uiRes.body;
+    expect(html).toContain("Execution Summary (Correlated Runtime &amp; Trace Evidence)");
+    expect(html).toContain("Workflow Node Execution Map");
+    expect(html).toContain("Selected Node Detail");
+    expect(html).toContain("plan");
+    expect(html).toContain("Chronological Execution Attempts");
+    expect(html).not.toMatch(/<form|<button|<input|method="post"/i);
+  });
 });

@@ -4,6 +4,7 @@ import {
   RunIdSchema,
   identifierSchema,
   type ApprovalRecord,
+  type RunStatus,
   type TraceEvent,
   type Workflow,
 } from "@aao/contracts";
@@ -29,6 +30,8 @@ import {
   SourceStatusSummarySchema,
   TraceInspectionSchema,
   WorkflowSummarySchema,
+  IntegrationDiagnosticReportSchema,
+  AdvancedRunInspectionSchema,
   type ApprovalSummary,
   type CapabilityPackSummary,
   type CompanySummary,
@@ -41,6 +44,8 @@ import {
   type SourceStatusSummary,
   type TraceInspection,
   type WorkflowSummary,
+  type IntegrationDiagnosticReport,
+  type AdvancedRunInspection,
 } from "./contracts.js";
 import { OperatorInspectionError, normalizeInspectionError } from "./errors.js";
 import {
@@ -54,6 +59,8 @@ import {
   projectRunSummary,
   projectTraceInspection,
   projectWorkflowSummary,
+  projectIntegrationDiagnostics,
+  projectAdvancedRunInspection,
   type KnownRunEvidence,
   type RawEvaluationEvidence,
   type TrustedProofRegistrationEvidence,
@@ -77,6 +84,13 @@ export interface OperatorInspectionSource {
   listKnownApprovals?(): Promise<readonly ApprovalSummary[]>;
   getApprovalSummary?(approvalId: string): Promise<ApprovalSummary | undefined>;
   listKnownEvaluationResults?(): Promise<readonly EvaluationSummary[]>;
+  getIntegrationDiagnostics?(
+    companyId: string,
+    packRef: string
+  ): Promise<IntegrationDiagnosticReport | undefined>;
+  getAdvancedRunInspection?(
+    runId: string
+  ): Promise<AdvancedRunInspection | undefined>;
 }
 
 export const ListPacksQuerySchema = z
@@ -150,6 +164,11 @@ export interface OperatorInspectionService {
   listKnownApprovals(): Promise<ApprovalSummary[]>;
   getApprovalSummary(approvalId: unknown): Promise<ApprovalSummary>;
   listKnownEvaluationResults(query?: unknown): Promise<EvaluationSummary[]>;
+  getIntegrationDiagnostics(
+    companyId: string,
+    packRef: string
+  ): Promise<IntegrationDiagnosticReport>;
+  getAdvancedRunInspection(runId: unknown): Promise<AdvancedRunInspection>;
 }
 
 export function createOperatorInspectionService(
@@ -524,6 +543,187 @@ export function createOperatorInspectionService(
     }
   };
 
+  const getIntegrationDiagnostics = async (
+    rawCompanyId: string,
+    rawPackRef: string
+  ): Promise<IntegrationDiagnosticReport> => {
+    const parsedCompany = identifierSchema.safeParse(rawCompanyId);
+    if (!parsedCompany.success) {
+      throw new OperatorInspectionError(
+        "INSPECTION_INVALID_REQUEST",
+        `Invalid companyId '${String(rawCompanyId)}'.`
+      );
+    }
+    const parsedPackRef = z.string().min(1).max(200).safeParse(rawPackRef);
+    if (!parsedPackRef.success) {
+      throw new OperatorInspectionError(
+        "INSPECTION_INVALID_REQUEST",
+        `Invalid packRef '${String(rawPackRef)}'.`
+      );
+    }
+
+    if (typeof source.getIntegrationDiagnostics === "function") {
+      try {
+        const report = await source.getIntegrationDiagnostics(
+          parsedCompany.data,
+          parsedPackRef.data
+        );
+        if (!report) {
+          throw new OperatorInspectionError(
+            "INSPECTION_NOT_FOUND",
+            `Diagnostics for pack '${parsedPackRef.data}' and company '${parsedCompany.data}' could not be resolved.`
+          );
+        }
+        return assertBoundedResponseSize(IntegrationDiagnosticReportSchema.parse(report));
+      } catch (err) {
+        throw normalizeInspectionError(err);
+      }
+    }
+
+    // Fallback: verify company and pack existence
+    const companies = await listCompanies();
+    if (!companies.some((c) => c.companyId === parsedCompany.data)) {
+      throw new OperatorInspectionError(
+        "INSPECTION_NOT_FOUND",
+        `Unknown company '${parsedCompany.data}'.`
+      );
+    }
+    const packsRes = await listCapabilityPacks();
+    const pack = packsRes.packs.find(
+      (p) =>
+        p.identity === parsedPackRef.data ||
+        p.id === parsedPackRef.data ||
+        p.identity.startsWith(parsedPackRef.data)
+    );
+    if (!pack) {
+      throw new OperatorInspectionError(
+        "INSPECTION_NOT_FOUND",
+        `Unknown capability pack '${parsedPackRef.data}'.`
+      );
+    }
+
+    throw new OperatorInspectionError(
+      "INSPECTION_SOURCE_UNAVAILABLE",
+      "Integration diagnostics are not supported by the underlying inspection source."
+    );
+  };
+
+  const getAdvancedRunInspection = async (
+    rawRunId: unknown
+  ): Promise<AdvancedRunInspection> => {
+    const parsedId = RunIdSchema.safeParse(rawRunId);
+    if (!parsedId.success) {
+      throw new OperatorInspectionError(
+        "INSPECTION_INVALID_REQUEST",
+        `Invalid runId '${String(rawRunId)}'.`
+      );
+    }
+
+    if (typeof source.getAdvancedRunInspection === "function") {
+      try {
+        const found = await source.getAdvancedRunInspection(parsedId.data);
+        if (!found) {
+          throw new OperatorInspectionError(
+            "INSPECTION_NOT_FOUND",
+            `Run '${parsedId.data}' was not found in known inspection sources.`
+          );
+        }
+        const provenance = found.provenance ?? (await getProvenance());
+        const validated = AdvancedRunInspectionSchema.parse({
+          ...found,
+          ...(provenance ? { provenance } : {}),
+        });
+        return assertBoundedResponseSize(validated);
+      } catch (err) {
+        throw normalizeInspectionError(err);
+      }
+    }
+
+    // Fallback to getRunInspection and synthesize projection
+    const runInspection = await getRunInspection(parsedId.data);
+    const provenance = await getProvenance();
+
+    const simulatedEvidence: KnownRunEvidence = {
+      runId: runInspection.summary.runId,
+      companyId: runInspection.summary.companyId,
+      packIdentity: runInspection.summary.packIdentity,
+      authoritativeRun:
+        runInspection.summary.statusSource === "authoritative_runtime"
+          ? {
+              schemaVersion: 1,
+              runId: runInspection.summary.runId,
+              workflowId: runInspection.summary.workflowId,
+              workflowVersion: runInspection.summary.workflowVersion,
+              status: runInspection.summary.status as RunStatus,
+              createdAt: runInspection.summary.startedAt ?? "2026-02-01T10:00:00.000Z",
+              updatedAt: runInspection.summary.finishedAt ?? "2026-02-01T10:00:00.000Z",
+              ...(runInspection.summary.currentNodeId
+                ? { currentNodeId: runInspection.summary.currentNodeId }
+                : {}),
+            }
+          : undefined,
+      traceEvents: runInspection.trace.events.map((e) => ({
+        sequence: e.sequence,
+        eventId: e.eventId,
+        traceId: e.traceId,
+        runId: e.runId,
+        type: e.type,
+        occurredAt: e.occurredAt,
+        workflowId: e.workflowId,
+        workflowVersion: e.workflowVersion,
+        ...(e.nodeId ? { nodeId: e.nodeId } : {}),
+        spanId: e.spanId,
+        ...(e.parentSpanId ? { parentSpanId: e.parentSpanId } : {}),
+        ...(e.status ? { status: e.status } : {}),
+        payload: {
+          ...(e.reasonCode ? { code: e.reasonCode } : {}),
+          ...(e.toolRef ? { toolRef: e.toolRef } : {}),
+          ...(e.modelPolicyRef ? { modelPolicyRef: e.modelPolicyRef } : {}),
+          ...(e.modelBindingId ? { modelBindingId: e.modelBindingId } : {}),
+          ...(e.approvalId ? { approvalId: e.approvalId } : {}),
+          ...(e.tokenUsage ? { usage: e.tokenUsage } : {}),
+          ...(e.attempt !== undefined ? { attempt: e.attempt } : {}),
+          ...(e.maxAttempts !== undefined ? { maxAttempts: e.maxAttempts } : {}),
+          ...(e.recoveryReplay !== undefined ? { recoveryReplay: e.recoveryReplay } : {}),
+        },
+      })) as unknown as readonly TraceEvent[],
+      approvalRecords: runInspection.approvals.map((a) => ({
+        schemaVersion: 2,
+        approvalId: a.approvalId,
+        runId: a.runId,
+        nodeId: a.nodeId,
+        requestFingerprint: a.requestFingerprint,
+        requestedBy: a.requestedBy,
+        requiredApproverRoleIds: a.requiredApproverRoleIds,
+        allowSelfApproval: a.allowSelfApproval,
+        status: a.status,
+        requestedAt: a.requestedAt,
+        ...(a.resolvedAt ? { resolvedAt: a.resolvedAt } : {}),
+        ...(a.resolvedBy ? { resolvedBy: a.resolvedBy } : {}),
+        permissionClasses: a.permissionClasses,
+      })) as unknown as readonly ApprovalRecord[],
+      evaluations: runInspection.evaluations.map((e) => ({
+        evalProfileRef: e.evalProfileRef,
+        packIdentity: e.packIdentity,
+        workflowId: e.workflowId,
+        companyId: e.companyId,
+        runId: e.runId,
+        datasetRef: e.datasetRef,
+        graderRefs: e.graderRefs,
+        executed: e.executed,
+        executedAt: e.executedAt,
+        totalCases: e.totalCases,
+        passedCases: e.passedCases,
+        failedCases: e.failedCases,
+        failureCodes: e.failureCodes,
+        baselineComparisonStatus: e.baselineComparisonStatus,
+      })),
+      workflow: runInspection.workflow as unknown as Workflow | undefined,
+    };
+
+    return projectAdvancedRunInspection(simulatedEvidence, provenance);
+  };
+
   const getOverview = async (): Promise<OverviewInspection> => {
     const sources: SourceStatusSummary[] = [];
 
@@ -697,6 +897,8 @@ export function createOperatorInspectionService(
     listKnownApprovals,
     getApprovalSummary,
     listKnownEvaluationResults,
+    getIntegrationDiagnostics,
+    getAdvancedRunInspection,
   });
 }
 
@@ -961,6 +1163,95 @@ export function createEvidenceBackedInspectionSource(
                   a.evalProfileRef.localeCompare(b.evalProfileRef) ||
                   (a.runId ?? "").localeCompare(b.runId ?? "")
               ),
+        }
+      : {}),
+
+    ...(config.companies && config.capabilityPacks
+      ? {
+          getIntegrationDiagnostics: async (companyId: string, packRef: string) => {
+            const companyReg = config.companies!.find((c) => {
+              const raw = c.manifest as Record<string, unknown>;
+              return raw?.companyId === companyId;
+            });
+            if (!companyReg) {
+              throw new OperatorInspectionError(
+                "INSPECTION_NOT_FOUND",
+                `Unknown company '${companyId}'.`
+              );
+            }
+            const pack = config.capabilityPacks!.find((p) => {
+              const summary = projectCapabilityPackSummary(p);
+              return (
+                summary.identity === packRef ||
+                summary.id === packRef ||
+                summary.identity.startsWith(packRef)
+              );
+            });
+            if (!pack) {
+              throw new OperatorInspectionError(
+                "INSPECTION_NOT_FOUND",
+                `Unknown capability pack '${packRef}'.`
+              );
+            }
+
+            const packSummary = projectCapabilityPackSummary(pack);
+            const proofName = getRequiredProofName(packSummary.id);
+            const evidence =
+              companyReg.registrationEvidenceByPack?.[packSummary.identity] ??
+              companyReg.registrationEvidenceByPack?.[packSummary.id] ??
+              companyReg.registrationEvidenceByPack?.[proofName] ??
+              companyReg.registrationEvidenceByPack?.[packSummary.category];
+
+            return projectIntegrationDiagnostics({
+              companyManifest: companyReg.manifest,
+              pack,
+              selectedByCompany:
+                companyReg.selectedPackRefs !== undefined
+                  ? companyReg.selectedPackRefs.some(
+                      (r) => `${r.id}@${r.version}` === packSummary.identity
+                    )
+                  : undefined,
+              registrationEvidence: evidence,
+              provenance,
+            });
+          },
+        }
+      : {}),
+
+    ...(config.knownRuns
+      ? {
+          getAdvancedRunInspection: async (runId: string) => {
+            const runEv = config.knownRuns!.find((r) => r.runId === runId);
+            if (!runEv) {
+              return undefined;
+            }
+            const traceEvents = await resolveRunTraceEvents(runEv);
+            const approvalRecords =
+              runEv.approvalRecords ??
+              config.approvalRecords?.filter((a) => a.runId === runEv.runId);
+            const evaluations =
+              runEv.evaluations ??
+              config.evaluationResults?.filter((e) => e.runId === runEv.runId);
+            const workflow =
+              runEv.workflow ??
+              config.workflows?.find(
+                (w) =>
+                  w.id ===
+                  (runEv.authoritativeRun?.workflowId ??
+                    traceEvents?.[0]?.workflowId)
+              );
+
+            return projectAdvancedRunInspection(
+              {
+                ...runEv,
+                traceEvents,
+                approvalRecords,
+                evaluations,
+                workflow,
+              },
+              provenance
+            );
+          },
         }
       : {}),
   };

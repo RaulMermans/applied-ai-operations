@@ -3,11 +3,13 @@ import {
   OperatorInspectionError,
   createOperatorInspectionService,
   normalizeInspectionError,
+  type AdvancedRunInspection,
   type OperatorInspectionService,
   type OperatorInspectionSource,
 } from "@aao/operator-inspection";
 import {
   renderControlCenterHtml,
+  renderIntegrationDiagnosticsHtml,
   renderNotFoundHtml,
   renderRunDetailHtml,
 } from "./ui.js";
@@ -104,14 +106,17 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   app.get(`${base}/runs`, guarded(async (r) => ({ runs: await service.listKnownRuns(r.query) })));
   app.get(`${base}/runs/:runId`, guarded((r) => service.getRunInspection((r.params as { runId: string }).runId)));
   app.get(`${base}/runs/:runId/trace`, guarded((r) => service.getRunTraceInspection((r.params as { runId: string }).runId, r.query)));
+  app.get(`${base}/runs/:runId/analysis`, guarded((r) => service.getAdvancedRunInspection((r.params as { runId: string }).runId)));
+  app.get(
+    `${base}/companies/:companyId/packs/:packRef/diagnostics`,
+    guarded((r) => {
+      const { companyId, packRef } = r.params as { companyId: string; packRef: string };
+      return service.getIntegrationDiagnostics(companyId, packRef);
+    })
+  );
   app.get(`${base}/approvals`, guarded(async () => ({ approvals: await service.listKnownApprovals() })));
   app.get(`${base}/approvals/:approvalId`, guarded(async (r) => ({ approval: await service.getApprovalSummary((r.params as { approvalId: string }).approvalId) })));
   app.get(`${base}/evaluations`, guarded(async (r) => ({ evaluations: await service.listKnownEvaluationResults(r.query) })));
-
-  // Any other non-GET method on the inspection prefix is refused by the guard; unknown GETs are 404.
-  app.setNotFoundHandler((request, reply) => {
-    reply.code(404).send({ error: { code: "INSPECTION_NOT_FOUND", message: `Unknown route ${request.method} ${request.url.split("?")[0]}` } });
-  });
 
   const page = async (_request: FastifyRequest, reply: FastifyReply) => {
     try {
@@ -129,16 +134,56 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   app.get("/", page);
   app.get("/control-center", page);
 
+  app.get(
+    "/control-center/companies/:companyId/packs/:packRef",
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { companyId, packRef } = request.params as { companyId: string; packRef: string };
+      try {
+        const report = await service.getIntegrationDiagnostics(companyId, packRef);
+        const provenance = await service.getProvenance();
+        return reply
+          .header("content-type", "text/html; charset=utf-8")
+          .header("content-security-policy", "default-src 'none'; style-src 'unsafe-inline'")
+          .header("x-content-type-options", "nosniff")
+          .send(renderIntegrationDiagnosticsHtml(report, provenance));
+      } catch (err) {
+        const normalized = normalizeInspectionError(err);
+        if (normalized.code === "INSPECTION_NOT_FOUND" || normalized.code === "INSPECTION_INVALID_REQUEST") {
+          const provenance = await service.getProvenance();
+          return reply
+            .code(normalized.code === "INSPECTION_NOT_FOUND" ? 404 : 400)
+            .header("content-type", "text/html; charset=utf-8")
+            .header("content-security-policy", "default-src 'none'; style-src 'unsafe-inline'")
+            .header("x-content-type-options", "nosniff")
+            .send(
+              renderNotFoundHtml(
+                `INSPECTION_NOT_FOUND: Company '${companyId}' or Pack '${packRef}' was not found in known inspection sources.`,
+                provenance
+              )
+            );
+        }
+        return sendError(reply, err);
+      }
+    }
+  );
+
   app.get("/control-center/runs/:runId", async (request: FastifyRequest, reply: FastifyReply) => {
     const { runId } = request.params as { runId: string };
+    const { nodeId } = (request.query as { nodeId?: string }) ?? {};
     try {
       const runInspection = await service.getRunInspection(runId);
+      let advanced: AdvancedRunInspection | undefined;
+      try {
+        advanced = await service.getAdvancedRunInspection(runId);
+      } catch {
+        // Advanced projection fallback if unavailable
+      }
       const provenance = await service.getProvenance();
       return reply
         .header("content-type", "text/html; charset=utf-8")
         .header("content-security-policy", "default-src 'none'; style-src 'unsafe-inline'")
         .header("x-content-type-options", "nosniff")
-        .send(renderRunDetailHtml(runInspection, provenance));
+        .send(renderRunDetailHtml(runInspection, provenance, advanced, nodeId));
     } catch (err) {
       const normalized = normalizeInspectionError(err);
       if (normalized.code === "INSPECTION_NOT_FOUND" || normalized.code === "INSPECTION_INVALID_REQUEST") {
@@ -157,6 +202,11 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       }
       return sendError(reply, err);
     }
+  });
+
+  // Any other non-GET method on the inspection prefix is refused by the guard; unknown GETs are 404.
+  app.setNotFoundHandler((request, reply) => {
+    reply.code(404).send({ error: { code: "INSPECTION_NOT_FOUND", message: `Unknown route ${request.method} ${request.url.split("?")[0]}` } });
   });
 
   return app;

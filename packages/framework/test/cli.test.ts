@@ -37,7 +37,7 @@ describe("aao --help and command errors", () => {
     const result = await cli("--help");
     expect(result).toEqual({ exitCode: 0, stdout: HELP, stderr: "" });
     const commands = [...HELP.matchAll(/^\s+aao (.+?)(?:\s+[[<-]|$)/gm)].map((match) => match[1]);
-    expect(commands).toEqual(["workflow validate", "workflow compile", "eval ci", "eval adapters", "eval baseline propose", "adapters matrix", "inspect companies", "inspect packs", "inspect workflows", "inspect runs", "inspect run", "inspect evals", "inspect approvals", "inspect overview", "--help"]);
+    expect(commands).toEqual(["workflow validate", "workflow compile", "eval ci", "eval adapters", "eval baseline propose", "adapters matrix", "inspect companies", "inspect packs", "inspect workflows", "inspect runs", "inspect run", "inspect readiness", "inspect evals", "inspect approvals", "inspect overview", "--help"]);
     expect(HELP).not.toMatch(/aao (run|init|serve|deploy|publish|plugin|adapter )|adapters (verify|load|install|discover)/);
     expect((await cli("eval", "ci", "--help")).exitCode).toBe(0);
   });

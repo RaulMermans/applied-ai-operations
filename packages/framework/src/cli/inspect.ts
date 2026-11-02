@@ -10,6 +10,9 @@ import {
   formatRunInspectionText,
   formatRunsText,
   formatWorkflowsText,
+  formatIntegrationDiagnosticsText,
+  formatAdvancedRunInspectionNodesText,
+  formatAdvancedRunInspectionTimelineText,
   type OperatorInspectionSource,
   type OperatorSourceProvenance,
 } from "@aao/operator-inspection";
@@ -59,7 +62,7 @@ export async function runInspectCommand(
   if (sub === undefined) {
     throw new CliError(
       "AAO_CLI_UNKNOWN_COMMAND",
-      "missing inspect command (companies | packs | workflows | runs | run | evals | approvals | overview)"
+      "missing inspect command (companies | packs | workflows | runs | run | evals | approvals | overview | readiness)"
     );
   }
 
@@ -120,13 +123,48 @@ export async function runInspectCommand(
     }
 
     if (sub === "run") {
-      const parsed = parseOptions(rest, { values: ["--format"], positionals: 1 });
+      const parsed = parseOptions(rest, {
+        values: ["--format", "--view"],
+        positionals: 1,
+      });
       const format = formatOption(parsed, ["text", "json"], "text");
+      const view = parsed.values["--view"] ?? "default";
+      if (view !== "default" && view !== "nodes" && view !== "timeline") {
+        throw new CliError("AAO_CLI_INVALID_OPTION", "--view must be default, nodes, or timeline");
+      }
       const runId = parsed.positionals[0]!;
+      if (view === "nodes" || view === "timeline") {
+        const advanced = await service.getAdvancedRunInspection(runId);
+        if (format === "json") {
+          return toJsonOutput(advanced, provenance);
+        }
+        return view === "nodes"
+          ? toTextOutput(formatAdvancedRunInspectionNodesText(advanced), provenance)
+          : toTextOutput(formatAdvancedRunInspectionTimelineText(advanced), provenance);
+      }
       const runInspection = await service.getRunInspection(runId);
       return format === "json"
         ? toJsonOutput(runInspection, provenance)
         : toTextOutput(formatRunInspectionText(runInspection), provenance);
+    }
+
+    if (sub === "readiness") {
+      const parsed = parseOptions(rest, {
+        values: ["--format", "--company", "--pack"],
+      });
+      const format = formatOption(parsed, ["text", "json"], "text");
+      const companyId = parsed.values["--company"];
+      const packRef = parsed.values["--pack"];
+      if (!companyId) {
+        throw new CliError("AAO_CLI_MISSING_ARGUMENT", "missing required option --company");
+      }
+      if (!packRef) {
+        throw new CliError("AAO_CLI_MISSING_ARGUMENT", "missing required option --pack");
+      }
+      const report = await service.getIntegrationDiagnostics(companyId, packRef);
+      return format === "json"
+        ? toJsonOutput(report, provenance)
+        : toTextOutput(formatIntegrationDiagnosticsText(report), provenance);
     }
 
     if (sub === "evals") {

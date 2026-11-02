@@ -1,4 +1,6 @@
 import type {
+  AdvancedRunInspection,
+  IntegrationDiagnosticReport,
   OperatorSourceProvenance,
   OverviewInspection,
   RunInspection,
@@ -71,8 +73,8 @@ export function renderControlCenterHtml(
           .map(
             (c) =>
               `<tr data-compat-company="${escapeHtml(c.companyId)}" data-compat-pack="${escapeHtml(c.packIdentity)}">
-                <td><code>${escapeHtml(c.companyId)}</code></td>
-                <td><code>${escapeHtml(c.packIdentity)}</code></td>
+                <td><a href="/control-center/companies/${encodeURIComponent(c.companyId)}/packs/${encodeURIComponent(c.packIdentity)}"><code>${escapeHtml(c.companyId)}</code></a></td>
+                <td><a href="/control-center/companies/${encodeURIComponent(c.companyId)}/packs/${encodeURIComponent(c.packIdentity)}"><code>${escapeHtml(c.packIdentity)}</code></a></td>
                 <td><span class="badge compat-${escapeHtml(c.status.toLowerCase())}">${escapeHtml(c.status)}</span></td>
                 <td>${c.verified ? "Yes (Registration Snapshot)" : "No"}</td>
                 <td>${c.reasonCode ? `<code>${escapeHtml(c.reasonCode)}</code>` : "—"}</td>
@@ -315,19 +317,19 @@ export function renderControlCenterHtml(
       font-weight: 600;
       background: #e2e8f0;
     }
-    .compat-compatible, .run-completed, .eval-passed, .status-available, .approval-approved {
+    .compat-compatible, .run-completed, .eval-passed, .status-available, .approval-approved, .readiness-ready, .readiness-satisfied, .node-observed_completed {
       background: #dcfce7;
       color: #166534;
     }
-    .compat-not_verified, .run-waiting, .eval-registered, .eval-not_run, .status-degraded, .approval-pending {
+    .compat-not_verified, .run-waiting, .eval-registered, .eval-not_run, .status-degraded, .approval-pending, .readiness-not_verified, .node-observed_started, .node-evidence_incomplete {
       background: #fef9c3;
       color: #854d0e;
     }
-    .compat-incompatible, .run-failed, .eval-failed, .status-invalid, .trace-corrupt, .approval-rejected {
+    .compat-incompatible, .run-failed, .eval-failed, .status-invalid, .trace-corrupt, .approval-rejected, .readiness-blocked, .readiness-missing, .readiness-incompatible, .node-observed_failed {
       background: #fee2e2;
       color: #991b1b;
     }
-    .run-unknown, .compat-unavailable, .status-unavailable, .trace-unavailable {
+    .run-unknown, .compat-unavailable, .status-unavailable, .trace-unavailable, .readiness-unavailable, .node-not_observed {
       background: #f1f5f9;
       color: #475569;
     }
@@ -550,9 +552,278 @@ export function renderControlCenterHtml(
 </html>`;
 }
 
+export function renderIntegrationDiagnosticsHtml(
+  report: IntegrationDiagnosticReport,
+  provenance?: OperatorSourceProvenance
+): string {
+  const isDemo = (provenance ?? report.sourceProvenance)?.mode !== "live";
+
+  const reqRows = report.requirements
+    .map(
+      (r) =>
+        `<tr>
+          <td><code>${escapeHtml(r.category)}</code></td>
+          <td>${escapeHtml(r.name)}<br/><small><code>${escapeHtml(r.requiredRef)}</code></small></td>
+          <td><span class="badge readiness-${escapeHtml(r.status.toLowerCase())}">${escapeHtml(r.status)}</span></td>
+          <td>${r.diagnostic ? escapeHtml(r.diagnostic) : r.reasonCode ? `<code>${escapeHtml(r.reasonCode)}</code>` : "—"}</td>
+          <td>${r.remediation ? escapeHtml(r.remediation) : "No action required"}</td>
+        </tr>`
+    )
+    .join("\n");
+
+  const diagItems =
+    report.diagnostics.length > 0
+      ? `<div class="diagnostics-box" data-diagnostics="true">
+          <strong>Diagnostics:</strong>
+          <ul>
+            ${report.diagnostics.map((d) => `<li><code>[${escapeHtml(d.code)}]</code> ${escapeHtml(d.message)}${d.remediation ? `<br/><small>Suggested check: ${escapeHtml(d.remediation)}</small>` : ""}</li>`).join("")}
+          </ul>
+        </div>`
+      : "";
+
+  const nextStepItems = report.nextSteps
+    .map((s) => `<li>${escapeHtml(s)}</li>`)
+    .join("\n");
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AAO Control Center — Integration Diagnostics: ${escapeHtml(report.packIdentity)}</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    body {
+      margin: 0;
+      padding: 24px;
+      background: #f8fafc;
+      color: #0f172a;
+      line-height: 1.45;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #e2e8f0;
+      padding-bottom: 16px;
+      margin-bottom: 24px;
+    }
+    .header-badges {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      align-items: flex-end;
+    }
+    .demo-banner {
+      background: #fef3c7;
+      color: #92400e;
+      border: 1px solid #fde68a;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 0.85rem;
+      letter-spacing: 0.02em;
+    }
+    .readonly-banner {
+      background: #e0f2fe;
+      color: #0369a1;
+      border: 1px solid #bae6fd;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.85rem;
+    }
+    nav {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    nav a {
+      text-decoration: none;
+      color: #1e293b;
+      background: #e2e8f0;
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+    section {
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 24px;
+    }
+    h1, h2, h3 {
+      margin-top: 0;
+    }
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .metric-card {
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      padding: 12px;
+    }
+    .metric-card .label {
+      font-size: 0.8rem;
+      color: #475569;
+      text-transform: uppercase;
+    }
+    .metric-card .value {
+      font-size: 1.4rem;
+      font-weight: 700;
+      margin-top: 4px;
+    }
+    .metric-card .value-id {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-top: 4px;
+      word-break: break-all;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 16px;
+      font-size: 0.9rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 8px 10px;
+      border-bottom: 1px solid #e2e8f0;
+      vertical-align: top;
+    }
+    th {
+      background: #f8fafc;
+      font-weight: 600;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      background: #e2e8f0;
+    }
+    .compat-compatible, .run-completed, .eval-passed, .status-available, .approval-approved, .readiness-ready, .readiness-satisfied, .node-observed_completed {
+      background: #dcfce7;
+      color: #166534;
+    }
+    .compat-not_verified, .run-waiting, .eval-registered, .eval-not_run, .status-degraded, .approval-pending, .readiness-not_verified, .node-observed_started, .node-evidence_incomplete {
+      background: #fef9c3;
+      color: #854d0e;
+    }
+    .compat-incompatible, .run-failed, .eval-failed, .status-invalid, .trace-corrupt, .approval-rejected, .readiness-blocked, .readiness-missing, .readiness-incompatible, .node-observed_failed {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+    .run-unknown, .compat-unavailable, .status-unavailable, .trace-unavailable, .readiness-unavailable, .node-not_observed {
+      background: #f1f5f9;
+      color: #475569;
+    }
+    .empty-state {
+      color: #64748b;
+      font-style: italic;
+      padding: 12px;
+    }
+    .diagnostics-box {
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      padding: 10px 14px;
+      border-radius: 6px;
+      margin-bottom: 12px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>AAO Control Center</h1>
+      <p>Guided Integration Diagnostics: <code>${escapeHtml(report.packIdentity)}</code> for <code>${escapeHtml(report.companyDisplayName ?? report.companyId)}</code></p>
+    </div>
+    <div class="header-badges">
+      ${isDemo ? `<div class="demo-banner" data-demo-indicator="true">DEMO DATA — NOT LIVE OPERATIONS</div>` : ""}
+      <div class="readonly-banner" data-readonly-indicator="true">
+        READ-ONLY SURFACE • ZERO MUTATION AUTHORITY
+      </div>
+    </div>
+  </header>
+
+  <nav aria-label="Breadcrumb Navigation">
+    <a href="/control-center">&larr; Back to Control Center Overview</a>
+    <a href="#section-readiness">Readiness Summary</a>
+    <a href="#section-requirements">Requirements Checklist</a>
+    <a href="#section-next-steps">Actionable Next Steps</a>
+  </nav>
+
+  <section id="section-readiness" data-section="readiness-summary">
+    <h2>Integration Readiness Overview</h2>
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="label">Overall Readiness</div>
+        <div class="value"><span class="badge readiness-${escapeHtml(report.status.toLowerCase())}">${escapeHtml(report.status)}</span></div>
+        ${report.reasonCode ? `<small><code>${escapeHtml(report.reasonCode)}</code></small>` : ""}
+      </div>
+      <div class="metric-card">
+        <div class="label">Company</div>
+        <div class="value-id"><code>${escapeHtml(report.companyId)}</code></div>
+        <small>${escapeHtml(report.companyDisplayName ?? "")}</small>
+      </div>
+      <div class="metric-card">
+        <div class="label">Capability Pack</div>
+        <div class="value-id"><code>${escapeHtml(report.packIdentity)}</code></div>
+        <small>${escapeHtml(report.packName ?? "")}</small>
+      </div>
+      <div class="metric-card">
+        <div class="label">Workflow Pinned</div>
+        <div class="value-id"><code>${escapeHtml(report.workflowId)}@${escapeHtml(report.workflowVersion)}</code></div>
+        <small title="${escapeHtml(report.planFingerprint)}">plan: <code>${escapeHtml(report.planFingerprint.slice(0, 16))}…</code></small>
+      </div>
+    </div>
+
+    ${diagItems}
+  </section>
+
+  <section id="section-requirements" data-section="requirements-checklist">
+    <h2>Requirements Checklist (${report.requirements.length})</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Category</th>
+          <th>Requirement / Reference</th>
+          <th>Status</th>
+          <th>Diagnostics / Evidence</th>
+          <th>Actionable Remediation</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${reqRows}
+      </tbody>
+    </table>
+  </section>
+
+  <section id="section-next-steps" data-section="next-steps">
+    <h2>Actionable Next Steps</h2>
+    <ol>
+      ${nextStepItems}
+    </ol>
+  </section>
+</body>
+</html>`;
+}
+
 export function renderRunDetailHtml(
   runInspection: RunInspection,
-  provenance?: OperatorSourceProvenance
+  provenance?: OperatorSourceProvenance,
+  advanced?: AdvancedRunInspection,
+  selectedNodeId?: string
 ): string {
   const s = runInspection.summary;
   const t = runInspection.trace;
@@ -577,6 +848,245 @@ export function renderRunDetailHtml(
           </ul>
         </div>`
       : "";
+
+  let executionSummarySection = "";
+  let nodeMapSection = "";
+  let selectedNodeSection = "";
+  let attemptsSection = "";
+  let runDiagnosticsSection = "";
+
+  if (advanced) {
+    const executedPlanCount = advanced.nodes.filter((n) => n.executed).length;
+    const totalPlanCount = advanced.nodes.filter((n) => n.planned).length;
+    const toolCallCount = advanced.attempts.filter((a) => a.kind === "tool").length;
+    const modelCallCount = advanced.attempts.filter((a) => a.kind === "model").length;
+
+    executionSummarySection = `<section id="section-execution-summary" data-section="execution-summary">
+      <h2>Execution Summary (Correlated Runtime &amp; Trace Evidence)</h2>
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="label">Total Attempts</div>
+          <div class="value">${advanced.attempts.length}</div>
+        </div>
+        <div class="metric-card">
+          <div class="label">Plan Nodes</div>
+          <div class="value">${executedPlanCount} / ${totalPlanCount}</div>
+          <small>observed nodes</small>
+        </div>
+        <div class="metric-card">
+          <div class="label">Evidence Health</div>
+          <div class="value"><span class="badge trace-${escapeHtml(advanced.evidenceHealth)}">${escapeHtml(advanced.evidenceHealth)}</span></div>
+          <small>${advanced.eventCount} events</small>
+        </div>
+        <div class="metric-card">
+          <div class="label">Token Usage</div>
+          <div class="value-id">${
+            advanced.tokenUsage?.recorded
+              ? `${advanced.tokenUsage.totalTokens?.toLocaleString() ?? "—"} tokens`
+              : `<span class="badge">Not recorded</span>`
+          }</div>
+          <small>${
+            advanced.tokenUsage?.recorded
+              ? `Prompt: ${advanced.tokenUsage.inputTokens ?? 0} | Completion: ${advanced.tokenUsage.outputTokens ?? 0}`
+              : "Token accounting omitted or unavailable"
+          }</small>
+        </div>
+        <div class="metric-card">
+          <div class="label">Tool Invocations</div>
+          <div class="value">${toolCallCount}</div>
+        </div>
+        <div class="metric-card">
+          <div class="label">Model Invocations</div>
+          <div class="value">${modelCallCount}</div>
+        </div>
+      </div>
+    </section>`;
+
+    const nodeRows = advanced.nodes
+      .map((n, idx) => {
+        const isSelected = selectedNodeId === n.nodeId;
+        const rowStyle = isSelected ? ` style="background: #f0fdf4; font-weight: 600;"` : "";
+        const tokens = n.tokenUsage?.recorded
+          ? `${n.tokenUsage.totalTokens ?? "—"}`
+          : "Not recorded";
+        return `<tr${rowStyle} data-node-id="${escapeHtml(n.nodeId)}">
+          <td>${idx + 1}</td>
+          <td><a href="?nodeId=${encodeURIComponent(n.nodeId)}#section-node-detail"><code>${escapeHtml(n.nodeId)}</code></a></td>
+          <td><code>${escapeHtml(n.nodeKind)}</code></td>
+          <td><span class="badge node-${escapeHtml(n.status.toLowerCase())}">${escapeHtml(n.status)}</span></td>
+          <td>${n.totalAttempts}</td>
+          <td>${n.toolRef ? `<code>${escapeHtml(n.toolRef)}</code>` : "—"}</td>
+          <td>${n.modelPolicyRef ? `<code>${escapeHtml(n.modelPolicyRef)}</code>` : "—"}</td>
+          <td>${tokens}</td>
+          <td>${n.approvalStatus ? `<span class="badge approval-${escapeHtml(n.approvalStatus.toLowerCase())}">${escapeHtml(n.approvalStatus)}</span>` : "—"}</td>
+          <td>${n.durationMs !== undefined ? `${n.durationMs} ms` : "—"}</td>
+          <td>${n.diagnostics.length > 0 ? escapeHtml(n.diagnostics.join("; ")) : "—"}</td>
+        </tr>`;
+      })
+      .join("\n");
+
+    nodeMapSection = `<section id="section-node-map" data-section="node-execution-map">
+      <h2>Workflow Node Execution Map (${advanced.nodes.length} nodes)</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Seq</th>
+            <th>Node ID</th>
+            <th>Kind</th>
+            <th>Status</th>
+            <th>Attempts</th>
+            <th>Tool</th>
+            <th>Model Policy</th>
+            <th>Tokens</th>
+            <th>Approval</th>
+            <th>Duration</th>
+            <th>Diagnostics</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${nodeRows}
+        </tbody>
+      </table>
+    </section>`;
+
+    if (selectedNodeId) {
+      const selectedNode = advanced.nodes.find((n) => n.nodeId === selectedNodeId);
+      if (selectedNode) {
+        const attemptRows =
+          selectedNode.attempts.length === 0
+            ? `<tr><td colspan="8" class="empty-state">No execution attempts recorded for node '${escapeHtml(selectedNodeId)}'.</td></tr>`
+            : selectedNode.attempts
+                .map((att) => {
+                  const attTokens = att.tokenUsage?.recorded
+                    ? `${att.tokenUsage.totalTokens ?? "—"}`
+                    : "Not recorded";
+                  return `<tr>
+                    <td>#${att.attempt}</td>
+                    <td><span class="badge node-${escapeHtml(att.status.toLowerCase())}">${escapeHtml(att.status)}</span></td>
+                    <td>${att.startedAt ? `<code>${escapeHtml(att.startedAt)}</code>` : "—"}</td>
+                    <td>${att.durationMs !== undefined ? `${att.durationMs} ms` : "—"}</td>
+                    <td>${att.toolRef ? `<code>${escapeHtml(att.toolRef)}</code>` : "—"}</td>
+                    <td>${att.modelPolicyRef ? `<code>${escapeHtml(att.modelPolicyRef)}</code>` : "—"}</td>
+                    <td>${attTokens}</td>
+                    <td>${att.reasonCode ? `<code>${escapeHtml(att.reasonCode)}</code>` : "—"}</td>
+                  </tr>`;
+                })
+                .join("\n");
+
+        selectedNodeSection = `<section id="section-node-detail" data-section="selected-node-detail">
+          <h2>Selected Node Detail: <code>${escapeHtml(selectedNode.nodeId)}</code></h2>
+          <div class="metrics-grid">
+            <div class="metric-card">
+              <div class="label">Node ID</div>
+              <div class="value-id"><code>${escapeHtml(selectedNode.nodeId)}</code></div>
+              <small>Kind: <code>${escapeHtml(selectedNode.nodeKind)}</code></small>
+            </div>
+            <div class="metric-card">
+              <div class="label">Execution Status</div>
+              <div class="value"><span class="badge node-${escapeHtml(selectedNode.status.toLowerCase())}">${escapeHtml(selectedNode.status)}</span></div>
+            </div>
+            <div class="metric-card">
+              <div class="label">Total Attempts</div>
+              <div class="value">${selectedNode.totalAttempts}</div>
+            </div>
+            <div class="metric-card">
+              <div class="label">Duration</div>
+              <div class="value">${selectedNode.durationMs !== undefined ? `${selectedNode.durationMs} ms` : "—"}</div>
+            </div>
+          </div>
+          ${selectedNode.diagnostics.length > 0 ? `<div class="diagnostics-box"><strong>Node Diagnostics:</strong> ${escapeHtml(selectedNode.diagnostics.join("; "))}</div>` : ""}
+          <h3>Node Attempts</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Attempt</th>
+                <th>Status</th>
+                <th>Started At</th>
+                <th>Duration</th>
+                <th>Tool</th>
+                <th>Model Policy</th>
+                <th>Tokens</th>
+                <th>Reason Code</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${attemptRows}
+            </tbody>
+          </table>
+        </section>`;
+      }
+    }
+
+    const allAttemptRows =
+      advanced.attempts.length === 0
+        ? `<tr><td colspan="7" class="empty-state">No execution attempts recorded for this run.</td></tr>`
+        : advanced.attempts
+            .map(
+              (att) =>
+                `<tr>
+                  <td>#${att.attempt} (seq: ${att.sequence})</td>
+                  <td>${att.nodeId ? `<code>${escapeHtml(att.nodeId)}</code>` : "—"}</td>
+                  <td><code>${escapeHtml(att.kind)}</code></td>
+                  <td><span class="badge node-${escapeHtml(att.status.toLowerCase())}">${escapeHtml(att.status)}</span></td>
+                  <td><code>${escapeHtml(att.occurredAt)}</code></td>
+                  <td>${att.reasonCode ? `<code>${escapeHtml(att.reasonCode)}</code>` : "—"}</td>
+                  <td>${att.recoveryReplay ? `<span class="badge">RECOVERY / REPLAY</span>` : "—"}</td>
+                </tr>`
+            )
+            .join("\n");
+
+    attemptsSection = `<section id="section-attempts" data-section="execution-attempts">
+      <h2>Chronological Execution Attempts (${advanced.attempts.length})</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Attempt</th>
+            <th>Node ID</th>
+            <th>Kind</th>
+            <th>Status</th>
+            <th>Occurred At</th>
+            <th>Reason Code</th>
+            <th>Replay / Recovery</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${allAttemptRows}
+        </tbody>
+      </table>
+    </section>`;
+
+    const diagRows =
+      advanced.diagnostics.length === 0
+        ? `<tr><td colspan="4" class="empty-state">No execution diagnostics flagged for this run.</td></tr>`
+        : advanced.diagnostics
+            .map(
+              (d) =>
+                `<tr>
+                  <td><code>${escapeHtml(d.code)}</code></td>
+                  <td><span class="badge">${escapeHtml(d.severity)}</span></td>
+                  <td>${escapeHtml(d.observed)}<br/><small>${escapeHtml(d.explanation)}</small></td>
+                  <td>${escapeHtml(d.suggestedCheck)}</td>
+                </tr>`
+            )
+            .join("\n");
+
+    runDiagnosticsSection = `<section id="section-run-diagnostics" data-section="run-diagnostics">
+      <h2>Run Diagnostics &amp; Actionable Remediation (${advanced.diagnostics.length})</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Severity</th>
+            <th>Observed Evidence &amp; Explanation</th>
+            <th>Suggested Check / Remediation</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${diagRows}
+        </tbody>
+      </table>
+    </section>`;
+  }
 
   const timelineRows =
     t.events.length === 0
@@ -755,19 +1265,19 @@ export function renderRunDetailHtml(
       font-weight: 600;
       background: #e2e8f0;
     }
-    .compat-compatible, .run-completed, .eval-passed, .status-available, .approval-approved {
+    .compat-compatible, .run-completed, .eval-passed, .status-available, .approval-approved, .readiness-ready, .readiness-satisfied, .node-observed_completed {
       background: #dcfce7;
       color: #166534;
     }
-    .compat-not_verified, .run-waiting, .eval-registered, .eval-not_run, .status-degraded, .approval-pending {
+    .compat-not_verified, .run-waiting, .eval-registered, .eval-not_run, .status-degraded, .approval-pending, .readiness-not_verified, .node-observed_started, .node-evidence_incomplete {
       background: #fef9c3;
       color: #854d0e;
     }
-    .compat-incompatible, .run-failed, .eval-failed, .status-invalid, .trace-corrupt, .approval-rejected {
+    .compat-incompatible, .run-failed, .eval-failed, .status-invalid, .trace-corrupt, .approval-rejected, .readiness-blocked, .readiness-missing, .readiness-incompatible, .node-observed_failed {
       background: #fee2e2;
       color: #991b1b;
     }
-    .run-unknown, .compat-unavailable, .status-unavailable, .trace-unavailable {
+    .run-unknown, .compat-unavailable, .status-unavailable, .trace-unavailable, .readiness-unavailable, .node-not_observed {
       background: #f1f5f9;
       color: #475569;
     }
@@ -802,6 +1312,11 @@ export function renderRunDetailHtml(
   <nav aria-label="Control Center Navigation">
     <a href="/control-center">&larr; Back to Control Center Overview</a>
     <a href="#section-identity">Run Identity</a>
+    ${advanced ? `<a href="#section-execution-summary">Execution Summary</a>` : ""}
+    ${advanced ? `<a href="#section-node-map">Node Execution Map</a>` : ""}
+    ${advanced && selectedNodeId ? `<a href="#section-node-detail">Node Detail: ${escapeHtml(selectedNodeId)}</a>` : ""}
+    ${advanced ? `<a href="#section-attempts">Execution Attempts</a>` : ""}
+    ${advanced ? `<a href="#section-run-diagnostics">Run Diagnostics</a>` : ""}
     <a href="#section-timeline">Trace Timeline</a>
     <a href="#section-approvals">Approvals</a>
     <a href="#section-evaluations">Evaluations</a>
@@ -860,6 +1375,12 @@ export function renderRunDetailHtml(
       </tbody>
     </table>
   </section>
+
+  ${executionSummarySection}
+  ${nodeMapSection}
+  ${selectedNodeSection}
+  ${attemptsSection}
+  ${runDiagnosticsSection}
 
   <section id="section-timeline" data-section="trace-timeline">
     <h2>Trace Timeline (Bounded Chronological Projections)</h2>

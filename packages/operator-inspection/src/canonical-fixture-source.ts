@@ -1108,6 +1108,235 @@ export async function buildCanonicalTraceFixtures(): Promise<{
     },
   });
 
+  // 7. run.northstar.cr.retry (Multi-attempt Tool scenario)
+  const retryRunId = "run.northstar.cr.retry";
+  await recorder.emit({
+    type: "run.started",
+    runId: retryRunId,
+    workflowId: crWfId,
+    workflowVersion: "1.0.0",
+    span: { kind: "run" },
+    key: { run: retryRunId },
+    payload: { entryNodeId: "intake", initialStateRevision: 0, nodeCount: 16, reliabilityPolicies: [] },
+  });
+  await recorder.emit({
+    type: "node.started",
+    runId: retryRunId,
+    workflowId: crWfId,
+    workflowVersion: "1.0.0",
+    nodeId: "search",
+    span: { kind: "node", nodeId: "search", step: 1, attempt: 1 },
+    parentSpan: { kind: "run" },
+    key: { step: 1, attempt: 1 },
+    payload: { kind: "tool", step: 1, attempt: 1, maxAttempts: 2, stateRevision: 0, recoveryReplay: false },
+  });
+  await recorder.emit({
+    type: "tool.call.started",
+    runId: retryRunId,
+    workflowId: crWfId,
+    workflowVersion: "1.0.0",
+    nodeId: "search",
+    span: { kind: "tool", toolExecutionId: "tex.ns.cr.retry.1", attempt: 1 },
+    parentSpan: { kind: "node", nodeId: "search", step: 1, attempt: 1 },
+    key: { toolExecutionId: "tex.ns.cr.retry.1", attempt: 1 },
+    payload: {
+      toolRef: { id: "public_web.search", version: "1.0.0" },
+      toolExecutionId: "tex.ns.cr.retry.1",
+      attempt: 1,
+      permissionClasses: ["read_only"],
+      access: {
+        decision: "allow",
+        principalId: "user.northstar.analyst",
+        agentCeilingApplied: false,
+      },
+      recoveryReplay: false,
+    },
+  });
+  await recorder.emit({
+    type: "tool.call.failed",
+    runId: retryRunId,
+    workflowId: crWfId,
+    workflowVersion: "1.0.0",
+    nodeId: "search",
+    span: { kind: "tool", toolExecutionId: "tex.ns.cr.retry.1", attempt: 1 },
+    parentSpan: { kind: "node", nodeId: "search", step: 1, attempt: 1 },
+    key: { toolExecutionId: "tex.ns.cr.retry.1", attempt: 1 },
+    payload: {
+      toolRef: { id: "public_web.search", version: "1.0.0" },
+      toolExecutionId: "tex.ns.cr.retry.1",
+      attempt: 1,
+      code: "PROVIDER_TIMEOUT",
+      retryable: true,
+      category: "EXECUTION",
+    },
+  });
+  await recorder.emit({
+    type: "tool.call.started",
+    runId: retryRunId,
+    workflowId: crWfId,
+    workflowVersion: "1.0.0",
+    nodeId: "search",
+    span: { kind: "tool", toolExecutionId: "tex.ns.cr.retry.2", attempt: 2 },
+    parentSpan: { kind: "node", nodeId: "search", step: 1, attempt: 1 },
+    key: { toolExecutionId: "tex.ns.cr.retry.2", attempt: 2 },
+    payload: {
+      toolRef: { id: "public_web.search", version: "1.0.0" },
+      toolExecutionId: "tex.ns.cr.retry.2",
+      attempt: 2,
+      permissionClasses: ["read_only"],
+      access: {
+        decision: "allow",
+        principalId: "user.northstar.analyst",
+        agentCeilingApplied: false,
+      },
+      recoveryReplay: false,
+    },
+  });
+  await recorder.emit({
+    type: "tool.call.completed",
+    runId: retryRunId,
+    workflowId: crWfId,
+    workflowVersion: "1.0.0",
+    nodeId: "search",
+    span: { kind: "tool", toolExecutionId: "tex.ns.cr.retry.2", attempt: 2 },
+    parentSpan: { kind: "node", nodeId: "search", step: 1, attempt: 1 },
+    key: { toolExecutionId: "tex.ns.cr.retry.2", attempt: 2 },
+    payload: {
+      toolRef: { id: "public_web.search", version: "1.0.0" },
+      toolExecutionId: "tex.ns.cr.retry.2",
+      attempt: 2,
+      permissionClasses: ["read_only"],
+      result: "success",
+    },
+  });
+  await recorder.emit({
+    type: "node.completed",
+    runId: retryRunId,
+    workflowId: crWfId,
+    workflowVersion: "1.0.0",
+    nodeId: "search",
+    span: { kind: "node", nodeId: "search", step: 1, attempt: 1 },
+    parentSpan: { kind: "run" },
+    key: { step: 1, attempt: 1 },
+    payload: {
+      kind: "tool",
+      step: 1,
+      attemptCount: 2,
+      stateRevisionBefore: 0,
+      stateRevisionAfter: 1,
+      outcomeSource: "executor",
+    },
+  });
+  await recorder.emit({
+    type: "run.completed",
+    runId: retryRunId,
+    workflowId: crWfId,
+    workflowVersion: "1.0.0",
+    span: { kind: "run" },
+    key: { run: retryRunId },
+    payload: { finalNodeId: "final", stateRevision: 1, steps: 1 },
+  });
+
+  // 8. run.northstar.ops.recovery (Recovery/Replay scenario)
+  const recoveryRunId = "run.northstar.ops.recovery";
+  await recorder.emit({
+    type: "run.started",
+    runId: recoveryRunId,
+    workflowId: opsWfId,
+    workflowVersion: "1.0.0",
+    span: { kind: "run" },
+    key: { run: recoveryRunId },
+    payload: { entryNodeId: "intake", initialStateRevision: 0, nodeCount: 9, reliabilityPolicies: [] },
+  });
+  await recorder.emit({
+    type: "recovery.started",
+    runId: recoveryRunId,
+    workflowId: opsWfId,
+    workflowVersion: "1.0.0",
+    span: { kind: "run" },
+    key: { recovery: recoveryRunId },
+    payload: {
+      checkpointId: "chk.ns.ops.001",
+      checkpointSequence: 0,
+      runStatus: "RUNNING",
+      stateRevision: 0,
+      currentNodeId: "intake",
+    },
+  });
+  await recorder.emit({
+    type: "recovery.replayed",
+    runId: recoveryRunId,
+    workflowId: opsWfId,
+    workflowVersion: "1.0.0",
+    nodeId: "intake",
+    span: { kind: "node", nodeId: "intake", step: 1, attempt: 1 },
+    parentSpan: { kind: "run" },
+    key: { step: 1, attempt: 1 },
+    payload: {
+      operationId: "op.replayed.intake",
+      step: 1,
+      attempt: 1,
+      recoveryReplayCount: 1,
+    },
+  });
+  await recorder.emit({
+    type: "node.started",
+    runId: recoveryRunId,
+    workflowId: opsWfId,
+    workflowVersion: "1.0.0",
+    nodeId: "intake",
+    span: { kind: "node", nodeId: "intake", step: 1, attempt: 1 },
+    parentSpan: { kind: "run" },
+    key: { step: 1, attempt: 1 },
+    payload: {
+      kind: "deterministic",
+      step: 1,
+      attempt: 1,
+      maxAttempts: 1,
+      stateRevision: 0,
+      recoveryReplay: true,
+    },
+  });
+  await recorder.emit({
+    type: "node.completed",
+    runId: recoveryRunId,
+    workflowId: opsWfId,
+    workflowVersion: "1.0.0",
+    nodeId: "intake",
+    span: { kind: "node", nodeId: "intake", step: 1, attempt: 1 },
+    parentSpan: { kind: "run" },
+    key: { step: 1, attempt: 1 },
+    payload: {
+      kind: "deterministic",
+      step: 1,
+      attemptCount: 1,
+      stateRevisionBefore: 0,
+      stateRevisionAfter: 1,
+      outcomeSource: "recovered",
+    },
+  });
+  await recorder.emit({
+    type: "recovery.completed",
+    runId: recoveryRunId,
+    workflowId: opsWfId,
+    workflowVersion: "1.0.0",
+    span: { kind: "run" },
+    key: { recovery: recoveryRunId },
+    payload: {
+      fromCheckpointSequence: 0,
+      toCheckpointSequence: 0,
+    },
+  });
+  await recorder.emit({
+    type: "run.completed",
+    runId: recoveryRunId,
+    workflowId: opsWfId,
+    workflowVersion: "1.0.0",
+    span: { kind: "run" },
+    key: { run: recoveryRunId },
+    payload: { finalNodeId: "final", stateRevision: 1, steps: 1 },
+  });
+
   const tracesByRunId: Record<string, readonly TraceEvent[]> = {
     [crRunId]: await store.getRunTrace(crRunId),
     [diRunId]: await store.getRunTrace(diRunId),
@@ -1115,6 +1344,8 @@ export async function buildCanonicalTraceFixtures(): Promise<{
     [arbOpsRunId]: await store.getRunTrace(arbOpsRunId),
     [failedRunId]: await store.getRunTrace(failedRunId),
     [incompleteRunId]: await store.getRunTrace(incompleteRunId),
+    [retryRunId]: await store.getRunTrace(retryRunId),
+    [recoveryRunId]: await store.getRunTrace(recoveryRunId),
   };
 
   return { tracesByRunId };
@@ -1272,6 +1503,26 @@ export const CANONICAL_RUN_RECORDS: Readonly<Record<string, RunRecord>> = Object
     updatedAt: "2026-02-01T10:00:50.000Z",
     currentNodeId: "search",
   },
+  "run.northstar.cr.retry": {
+    schemaVersion: 1,
+    runId: "run.northstar.cr.retry",
+    workflowId: "company_research.proof",
+    workflowVersion: "1.0.0",
+    status: "COMPLETED",
+    createdAt: "2026-02-01T10:01:00.000Z",
+    updatedAt: "2026-02-01T10:01:10.000Z",
+    currentNodeId: "search",
+  },
+  "run.northstar.ops.recovery": {
+    schemaVersion: 1,
+    runId: "run.northstar.ops.recovery",
+    workflowId: "operational_request.proof",
+    workflowVersion: "1.0.0",
+    status: "COMPLETED",
+    createdAt: "2026-02-01T10:01:15.000Z",
+    updatedAt: "2026-02-01T10:01:25.000Z",
+    currentNodeId: "intake",
+  },
 });
 
 export const CANONICAL_DEMO_PROVENANCE: OperatorSourceProvenance = Object.freeze({
@@ -1290,6 +1541,7 @@ export interface CanonicalDemoInspectionSourceOptions {
     Record<string, Readonly<Record<string, TrustedProofRegistrationEvidence | undefined>>>
   >;
   readonly provenance?: OperatorSourceProvenance;
+  readonly includeExtendedRuns?: boolean;
 }
 
 export async function createCanonicalDemoInspectionSource(
@@ -1352,6 +1604,26 @@ export async function createCanonicalDemoInspectionSource(
       traceEvents: tracesByRunId["run.arbor.cr.incomplete"],
       workflow: CANONICAL_COMPANY_RESEARCH_WORKFLOW,
     },
+    ...(options.includeExtendedRuns
+      ? [
+          {
+            runId: "run.northstar.cr.retry",
+            companyId: "northstar-commerce",
+            packIdentity: "aao.company-research@1.0.0",
+            authoritativeRun: CANONICAL_RUN_RECORDS["run.northstar.cr.retry"],
+            traceEvents: tracesByRunId["run.northstar.cr.retry"],
+            workflow: CANONICAL_COMPANY_RESEARCH_WORKFLOW,
+          },
+          {
+            runId: "run.northstar.ops.recovery",
+            companyId: "northstar-commerce",
+            packIdentity: "aao.operational-request@1.0.0",
+            authoritativeRun: CANONICAL_RUN_RECORDS["run.northstar.ops.recovery"],
+            traceEvents: tracesByRunId["run.northstar.ops.recovery"],
+            workflow: CANONICAL_OPERATIONAL_REQUEST_WORKFLOW,
+          },
+        ]
+      : []),
   ];
 
   return createEvidenceBackedInspectionSource({

@@ -40,6 +40,19 @@ export {
   RunInspectionSchema,
   OverviewCountsSchema,
   OverviewInspectionSchema,
+  IntegrationDiagnosticStatusSchema,
+  IntegrationRequirementCategorySchema,
+  IntegrationRequirementStatusSchema,
+  IntegrationRequirementDiagnosticSchema,
+  IntegrationDiagnosticSchema,
+  IntegrationDiagnosticReportSchema,
+  NodeExecutionStatusSchema,
+  TokenUsageSummarySchema,
+  NodeAttemptInspectionSchema,
+  NodeExecutionInspectionSchema,
+  ExecutionAttemptSummarySchema,
+  RunDiagnosticSchema,
+  AdvancedRunInspectionSchema,
   findForbiddenInspectionKeys,
   type SourceAvailabilityStatus,
   type OperatorSourceMode,
@@ -67,6 +80,19 @@ export {
   type RunInspection,
   type OverviewCounts,
   type OverviewInspection,
+  type IntegrationDiagnosticStatus,
+  type IntegrationRequirementCategory,
+  type IntegrationRequirementStatus,
+  type IntegrationRequirementDiagnostic,
+  type IntegrationDiagnostic,
+  type IntegrationDiagnosticReport,
+  type NodeExecutionStatus,
+  type TokenUsageSummary,
+  type NodeAttemptInspection,
+  type NodeExecutionInspection,
+  type ExecutionAttemptSummary,
+  type RunDiagnostic,
+  type AdvancedRunInspection,
 } from "./contracts.js";
 
 export {
@@ -82,12 +108,15 @@ export {
   mapAuthoritativeRunStatus,
   projectRunSummary,
   projectRunInspection,
+  projectIntegrationDiagnostics,
+  projectAdvancedRunInspection,
   type ProjectCompanyInput,
   type TrustedProofRegistrationEvidence,
   type ProjectPackCompatibilityInput,
   type RawEvaluationEvidence,
   type ProjectTraceInspectionOptions,
   type KnownRunEvidence,
+  type ProjectIntegrationDiagnosticsInput,
 } from "./projections.js";
 
 export {
@@ -138,4 +167,14 @@ export {
   formatEvaluationsText,
   formatApprovalsText,
   formatOverviewText,
+  formatIntegrationDiagnosticsText,
+  formatAdvancedRunInspectionNodesText,
+  formatAdvancedRunInspectionTimelineText,
 } from "./formatters.js";
+
+export {
+  DETERMINISTIC_REMEDIATION_MAP,
+  getRemediationForCode,
+  describeRunFailure,
+  type RunDiagnosticDescriptor,
+} from "./remediation.js";
