@@ -9,7 +9,7 @@
   "scripts": {
     "dev:control-plane": "tsx watch apps/control-plane/src/server.ts",
     "dev:worker": "tsx watch apps/worker/src/main.ts",
-    "typecheck": "pnpm -r --if-present run typecheck",
+    "typecheck": "pnpm build && pnpm -r --if-present run typecheck",
     "lint": "eslint . --max-warnings=0",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -25,7 +25,7 @@
     "proof:company-portability": "pnpm --silent --filter \"@aao/example-company-portability...\" run build 1>&2 && node examples/company-portability/dist/demo/run.js",
     "proof:capability-packs": "pnpm --silent --filter \"@aao/example-capability-packs...\" run build 1>&2 && node examples/capability-packs/dist/demo/run.js",
     "proof:operator-inspection": "pnpm --silent --filter \"@aao/example-operator-inspection...\" run build 1>&2 && node examples/operator-inspection/dist/demo/run.js",
-    "check": "pnpm run typecheck && pnpm run lint && pnpm run build && pnpm run test && node packages/framework/dist/cli/main.js eval ci && node packages/framework/dist/cli/main.js eval adapters"
+    "check": "pnpm run typecheck && pnpm run lint && pnpm run test && node packages/framework/dist/cli/main.js eval ci && node packages/framework/dist/cli/main.js eval adapters"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
