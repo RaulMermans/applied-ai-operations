@@ -5,7 +5,7 @@ on:
     branches: [main]
   pull_request:
 
-# CI is verification only: it typechecks, lints, builds, and tests the
+# CI is verification only: it builds, typechecks, lints, and tests the
 # repository, then runs the deterministic Eval quality gate and adapter
 # conformance (Sprint 18, ADR-023), in that order, matching the canonical
 # "pnpm check" sequence. Since Sprint 19 (ADR-024) the Eval commands are the
@@ -43,14 +43,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Typecheck
+      - name: Build and typecheck
         run: pnpm typecheck
 
       - name: Lint
         run: pnpm lint
-
-      - name: Build
-        run: pnpm build
 
       - name: Test
         run: pnpm test
