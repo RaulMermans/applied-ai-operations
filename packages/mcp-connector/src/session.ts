@@ -8,7 +8,10 @@ import { z } from "zod";
 import { cloneJson, isWireJson } from "./json.js";
 import { McpConnectorError, type McpDiscoveredTool, type McpSession, type McpSessionState, type McpStdioConfig } from "./types.js";
 
-const ConfigSchema = z.object({ command: z.string().min(1), args: z.array(z.string()).optional() }).strict();
+// Host-owned launch config, bounded. spawn() runs without a shell and the SDK forwards only its safe default env
+// (HOME, PATH, ...); `env`/`cwd` are refused by `.strict()`. NUL bytes would be truncated by the OS, so they are refused.
+const LaunchString = z.string().min(1).max(4096).refine((value) => !value.includes("\u0000"));
+const ConfigSchema = z.object({ command: LaunchString, args: z.array(z.string().max(4096).refine((value) => !value.includes("\u0000"))).max(64).optional() }).strict();
 // Match the installed SDK's bounded schema envelope; do not translate dialects.
 const RemoteSchemaShape = z.object({
   type: z.literal("object"),

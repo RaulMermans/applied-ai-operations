@@ -4,6 +4,9 @@ import {
   type CompanyManifestV1,
   type EnabledProof,
 } from "@aao/config";
+import { createHash } from "node:crypto";
+import { ApprovalError } from "@aao/approval";
+import { JsonValueSchema, canonicalJsonStringify, type ApprovalRecord, type AuditPort, type JsonValue, type Principal } from "@aao/contracts";
 import type {
   AAOApprovals,
   AAOClock,
@@ -38,9 +41,11 @@ import {
 } from "@aao/example-operational-request";
 import type { HostCapabilityCatalog } from "./catalog.js";
 import {
+  CompanyAdmissionError,
   requireCompanyAdmission,
   type RequireCompanyAdmissionContext,
 } from "./admission.js";
+import type { AttestedActor, RunBindingStore, TrustedHostIdentity } from "./run-binding.js";
 
 export type { ProofRegistrationSnapshot };
 
@@ -56,9 +61,26 @@ export interface CreateCompanyAAOOptions {
   readonly manifest: CompanyManifestV1 | unknown;
   /** The host's trusted capability catalog. */
   readonly hostCapabilities: HostCapabilityCatalog;
-  /** The host-attested principal resolver for this company's runs. */
-  readonly principalForRun: PrincipalForRun;
+  /**
+   * Demonstration identity mode: a host resolver from Run ID to principal.
+   * Whatever it reads, the Run ID is caller-chosen, so this mode is only as
+   * trustworthy as the host function. Exactly one of `principalForRun` or
+   * `trustedIdentity` is required.
+   */
+  readonly principalForRun?: PrincipalForRun;
+  /**
+   * Hardened identity mode (ADR-034): every entry point takes a host-minted
+   * `AttestedActor`, binds it to the Run once in `runBindings`, and all later
+   * identity (Tool Authorization, Approval requester) reads that binding.
+   * Share one `runBindings` store across companies so Run IDs cannot collide.
+   */
+  readonly trustedIdentity?: {
+    readonly identity: TrustedHostIdentity;
+    readonly runBindings: RunBindingStore;
+  };
   readonly trace?: RuntimeTracePort;
+  /** Emit-only Audit port for the Operational Request proof's canonical Approval and Tool access events. */
+  readonly audit?: AuditPort;
   readonly clock?: AAOClock;
   /**
    * Optional per-proof registration overrides for testing actual proof registration
@@ -82,6 +104,7 @@ export interface CompanyResearchFacade {
   run(input: {
     runId: string;
     request: CompanyResearchRequestInput;
+    actor?: AttestedActor;
   }): Promise<CompanyResearchRunOutcome>;
 }
 
@@ -96,6 +119,7 @@ export interface DocumentIntelligenceFacade {
   run(input: {
     runId: string;
     request: DocumentIntelligenceRequestInput;
+    actor?: AttestedActor;
   }): Promise<DocumentIntelligenceRunOutcome>;
 }
 
@@ -108,12 +132,25 @@ export interface OperationalRequestFacade {
   readonly workflow: Workflow;
   readonly planFingerprint: string;
   readonly registrationSnapshot: ProofRegistrationSnapshot;
-  readonly approvals: AAOApprovals;
+  readonly approvals: CompanyApprovals;
   execute(input: {
     runId: string;
     request: OperationalRequestInput;
+    actor?: AttestedActor;
   }): Promise<WorkflowExecutionResult>;
-  continue(execution: RuntimeExecutionState): Promise<WorkflowExecutionResult>;
+  /** In hardened mode `actor` is required and `execution` must be exactly the state this facade returned at the wait. */
+  continue(execution: RuntimeExecutionState, actor?: AttestedActor): Promise<WorkflowExecutionResult>;
+}
+
+/**
+ * The canonical Approval facade. In hardened identity mode the approver must
+ * be a host-minted `AttestedActor`; a bare `Principal` (a caller-controlled
+ * `resolvedBy`) is refused with `APPROVAL_IDENTITY_ATTESTATION_REQUIRED`.
+ */
+export interface CompanyApprovals {
+  get(approvalId: string): ApprovalRecord | undefined;
+  approve(approvalId: string, approver: Principal | AttestedActor): ApprovalRecord;
+  reject(approvalId: string, approver: Principal | AttestedActor): ApprovalRecord;
 }
 
 export interface ComposedCompanyAAO {
@@ -130,21 +167,31 @@ export interface ComposedCompanyAAO {
   runCompanyResearch(input: {
     runId: string;
     request: CompanyResearchRequestInput;
+    actor?: AttestedActor;
   }): Promise<CompanyResearchRunOutcome>;
 
   runDocumentIntelligence(input: {
     runId: string;
     request: DocumentIntelligenceRequestInput;
+    actor?: AttestedActor;
   }): Promise<DocumentIntelligenceRunOutcome>;
 
   executeOperationalRequest(input: {
     runId: string;
     request: OperationalRequestInput;
+    actor?: AttestedActor;
   }): Promise<WorkflowExecutionResult>;
 
   continueOperationalRequest(
-    execution: RuntimeExecutionState
+    execution: RuntimeExecutionState,
+    actor?: AttestedActor
   ): Promise<WorkflowExecutionResult>;
+}
+
+/** SHA-256 of the canonical JSON execution. Throws on non-JSON state: JSON.stringify would silently drop it. */
+function executionDigest(execution: RuntimeExecutionState): string {
+  if (!JsonValueSchema.safeParse(execution).success) throw new Error("CONTINUATION_STATE_NOT_JSON");
+  return createHash("sha256").update(canonicalJsonStringify(execution as unknown as JsonValue), "utf8").digest("hex");
 }
 
 /**
@@ -161,23 +208,140 @@ export interface ComposedCompanyAAO {
  * 7. Guarded facades prevent getter bypass of admission boundaries.
  */
 export function createCompanyAAO(options: CreateCompanyAAOOptions): ComposedCompanyAAO {
-  if (typeof options.principalForRun !== "function") {
+  const trusted = options.trustedIdentity;
+  const hasResolver = typeof options.principalForRun === "function";
+  const hasTrusted =
+    trusted !== undefined &&
+    typeof trusted.identity?.resolve === "function" &&
+    typeof trusted.runBindings?.claim === "function";
+  // Exactly one identity source: no fallback from one mode to the other.
+  if (hasResolver === hasTrusted || (trusted !== undefined && !hasTrusted)) {
     throw new CompanyConfigError(
       "CONFIG_SCOPE_MISMATCH",
-      "createCompanyAAO requires a trusted host principalForRun function"
+      "createCompanyAAO requires exactly one trusted identity source: principalForRun or trustedIdentity"
     );
   }
 
   // 1. Strict preflight validation and fingerprinting
   const { manifest, configFingerprint } = validateCompanyManifest(options.manifest);
 
+  // In hardened mode the only identity source after admission is the immutable Run binding.
+  const principalForRun: PrincipalForRun = hasTrusted
+    ? ({ runId }) => {
+        const binding = trusted!.runBindings.get(runId);
+        if (!binding || binding.companyId !== manifest.companyId) throw new Error("RUN_BINDING_MISSING");
+        return { id: binding.principal.id, type: binding.principal.type };
+      }
+    : options.principalForRun!;
+
   // 2. Compile canonical Governance registry for admission gating
   const governanceRegistry = createGovernanceRegistry(manifest.governance);
   const admissionContext: RequireCompanyAdmissionContext = Object.freeze({
     companyId: manifest.companyId,
     governanceRegistry,
-    principalForRun: options.principalForRun,
+    principalForRun,
   });
+  const clock = options.clock ?? { now: () => new Date().toISOString() };
+  const deny = (proof: EnabledProof, runId: unknown, reasonCode: string): never => {
+    throw new CompanyAdmissionError({
+      companyId: manifest.companyId,
+      proof,
+      runId: typeof runId === "string" ? runId : "",
+      reasonCode,
+    });
+  };
+  const attestedPrincipal = (proof: EnabledProof, runId: unknown, actor: unknown): Principal => {
+    const principal = trusted!.identity.resolve(actor);
+    return principal ?? deny(proof, runId, "IDENTITY_ATTESTATION_REQUIRED");
+  };
+
+  /**
+   * Pre-execution admission. Hardened mode: attested actor → canonical
+   * Governance admission → atomic Run binding claim, all before any node runs.
+   */
+  const admit = (runId: string, proof: EnabledProof, actor: unknown, workflowFingerprint: string): void => {
+    if (!hasTrusted) {
+      if (actor !== undefined) deny(proof, runId, "IDENTITY_MODE_MISMATCH");
+      requireCompanyAdmission(admissionContext, runId, proof);
+      return;
+    }
+    const principal = attestedPrincipal(proof, runId, actor);
+    requireCompanyAdmission({ ...admissionContext, principalForRun: () => principal }, runId, proof);
+    const claim = trusted!.runBindings.claim({
+      schemaVersion: 1,
+      runId,
+      companyId: manifest.companyId,
+      principal,
+      proofRef: proof,
+      configurationFingerprint: configFingerprint,
+      workflowFingerprint,
+      createdAt: clock.now(),
+    });
+    if (!claim.ok) deny(proof, runId, claim.code);
+  };
+
+  /** Records the exact waiting execution so continuation can only resume that state. */
+  const recordWait = (result: WorkflowExecutionResult): WorkflowExecutionResult => {
+    const execution = result.execution;
+    const wait = execution?.wait;
+    if (hasTrusted && execution && wait?.kind === "approval" && execution.run.status === "WAITING_FOR_APPROVAL") {
+      // A conflicting re-record leaves the first digest in place, so continuation of the new state fails closed.
+      trusted!.runBindings.recordWaitpoint(execution.run.runId, wait.referenceId, executionDigest(execution));
+    }
+    return result;
+  };
+
+  /**
+   * Continuation admission. Hardened mode verifies, in order: attested actor,
+   * canonical admission, the immutable binding (company, proof, config and
+   * Workflow fingerprints), and that `execution` is byte-for-byte the state
+   * recorded at the wait. Only then may the proof verify Approval and attest origin.
+   */
+  const admitContinuation = (execution: RuntimeExecutionState, actor: unknown, workflowFingerprint: string): void => {
+    const runId = execution?.run?.runId;
+    if (!hasTrusted) {
+      if (actor !== undefined) deny("operational_request", runId, "IDENTITY_MODE_MISMATCH");
+      requireCompanyAdmission(admissionContext, runId, "operational_request");
+      return;
+    }
+    const principal = attestedPrincipal("operational_request", runId, actor);
+    requireCompanyAdmission({ ...admissionContext, principalForRun: () => principal }, runId, "operational_request");
+    const binding = trusted!.runBindings.get(runId);
+    if (
+      !binding ||
+      binding.companyId !== manifest.companyId ||
+      binding.proofRef !== "operational_request" ||
+      binding.configurationFingerprint !== configFingerprint ||
+      binding.workflowFingerprint !== workflowFingerprint
+    ) {
+      deny("operational_request", runId, "RUN_BINDING_MISMATCH");
+    }
+    const approvalId = execution.wait?.referenceId;
+    let digest: string | undefined;
+    try {
+      digest = executionDigest(execution);
+    } catch {
+      digest = undefined;
+    }
+    const recorded = typeof approvalId === "string" ? trusted!.runBindings.getWaitpoint(runId, approvalId) : undefined;
+    if (digest === undefined || recorded === undefined || recorded !== digest) {
+      deny("operational_request", runId, "CONTINUATION_STATE_MISMATCH");
+    }
+  };
+
+  const companyApprovals = (approvals: AAOApprovals): CompanyApprovals => {
+    const approver = (input: unknown): Principal => {
+      if (!hasTrusted) return input as Principal;
+      const principal = trusted!.identity.resolve(input);
+      if (!principal) throw new ApprovalError("APPROVAL_IDENTITY_ATTESTATION_REQUIRED");
+      return principal;
+    };
+    return Object.freeze({
+      get: (approvalId: string) => approvals.get(approvalId),
+      approve: (approvalId: string, input: Principal | AttestedActor) => approvals.approve(approvalId, approver(input)),
+      reject: (approvalId: string, input: Principal | AttestedActor) => approvals.reject(approvalId, approver(input)),
+    });
+  };
 
   // 3. Resolve model bindings and adapters
   const resolvedBindings: ModelBindingDefinition[] = [];
@@ -250,7 +414,7 @@ export function createCompanyAAO(options: CreateCompanyAAOOptions): ComposedComp
       modelBindings: crOverrides?.modelBindings ?? resolvedModelBindings,
       researchProvider,
       governance: manifest.governance,
-      principalForRun: options.principalForRun,
+      principalForRun,
       ...(crOverrides?.tools !== undefined ? { tools: crOverrides.tools } : {}),
       ...(crOverrides?.modelPolicies !== undefined ? { modelPolicies: crOverrides.modelPolicies } : {}),
       ...(options.trace ? { trace: options.trace } : {}),
@@ -278,7 +442,7 @@ export function createCompanyAAO(options: CreateCompanyAAOOptions): ComposedComp
       modelBindings: diOverrides?.modelBindings ?? resolvedModelBindings,
       documentSourceProvider,
       governance: manifest.governance,
-      principalForRun: options.principalForRun,
+      principalForRun,
       ...(diOverrides?.tools !== undefined ? { tools: diOverrides.tools } : {}),
       ...(diOverrides?.modelPolicies !== undefined ? { modelPolicies: diOverrides.modelPolicies } : {}),
       ...(options.trace ? { trace: options.trace } : {}),
@@ -306,7 +470,8 @@ export function createCompanyAAO(options: CreateCompanyAAOOptions): ComposedComp
       modelBindings: orOverrides?.modelBindings ?? resolvedModelBindings,
       draftRepository,
       governance: manifest.governance,
-      principalForRun: options.principalForRun,
+      principalForRun,
+      ...(options.audit ? { audit: options.audit } : {}),
       ...(orOverrides?.tools !== undefined ? { tools: orOverrides.tools } : {}),
       ...(orOverrides?.modelPolicies !== undefined ? { modelPolicies: orOverrides.modelPolicies } : {}),
       ...(options.trace ? { trace: options.trace } : {}),
@@ -326,9 +491,10 @@ export function createCompanyAAO(options: CreateCompanyAAOOptions): ComposedComp
         async run(input: {
           runId: string;
           request: CompanyResearchRequestInput;
+          actor?: AttestedActor;
         }): Promise<CompanyResearchRunOutcome> {
-          requireCompanyAdmission(admissionContext, input.runId, "company_research");
-          return companyResearchProof!.run(input);
+          admit(input.runId, "company_research", input.actor, companyResearchProof!.planFingerprint);
+          return companyResearchProof!.run({ runId: input.runId, request: input.request });
         },
       })
     : undefined;
@@ -342,9 +508,10 @@ export function createCompanyAAO(options: CreateCompanyAAOOptions): ComposedComp
           async run(input: {
             runId: string;
             request: DocumentIntelligenceRequestInput;
+            actor?: AttestedActor;
           }): Promise<DocumentIntelligenceRunOutcome> {
-            requireCompanyAdmission(admissionContext, input.runId, "document_intelligence");
-            return documentIntelligenceProof!.run(input);
+            admit(input.runId, "document_intelligence", input.actor, documentIntelligenceProof!.planFingerprint);
+            return documentIntelligenceProof!.run({ runId: input.runId, request: input.request });
           },
         })
       : undefined;
@@ -355,20 +522,17 @@ export function createCompanyAAO(options: CreateCompanyAAOOptions): ComposedComp
           workflow: operationalRequestProof.workflow,
           planFingerprint: operationalRequestProof.planFingerprint,
           registrationSnapshot: operationalRequestProof.registrationSnapshot,
-          approvals: operationalRequestProof.approvals,
+          approvals: companyApprovals(operationalRequestProof.approvals),
           async execute(input: {
             runId: string;
             request: OperationalRequestInput;
+            actor?: AttestedActor;
           }): Promise<WorkflowExecutionResult> {
-            requireCompanyAdmission(admissionContext, input.runId, "operational_request");
-            return operationalRequestProof!.execute(input);
+            admit(input.runId, "operational_request", input.actor, operationalRequestProof!.planFingerprint);
+            return recordWait(await operationalRequestProof!.execute({ runId: input.runId, request: input.request }));
           },
-          async continue(execution: RuntimeExecutionState): Promise<WorkflowExecutionResult> {
-            requireCompanyAdmission(
-              admissionContext,
-              execution?.run?.runId,
-              "operational_request"
-            );
+          async continue(execution: RuntimeExecutionState, actor?: AttestedActor): Promise<WorkflowExecutionResult> {
+            admitContinuation(execution, actor, operationalRequestProof!.planFingerprint);
             return operationalRequestProof!.continue(execution);
           },
         })
@@ -414,6 +578,7 @@ export function createCompanyAAO(options: CreateCompanyAAOOptions): ComposedComp
     async runCompanyResearch(input: {
       runId: string;
       request: CompanyResearchRequestInput;
+      actor?: AttestedActor;
     }): Promise<CompanyResearchRunOutcome> {
       if (!companyResearchProof) {
         throw new CompanyConfigError(
@@ -421,7 +586,7 @@ export function createCompanyAAO(options: CreateCompanyAAOOptions): ComposedComp
           `Proof 'company_research' is disabled for company '${manifest.companyId}'`
         );
       }
-      requireCompanyAdmission(admissionContext, input.runId, "company_research");
+      admit(input.runId, "company_research", input.actor, companyResearchProof.planFingerprint);
       const canonicalRequest = {
         schemaVersion: 1 as const,
         company: input.request.company,
@@ -433,6 +598,7 @@ export function createCompanyAAO(options: CreateCompanyAAOOptions): ComposedComp
     async runDocumentIntelligence(input: {
       runId: string;
       request: DocumentIntelligenceRequestInput;
+      actor?: AttestedActor;
     }): Promise<DocumentIntelligenceRunOutcome> {
       if (!documentIntelligenceProof) {
         throw new CompanyConfigError(
@@ -440,13 +606,14 @@ export function createCompanyAAO(options: CreateCompanyAAOOptions): ComposedComp
           `Proof 'document_intelligence' is disabled for company '${manifest.companyId}'`
         );
       }
-      requireCompanyAdmission(admissionContext, input.runId, "document_intelligence");
-      return documentIntelligenceProof.run(input);
+      admit(input.runId, "document_intelligence", input.actor, documentIntelligenceProof.planFingerprint);
+      return documentIntelligenceProof.run({ runId: input.runId, request: input.request });
     },
 
     async executeOperationalRequest(input: {
       runId: string;
       request: OperationalRequestInput;
+      actor?: AttestedActor;
     }): Promise<WorkflowExecutionResult> {
       if (!operationalRequestProof) {
         throw new CompanyConfigError(
@@ -454,12 +621,13 @@ export function createCompanyAAO(options: CreateCompanyAAOOptions): ComposedComp
           `Proof 'operational_request' is disabled for company '${manifest.companyId}'`
         );
       }
-      requireCompanyAdmission(admissionContext, input.runId, "operational_request");
-      return operationalRequestProof.execute(input);
+      admit(input.runId, "operational_request", input.actor, operationalRequestProof.planFingerprint);
+      return recordWait(await operationalRequestProof.execute({ runId: input.runId, request: input.request }));
     },
 
     async continueOperationalRequest(
-      execution: RuntimeExecutionState
+      execution: RuntimeExecutionState,
+      actor?: AttestedActor
     ): Promise<WorkflowExecutionResult> {
       if (!operationalRequestProof) {
         throw new CompanyConfigError(
@@ -467,11 +635,7 @@ export function createCompanyAAO(options: CreateCompanyAAOOptions): ComposedComp
           `Proof 'operational_request' is disabled for company '${manifest.companyId}'`
         );
       }
-      requireCompanyAdmission(
-        admissionContext,
-        execution?.run?.runId,
-        "operational_request"
-      );
+      admitContinuation(execution, actor, operationalRequestProof.planFingerprint);
       return operationalRequestProof.continue(execution);
     },
   });

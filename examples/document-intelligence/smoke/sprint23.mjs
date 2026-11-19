@@ -268,10 +268,11 @@ try {
   const tarball = readdirSync(packDir).find((file) => file.endsWith('.tgz'));
   assert(tarball, 'pnpm pack produced no tarball');
   entries = execFileSync('tar', ['-tzf', join(packDir, tarball)], { encoding: 'utf8' }).trim().split('\n').sort();
-  const unexpected = entries.filter((entry) => !/^package\/(package\.json|README\.md|dist\/.+\.(js|d\.ts))$/.test(entry));
+  const unexpected = entries.filter((entry) => !/^package\/(package\.json|README\.md|LICENSE|dist\/.+\.(js|d\.ts))$/.test(entry));
   assert(unexpected.length === 0, `unexpected packed files: ${unexpected.join(', ')}`);
   for (const required of [
     'package/package.json',
+    'package/LICENSE',
     'package/README.md',
     'package/dist/index.js',
     'package/dist/index.d.ts',

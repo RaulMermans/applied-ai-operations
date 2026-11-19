@@ -17,7 +17,20 @@ export {
   type CompanyResearchFacade,
   type DocumentIntelligenceFacade,
   type OperationalRequestFacade,
+  type CompanyApprovals,
 } from "./composition.js";
+
+export {
+  createTrustedHostIdentity,
+  createInMemoryRunBindingStore,
+  createFileRunBindingStore,
+  TrustedRunBindingSchema,
+  type AttestedActor,
+  type TrustedHostIdentity,
+  type TrustedRunBinding,
+  type RunBindingStore,
+  type RunBindingFailureCode,
+} from "./run-binding.js";
 
 export {
   CompanyAdmissionError,
