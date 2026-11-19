@@ -1,4 +1,4 @@
-import { createAAO, defineModelPolicy, type AAOClock, type GovernanceConfiguration, type JsonValue, type ModelAdapterDefinition, type ModelBindingDefinition, type ModelPolicySpec, type PrincipalForRun, type ReliabilityPolicy, type RuntimeFailure, type RuntimeTracePort, type ToolDefinition, type Workflow, type WorkflowExecutionResult } from "@aao/framework";
+import { createAAO, defineModelPolicy, type AAOClock, type AAOOptions, type GovernanceConfiguration, type JsonValue, type ModelAdapterDefinition, type ModelBindingDefinition, type ModelPolicySpec, type PrincipalForRun, type ReliabilityPolicy, type RuntimeFailure, type RuntimeTracePort, type ToolDefinition, type Workflow, type WorkflowExecutionResult } from "@aao/framework";
 import { createPublicWebTools, type PublicWebProvider } from "@aao/integration-public-web";
 import { coreToolbox, selectToolboxTools } from "@aao/toolbox";
 import type { CompanyResearchRequestInput, CompanyResearchResult } from "./contracts.js";
@@ -28,6 +28,8 @@ export interface CompanyResearchProofOptions {
   /** Optional explicit Model Policy list override for registration testing. */
   modelPolicies?: readonly ModelPolicySpec[];
   trace?: RuntimeTracePort;
+  /** Optional emit-only canonical Audit port forwarded to `createAAO`. Evidence, not permission. */
+  audit?: AAOOptions["audit"];
   clock?: AAOClock;
   /** Trusted per-node Runtime reliability policy (for example `{ search: { maxAttempts: 2 } }`). Default: one attempt everywhere. */
   reliability?: Readonly<Record<string, ReliabilityPolicy>>;
@@ -106,6 +108,7 @@ export function createCompanyResearchProof(options: CompanyResearchProofOptions)
     modelPolicies,
     deterministicExecutors: COMPANY_RESEARCH_EXECUTORS,
     ...(options.trace !== undefined ? { trace: options.trace } : {}),
+    ...(options.audit !== undefined ? { audit: options.audit } : {}),
     ...(options.clock !== undefined ? { clock: options.clock } : {}),
   });
   const prepared = app.prepareWorkflow(companyResearchWorkflow, options.reliability ? { reliability: { policiesByNodeId: options.reliability } } : undefined);

@@ -36,10 +36,13 @@ Hybrid deterministic hardening. No new Runtime, Governance, Approval or Evaluati
 
 ### Continuation integrity
 
-- **Hardened facade.** When a Run reaches an Approval wait, the facade records a waitpoint: SHA-256 of the canonical JSON of the exact execution it returned. `continue(execution, actor)` then checks, in order: the attested actor, canonical admission, the binding (company, proof, configuration and Workflow fingerprints → `RUN_BINDING_MISMATCH`), and that `execution` is byte-for-byte the recorded state (`CONTINUATION_STATE_MISMATCH`; non-JSON state is refused, because `JSON.stringify` would silently drop it). Only then does the proof run.
+- **Hardened facade.** When a Run reaches an Approval wait, the facade records a waitpoint: SHA-256 of the canonical JSON of the exact execution it returned. `continue(execution, actor)` then checks, in order: the attested actor, canonical admission, the binding (company, proof, configuration and Workflow fingerprints, **and original-requester principal `id` + `type`** → `RUN_BINDING_MISMATCH`), and that `execution` is byte-for-byte the recorded state (`CONTINUATION_STATE_MISMATCH`; non-JSON state is refused, because `JSON.stringify` would silently drop it). Only then does the proof run.
+- **Original-requester ownership.** Equal Governance roles do not imply Run ownership. An eligible approver may resolve the Approval; they are not thereby authorized to continue the requester's Run. Local V1 has no delegation policy, so the continuing principal must be the principal stored on the immutable Run binding. Comparison is canonical identity (`id`, `type`), not role, company, display name, or actor-token object identity: a fresh host attestation for the same principal is accepted.
 - **Proof.** `continue()` attests the Tool origin only when the canonical Approval Engine holds an **approved** record for this exact Run, wait node and fingerprint, and the fingerprint recomputed from the execution matches. Every other continuation proceeds unattested, and the Runtime returns its canonical failure.
+- A refused continuation (including a same-role different requester) happens before origin attestation, Approval consumption, Tool execution and draft persistence. The original requester can still continue afterward.
 - The Runtime's own checks (`continueWaitingWorkflow`, `claimContinuation`, governance revalidation) are unchanged and remain the final authority.
-- The trusted, in-memory `OperationalRequestProof.continue(execution)` remains a privileged host API. The untrusted entry point is the hardened facade.
+- The trusted, in-memory `OperationalRequestProof.continue(execution)` remains a privileged host API. The untrusted entry points are `continueOperationalRequest` and the guarded facade's `continue`; both share `admitContinuation()`.
+- Demo `principalForRun` mode is a trusted-host compatibility path. It is not equivalent to hardened actor attestation and has no silent fallback into it.
 
 ### Approval resolution
 
@@ -50,14 +53,14 @@ In hardened mode the facade's `approvals.approve/reject` require an `AttestedAct
 - Tool and Model adapters: no change to the Runtimes. Their existing validation and normalization was verified adversarially (see the test matrix). The draft Tool's `outputSchema.draftId` is pinned to `^draft\.[a-f0-9]{16}$`.
 - MCP: the launch config is bounded (command and args ≤ 4096 chars, ≤ 64 args, no NUL). `env` and `cwd` remain refused, `spawn` runs without a shell, and the SDK forwards only its safe default environment. **No command allowlist is added**: the config is already host-owned and nothing of lower trust (manifest, Workflow, Pack, model) can select a command, so a host allowlisting its own config would be circular. Add one if a lower-trust selector is ever introduced.
 - Control Center: refuses `Sec-Fetch-Site: cross-site`. The HTML CSP adds `frame-ancestors 'none'; base-uri 'none'; form-action 'none'`. The existing loopback Host/Origin guard, GET-only rule, no CORS, and non-loopback-bind-disables-inspection are verified.
-- Audit: `createAAO({ audit })` passes an existing emit-only `AuditPort` to the Approval Engine and Tool node, so canonical `approval.*` and `tool.access.*` evidence is emitted in framework apps. `createCompanyAAO` and the Operational Request proof forward it. A failing port changes no decision.
+- Audit: `createAAO({ audit })` passes an existing emit-only `AuditPort` to the Approval Engine and Tool node, so canonical `approval.*` and `tool.access.*` evidence is emitted in framework apps. `createCompanyAAO` forwards the same host port to Company Research, Document Intelligence, and Operational Request. A failing port changes no decision and does not retry Tools. Company admission denials occur before the Tool node and do not synthesize `tool.access.denied`.
 
 ## Guarantees (tested)
 
-See [`docs/testing/security-regressions.md`](../testing/security-regressions.md) for the 65-case matrix. In summary:
+See [`docs/testing/security-regressions.md`](../testing/security-regressions.md) for the security-case matrix. In summary:
 
 - Run IDs never establish identity, bindings are immutable, and conflicting, cross-company and cross-Workflow claims are refused. Concurrent claims have one winner. Bindings survive restart.
-- No forged, stale, foreign or non-JSON continuation obtains origin attestation or a draft.
+- No forged, stale, foreign or non-JSON continuation obtains origin attestation or a draft. A second authorized requester in the same company cannot continue the first requester's Run.
 - An Approval binds one fingerprint and payload. A replayed or concurrent continuation creates at most one draft. Save-then-throw is reconciled, and a crash after persistence is idempotent by `toolExecutionId`.
 - Unsafe Tools are never retried automatically, and timeouts and provider failures leave no draft.
 - Provider secrets do not appear in results, Trace, the inspection API, HTML or CLI text.
@@ -68,7 +71,8 @@ See [`docs/testing/security-regressions.md`](../testing/security-regressions.md)
 - **Demo mode remains** for the Sprint 22–28 fixtures and proofs, whose resolvers still use a Run ID naming convention (marked `shortcut:`). Hosts handling real users must use `trustedIdentity`. The framework's `createAAO` still takes `principalForRun({ runId })`; direct framework users must bind identity themselves.
 - **Continuation is not loaded from Durability.** The Operational Request proof does not use durable checkpoints. Integrity is digest equality against the host-recorded waitpoint. Approval records, consumption reservations and fixture repositories are in-memory, so after a process restart a waiting Run cannot continue: it fails closed (unresolved), it does not resume.
 - **No exactly-once claim.** Draft creation is idempotent by `toolExecutionId` only to the extent the host repository's save is atomic per id.
-- **Audit gaps.** No canonical Audit event exists for admission denial, binding conflict or invalid continuation. They surface only as `CompanyAdmissionError.reasonCode`. Adding one is an ADR-021 contract change (a new type plus Trace-correlation rules; a denial without an attested actor has no `actor`), and it is deferred.
+- **No delegated continuation.** Local V1 does not transfer Run ownership. Approvers, managers, and same-role colleagues cannot continue another principal's Run.
+- **Audit gaps.** No canonical Audit event exists for admission denial, binding conflict or invalid continuation. They surface only as `CompanyAdmissionError.reasonCode`. Adding one is an ADR-021 contract change (a new type plus Trace-correlation rules; a denial without an attested actor has no `actor`), and it is deferred. Tool-access Audit is emitted only when execution reaches Authorization.
 - **Size bounds are per contract** (Tool output schemas, proposal validators). There is no global byte cap on Tool or Model output.
 - **Cancellation.** The Runtime always passes a canonical abort signal. Adapters declaring `model.cancellation: unsupported` (the native fixture) do not stop provider work; late results are ignored and cannot commit.
 - **Control Center is unauthenticated.** Any local user or process can read it. It serves demo data by default, and an authenticated remote deployment does not exist.

@@ -79,7 +79,11 @@ export interface CreateCompanyAAOOptions {
     readonly runBindings: RunBindingStore;
   };
   readonly trace?: RuntimeTracePort;
-  /** Emit-only Audit port for the Operational Request proof's canonical Approval and Tool access events. */
+  /**
+   * Optional emit-only Audit port forwarded to every enabled proof's
+   * canonical Framework application (Company Research, Document Intelligence,
+   * and Operational Request). Evidence only: it never grants permission.
+   */
   readonly audit?: AuditPort;
   readonly clock?: AAOClock;
   /**
@@ -293,9 +297,11 @@ export function createCompanyAAO(options: CreateCompanyAAOOptions): ComposedComp
 
   /**
    * Continuation admission. Hardened mode verifies, in order: attested actor,
-   * canonical admission, the immutable binding (company, proof, config and
-   * Workflow fingerprints), and that `execution` is byte-for-byte the state
-   * recorded at the wait. Only then may the proof verify Approval and attest origin.
+   * canonical admission, the immutable binding (company, proof, config,
+   * Workflow fingerprints, and original-requester principal identity), and
+   * that `execution` is byte-for-byte the state recorded at the wait. Only
+   * then may the proof verify Approval and attest origin. Equal roles do not
+   * imply Run ownership; Local V1 has no delegation policy.
    */
   const admitContinuation = (execution: RuntimeExecutionState, actor: unknown, workflowFingerprint: string): void => {
     const runId = execution?.run?.runId;
@@ -312,7 +318,9 @@ export function createCompanyAAO(options: CreateCompanyAAOOptions): ComposedComp
       binding.companyId !== manifest.companyId ||
       binding.proofRef !== "operational_request" ||
       binding.configurationFingerprint !== configFingerprint ||
-      binding.workflowFingerprint !== workflowFingerprint
+      binding.workflowFingerprint !== workflowFingerprint ||
+      binding.principal.id !== principal.id ||
+      binding.principal.type !== principal.type
     ) {
       deny("operational_request", runId, "RUN_BINDING_MISMATCH");
     }
@@ -418,6 +426,7 @@ export function createCompanyAAO(options: CreateCompanyAAOOptions): ComposedComp
       ...(crOverrides?.tools !== undefined ? { tools: crOverrides.tools } : {}),
       ...(crOverrides?.modelPolicies !== undefined ? { modelPolicies: crOverrides.modelPolicies } : {}),
       ...(options.trace ? { trace: options.trace } : {}),
+      ...(options.audit ? { audit: options.audit } : {}),
       ...(options.clock ? { clock: options.clock } : {}),
       ...(manifest.reliability?.company_research
         ? { reliability: manifest.reliability.company_research }
@@ -446,6 +455,7 @@ export function createCompanyAAO(options: CreateCompanyAAOOptions): ComposedComp
       ...(diOverrides?.tools !== undefined ? { tools: diOverrides.tools } : {}),
       ...(diOverrides?.modelPolicies !== undefined ? { modelPolicies: diOverrides.modelPolicies } : {}),
       ...(options.trace ? { trace: options.trace } : {}),
+      ...(options.audit ? { audit: options.audit } : {}),
       ...(options.clock ? { clock: options.clock } : {}),
       ...(manifest.reliability?.document_intelligence
         ? { reliability: manifest.reliability.document_intelligence }

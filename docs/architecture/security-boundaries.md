@@ -24,10 +24,14 @@ How AAO's existing contracts combine into one security boundary for Local V1. De
  approve/reject(approvalId, AttestedActor) → eligibility, separation of duties, once only
           │
           ▼
- continue(execution, actor): actor → admission → binding → waitpoint digest
-   → proof: approved record + fingerprint ⇒ attest origin
-   → Runtime: continueWaitingWorkflow + claimContinuation
-   → draft Tool: verifyApproval + reservation + idempotent save by toolExecutionId
+ continue(execution, actor):
+   Host-Attested Principal
+        → Canonical Governance (admission)
+        → Immutable Run Binding
+        → Original Requester Ownership (principal id + type)
+        → Verified Waiting State
+        → Approval Verification
+        → Runtime Continuation
           │
           ▼
  Trace / Audit (metadata only, emit-only, never authority)
@@ -45,6 +49,8 @@ A Run ID is bound once to `{ companyId, principal, proofRef, configurationFinger
 ## Approval separation of duties
 
 Self-approval, resolution by an ineligible role or another company's actor, a second resolution, and a caller-supplied `resolvedBy` (in hardened mode) are refused. An Approval binds the request fingerprint over Run, node, revision and subject. The draft Tool re-derives that fingerprint from its payload, so payload B can never use the Approval granted for request A.
+
+An authorized approver is not automatically an authorized continuation requester. Continuation ownership is the original bound principal; Local V1 has no delegation.
 
 ## Replay and idempotency
 
@@ -69,7 +75,7 @@ The Control Center is GET/HEAD-only and unauthenticated. It requires a loopback 
 
 ## Privacy and audit
 
-Trace and Audit are metadata-only (ADR-020/021): no request text, proposed values, Approval subject, Tool payloads or provider errors. Audit is evidence, emitted through `emitAuditSafely`, so an unavailable store never changes a decision.
+Trace and Audit are metadata-only (ADR-020/021): no request text, proposed values, Approval subject, Tool payloads or provider errors. Audit is evidence, emitted through `emitAuditSafely`, so an unavailable store never changes a decision. A company host that supplies `createCompanyAAO({ audit })` forwards that emit-only port to every enabled proof. Company admission denials are not Tool-access events.
 
 ## Unsupported security claims
 

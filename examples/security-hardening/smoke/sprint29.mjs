@@ -16,6 +16,12 @@ const MANDATORY = {
   'Unsafe Tool Retry → No Duplicate Handler Invocation': ['replay.unsafe-tool-retry-not-repeated'],
   'Non-Loopback Control Center Request → Refused': ['control-center.non-loopback-refused'],
   'Sensitive Error Payload → Not Exposed in Trace / API / CLI': ['observability.sensitive-error-not-exposed'],
+  'Requester B same company/permission continues Run R → RUN_BINDING_MISMATCH, 0 unauthorized Tools': ['continuation.other-requester-same-role-refused'],
+  'Requester B refused; Requester A continues → COMPLETED, exactly one logical draft': ['continuation.other-requester-same-role-refused'],
+  'Company Research Tool Execution → Canonical Tool Audit event observed': ['audit.company-research-tool-access'],
+  'Document Intelligence Tool Execution → Canonical Tool Audit event observed': ['audit.document-intelligence-tool-access'],
+  'Operational Request Approval + Tool → Existing canonical Audit events preserved': ['audit.operational-request-approval-and-tool'],
+  'Audit Sink Failure → No authorization bypass, no duplicate side effect': ['audit.sink-failure-does-not-bypass-or-duplicate'],
 };
 
 const results = await runSecurityRegressionSuite();

@@ -9,6 +9,7 @@ import {
   ARBOR_MANIFEST,
   NORTHSTAR_ACTORS,
   NORTHSTAR_MANIFEST,
+  NORTHSTAR_ROLES,
   createCompanyAAO,
   createFileRunBindingStore,
   createInMemoryRunBindingStore,
@@ -19,6 +20,7 @@ import {
 import {
   NORTHSTAR_MODEL_BINDING,
   NORTHSTAR_OPERATIONAL_REQUEST,
+  OVERLAPPING_DOC_REF,
   createNorthstarModelAdapter,
   createTestHostEnvironment,
 } from "@aao/example-company-portability/fixtures";
@@ -143,14 +145,38 @@ const NORTHSTAR_REQUESTER_ALSO_APPROVER = {
   },
 };
 
-function hardenedHost(options: { runBindings?: RunBindingStore; audit?: AuditPort; withTrace?: boolean; requesterAlsoApprover?: boolean } = {}) {
+/** A second Northstar requester with the same operations.requester role as A. */
+const NORTHSTAR_REQUESTER_B = { id: "user.northstar.requester.b", type: "user" as const };
+const NORTHSTAR_TWO_REQUESTERS = {
+  ...NORTHSTAR_MANIFEST,
+  governance: {
+    ...NORTHSTAR_MANIFEST.governance,
+    actors: [...NORTHSTAR_MANIFEST.governance.actors, NORTHSTAR_REQUESTER_B],
+    bindings: [
+      ...NORTHSTAR_MANIFEST.governance.bindings,
+      { id: "rb.northstar.requester.b", actorId: NORTHSTAR_REQUESTER_B.id, roleId: NORTHSTAR_ROLES.requester, status: "active" as const },
+    ],
+  },
+};
+
+function collectingAudit() {
+  const events: Array<{ type: string; actor?: Principal; payload?: Record<string, unknown> }> = [];
+  const port: AuditPort = {
+    emit(draft) {
+      events.push(draft);
+    },
+  };
+  return { port, events, serialized: () => JSON.stringify(events) };
+}
+
+function hardenedHost(options: { runBindings?: RunBindingStore; audit?: AuditPort; withTrace?: boolean; requesterAlsoApprover?: boolean; twoRequesters?: boolean } = {}) {
   const env = createTestHostEnvironment();
   const identity = createTrustedHostIdentity();
   const runBindings = options.runBindings ?? createInMemoryRunBindingStore();
   const traceStore = createInMemoryTraceStore();
   const trustedIdentity = { identity, runBindings };
   const northstar = createCompanyAAO({
-    manifest: options.requesterAlsoApprover ? NORTHSTAR_REQUESTER_ALSO_APPROVER : NORTHSTAR_MANIFEST,
+    manifest: options.twoRequesters ? NORTHSTAR_TWO_REQUESTERS : options.requesterAlsoApprover ? NORTHSTAR_REQUESTER_ALSO_APPROVER : NORTHSTAR_MANIFEST,
     hostCapabilities: env.hostCapabilities,
     trustedIdentity,
     ...(options.audit ? { audit: options.audit } : {}),
@@ -159,6 +185,7 @@ function hardenedHost(options: { runBindings?: RunBindingStore; audit?: AuditPor
   const arbor = createCompanyAAO({ manifest: ARBOR_MANIFEST, hostCapabilities: env.hostCapabilities, trustedIdentity });
   const actors = {
     requester: identity.attest(NORTHSTAR_ACTORS.requester),
+    requesterB: identity.attest(NORTHSTAR_REQUESTER_B),
     analyst: identity.attest(NORTHSTAR_ACTORS.analyst),
     manager: identity.attest(NORTHSTAR_ACTORS.manager),
     arborRequester: identity.attest(ARBOR_ACTORS.requester),
@@ -748,6 +775,86 @@ export const SECURITY_CASES: readonly SecurityCase[] = Object.freeze([
       return "both layers refuse";
     },
   },
+  {
+    id: "continuation.other-requester-same-role-refused",
+    area: "continuation",
+    invariant: "A same-company, same-role requester cannot continue another principal's Run; the original requester still can",
+    async run() {
+      const h = hardenedHost({ twoRequesters: true });
+      const { execution, approvalId } = await h.waiting("run.sec.owner");
+      h.approvals().approve(approvalId, h.actors.manager);
+      const before = h.counters();
+      const facadeCode = await admissionDenied(() => h.northstar.getOperationalRequestProof().continue(execution, h.actors.requesterB));
+      const composedCode = await admissionDenied(() => h.northstar.continueOperationalRequest(execution, h.actors.requesterB));
+      check(facadeCode === "RUN_BINDING_MISMATCH" && composedCode === "RUN_BINDING_MISMATCH", `${facadeCode},${composedCode}`);
+      check(h.approvals().get(approvalId)!.status === "approved", "Approval was consumed or changed");
+      check(h.counters().drafts === before.drafts && h.counters().model === before.model, "B's refusal executed a Tool or model");
+      const result = executed(await h.northstar.continueOperationalRequest(execution, h.actors.requester));
+      check(result.ok && result.execution.run.status === "COMPLETED", failureCode(result));
+      check(h.counters().drafts === 1, `drafts: ${h.counters().drafts}`);
+      return "B refused on both entry points; A completed; 1 draft";
+    },
+  },
+  {
+    id: "continuation.fresh-attestation-same-principal",
+    area: "continuation",
+    invariant: "A fresh host attestation for the original principal continues; token object identity is not ownership",
+    async run() {
+      const h = hardenedHost();
+      const { execution, approvalId } = await h.waiting("run.sec.fresh");
+      h.approvals().approve(approvalId, h.actors.manager);
+      const fresh = h.identity.attest(NORTHSTAR_ACTORS.requester);
+      const result = executed(await h.northstar.continueOperationalRequest(execution, fresh));
+      check(result.ok && h.counters().drafts === 1, failureCode(result));
+      return "fresh token for original principal: COMPLETED";
+    },
+  },
+  {
+    id: "continuation.principal-type-mismatch",
+    area: "continuation",
+    invariant: "Same principal id with a different canonical type is not the bound requester",
+    async run() {
+      const h = hardenedHost();
+      const { execution, approvalId } = await h.waiting("run.sec.type");
+      h.approvals().approve(approvalId, h.actors.manager);
+      const serviceTwin = h.identity.attest({ id: NORTHSTAR_ACTORS.requester.id, type: "service" });
+      const code = await admissionDenied(() => h.northstar.continueOperationalRequest(execution, serviceTwin));
+      check(code === "GOVERNANCE_DEFAULT_DENY", code);
+      check(h.counters().drafts === 0, "draft created");
+      executed(await h.northstar.continueOperationalRequest(execution, h.actors.requester));
+      return code;
+    },
+  },
+  {
+    id: "continuation.approver-cannot-assume-requester",
+    area: "continuation",
+    invariant: "An eligible approver is not authorized to continue the requester's Run",
+    async run() {
+      const h = hardenedHost();
+      const { execution, approvalId } = await h.waiting("run.sec.approver-cont");
+      h.approvals().approve(approvalId, h.actors.manager);
+      const code = await admissionDenied(() => h.northstar.continueOperationalRequest(execution, h.actors.manager));
+      check(code === "GOVERNANCE_DEFAULT_DENY", code);
+      check(h.approvals().get(approvalId)!.status === "approved" && h.counters().drafts === 0, "approver continuation mutated the Run");
+      executed(await h.northstar.continueOperationalRequest(execution, h.actors.requester));
+      return code;
+    },
+  },
+  {
+    id: "continuation.foreign-host-token-refused",
+    area: "continuation",
+    invariant: "A foreign host's actor token cannot continue a Run even when the principal shape matches",
+    async run() {
+      const h = hardenedHost();
+      const { execution, approvalId } = await h.waiting("run.sec.foreign-host");
+      h.approvals().approve(approvalId, h.actors.manager);
+      const foreign = createTrustedHostIdentity().attest(NORTHSTAR_ACTORS.requester);
+      const code = await admissionDenied(() => h.northstar.continueOperationalRequest(execution, foreign));
+      check(code === "IDENTITY_ATTESTATION_REQUIRED", code);
+      check(h.counters().drafts === 0, "draft created");
+      return code;
+    },
+  },
 
   // ===== Replay and idempotency =====
   {
@@ -1206,6 +1313,142 @@ export const SECURITY_CASES: readonly SecurityCase[] = Object.freeze([
       } finally {
         await app.close();
       }
+    },
+  },
+
+  // ===== Canonical Audit forwarding =====
+  {
+    id: "audit.company-research-tool-access",
+    area: "observability",
+    invariant: "Company Research forwards the host Audit port: authorized Tool access emits tool.access.allowed, never payloads",
+    async run() {
+      const audit = collectingAudit();
+      const h = hardenedHost({ audit: audit.port });
+      const outcome = await h.northstar.runCompanyResearch({
+        runId: "run.sec.audit.research",
+        request: { company: { name: "Northstar Commerce", domain: "northstar.example" }, questions: [{ id: "offering", question: "What does Northstar offer?" }] },
+        actor: h.actors.analyst,
+      });
+      check(outcome.status === "completed", outcome.status);
+      const allowed = audit.events.filter((e) => e.type === "tool.access.allowed");
+      check(allowed.length >= 1, `research audit types: ${audit.events.map((e) => e.type).join(",")}`);
+      check(!audit.serialized().includes("What does Northstar offer?"), "research audit contains the question");
+      return `${allowed.length} tool.access.allowed`;
+    },
+  },
+  {
+    id: "audit.document-intelligence-tool-access",
+    area: "observability",
+    invariant: "Document Intelligence forwards the host Audit port: authorized Tool access emits tool.access.allowed, never document text",
+    async run() {
+      const audit = collectingAudit();
+      const h = hardenedHost({ audit: audit.port });
+      const outcome = await h.northstar.runDocumentIntelligence({
+        runId: "run.sec.audit.docs",
+        request: { documentRef: OVERLAPPING_DOC_REF, questions: [{ id: "terms", question: "What are the payment terms?" }] },
+        actor: h.actors.analyst,
+      });
+      check(outcome.status === "completed", outcome.status);
+      const allowed = audit.events.filter((e) => e.type === "tool.access.allowed");
+      check(allowed.length >= 1, `document audit types: ${audit.events.map((e) => e.type).join(",")}`);
+      check(!audit.serialized().includes("What are the payment terms?"), "document audit contains the question");
+      return `${allowed.length} tool.access.allowed`;
+    },
+  },
+  {
+    id: "audit.operational-request-approval-and-tool",
+    area: "observability",
+    invariant: "Operational Request still emits canonical approval.* and tool.access.allowed through the same host port",
+    async run() {
+      const audit = collectingAudit();
+      const h = hardenedHost({ audit: audit.port });
+      const { execution, approvalId } = await h.waiting("run.sec.audit.ops");
+      h.approvals().approve(approvalId, h.actors.manager);
+      executed(await h.northstar.continueOperationalRequest(execution, h.actors.requester));
+      const types = audit.events.map((e) => e.type);
+      check(types.includes("approval.requested") && types.includes("approval.resolved") && types.includes("tool.access.allowed"), types.join(","));
+      check(!audit.serialized().includes(NORTHSTAR_OPERATIONAL_REQUEST.instruction.slice(0, 40)), "ops audit contains request text");
+      return types.join(",");
+    },
+  },
+  {
+    id: "audit.no-port-preserves-behavior",
+    area: "observability",
+    invariant: "Omitting the Audit port does not change authorization or side effects",
+    async run() {
+      const h = hardenedHost();
+      const research = await h.northstar.runCompanyResearch({
+        runId: "run.sec.audit.none.research",
+        request: { company: { name: "Northstar Commerce", domain: "northstar.example" }, questions: [{ id: "offering", question: "What does Northstar offer?" }] },
+        actor: h.actors.analyst,
+      });
+      const { execution, approvalId } = await h.waiting("run.sec.audit.none.ops");
+      h.approvals().approve(approvalId, h.actors.manager);
+      const continued = executed(await h.northstar.continueOperationalRequest(execution, h.actors.requester));
+      check(research.status === "completed" && continued.ok && h.counters().drafts === 1, `${research.status} ${failureCode(continued)}`);
+      return "completed without an Audit port";
+    },
+  },
+  {
+    id: "audit.tool-denial-where-reachable",
+    area: "authorization",
+    invariant: "A Tool-level authorization denial emits tool.access.denied and never invokes the handler",
+    async run() {
+      const audit = collectingAudit();
+      let calls = 0;
+      const tools = createToolRegistry();
+      tools.register({ spec: DRAFT_TOOL_SPEC, handler: { execute: async () => { calls++; return { ok: true, output: {} }; } } });
+      const denied = await executeTool({
+        tools,
+        authorizationContext: READ_ONLY_AUTH,
+        request: { schemaVersion: 1, toolExecutionId: "exec.sec.audit.deny", toolRef: { id: DRAFT_TOOL_SPEC.id, version: DRAFT_TOOL_SPEC.version }, input: {} },
+        audit: { port: audit.port, runId: "run.sec.audit.deny", attempt: 1 },
+      });
+      check(!denied.ok && denied.failure.code === "TOOL_AUTHORIZATION_DENIED", JSON.stringify(denied));
+      check(calls === 0, `handler called ${calls}`);
+      check(audit.events.length === 1 && audit.events[0]!.type === "tool.access.denied", audit.events.map((e) => e.type).join(","));
+      check((audit.events[0]!.payload as { reasonCode?: string } | undefined)?.reasonCode !== undefined, "denial missing reasonCode");
+      return "tool.access.denied, 0 handler calls";
+    },
+  },
+  {
+    id: "audit.admission-denial-is-not-tool-denial",
+    area: "authorization",
+    invariant: "Company admission refusal happens before the Tool node and does not fabricate tool.access.denied",
+    async run() {
+      const audit = collectingAudit();
+      const h = hardenedHost({ audit: audit.port });
+      const code = await admissionDenied(() =>
+        h.northstar.executeOperationalRequest({ runId: "run.sec.audit.admit", request: NORTHSTAR_OPERATIONAL_REQUEST, actor: h.actors.analyst }),
+      );
+      check(code === "GOVERNANCE_DEFAULT_DENY", code);
+      h.zero("admission denial");
+      check(!audit.events.some((e) => e.type === "tool.access.denied" || e.type === "tool.access.allowed"), audit.events.map((e) => e.type).join(","));
+      return "admission denied; 0 Tool audit events";
+    },
+  },
+  {
+    id: "audit.sink-failure-does-not-bypass-or-duplicate",
+    area: "authorization",
+    invariant: "A throwing Audit sink changes no authorization decision and does not duplicate Tool side effects",
+    async run() {
+      const broken: AuditPort = { emit() { throw new Error(`audit exploded ${FIXTURE_SECRET}`); } };
+      const h = hardenedHost({ audit: broken });
+      const research = await h.northstar.runCompanyResearch({
+        runId: "run.sec.audit.fail.research",
+        request: { company: { name: "Northstar Commerce", domain: "northstar.example" }, questions: [{ id: "offering", question: "What does Northstar offer?" }] },
+        actor: h.actors.analyst,
+      });
+      check(research.status === "completed", research.status);
+      const { execution, approvalId } = await h.waiting("run.sec.audit.fail.ops");
+      h.approvals().approve(approvalId, h.actors.manager);
+      const continued = executed(await h.northstar.continueOperationalRequest(execution, h.actors.requester));
+      check(continued.ok && h.counters().drafts === 1, failureCode(continued));
+      const denied = await admissionDenied(() =>
+        h.northstar.executeOperationalRequest({ runId: "run.sec.audit.fail.deny", request: NORTHSTAR_OPERATIONAL_REQUEST, actor: h.actors.analyst }),
+      );
+      check(denied === "GOVERNANCE_DEFAULT_DENY", denied);
+      return "authorization unchanged; 1 draft";
     },
   },
 
