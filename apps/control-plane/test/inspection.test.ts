@@ -203,7 +203,8 @@ describe("control center inspection API", () => {
     expect(html).toContain("Workflow Node Execution Map");
     expect(html).toContain("Selected Node Detail");
     expect(html).toContain("plan");
-    expect(html).toContain("Chronological Execution Attempts");
+    expect(html).toContain("Node Attempts (2)");
+    expect(html).not.toContain("Total Attempts");
     expect(html).not.toMatch(/<form|<button|<input|method="post"/i);
   });
 });
