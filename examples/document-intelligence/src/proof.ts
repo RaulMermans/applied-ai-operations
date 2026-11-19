@@ -2,6 +2,7 @@ import {
   createAAO,
   defineModelPolicy,
   type AAOClock,
+  type AAOOptions,
   type GovernanceConfiguration,
   type JsonValue,
   type ModelAdapterDefinition,
@@ -57,6 +58,8 @@ export interface DocumentIntelligenceProofOptions {
   /** Optional explicit Model Policy list override for registration testing. */
   modelPolicies?: readonly ModelPolicySpec[];
   trace?: RuntimeTracePort;
+  /** Optional emit-only canonical Audit port forwarded to `createAAO`. Evidence, not permission. */
+  audit?: AAOOptions["audit"];
   clock?: AAOClock;
   /** Trusted per-node Runtime reliability policy. Default: one attempt everywhere. */
   reliability?: Readonly<Record<string, ReliabilityPolicy>>;
@@ -132,6 +135,7 @@ export function createDocumentIntelligenceProof(options: DocumentIntelligencePro
     modelPolicies,
     deterministicExecutors: DOCUMENT_INTELLIGENCE_EXECUTORS,
     ...(options.trace !== undefined ? { trace: options.trace } : {}),
+    ...(options.audit !== undefined ? { audit: options.audit } : {}),
     ...(options.clock !== undefined ? { clock: options.clock } : {}),
   });
 
