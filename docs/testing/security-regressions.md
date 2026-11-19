@@ -34,6 +34,9 @@ The cases were checked against reintroduced defects. Each mutation below makes i
 | Accept a shape-valid actor | `identity.forged-principal` |
 | Drop `frame-ancestors 'none'` | `control-center.html-hardening-and-demo-provenance` |
 | Unbounded MCP args | `mcp.launch-config-bounded` |
+| Remove original-requester comparison | `continuation.other-requester-same-role-refused` |
+| Remove Audit forwarding from Company Research | `audit.company-research-tool-access` |
+| Remove Audit forwarding from Document Intelligence | `audit.document-intelligence-tool-access` |
 
 ## Case matrix
 
@@ -67,6 +70,11 @@ The cases were checked against reintroduced defects. Each mutation below makes i
 | `continuation.unauthorized-or-missing-actor` | continuation | Continuation requires an attested, admitted actor |
 | `continuation.cross-company-replay` | company_isolation | Company A's approved waiting state cannot be continued through company B |
 | `continuation.approval-id-reuse-across-runs` | continuation | Run A's approval cannot continue Run B (hardened: state mismatch; Runtime: request mismatch) |
+| `continuation.other-requester-same-role-refused` | continuation | Same company, same role, different requester: both continuation entry points refuse `RUN_BINDING_MISMATCH`; Approval preserved; original requester then completes with one draft |
+| `continuation.fresh-attestation-same-principal` | continuation | A second host-minted token for the original principal continues successfully |
+| `continuation.principal-type-mismatch` | continuation | Same id, different canonical principal type is not the bound requester |
+| `continuation.approver-cannot-assume-requester` | continuation | Eligible approver cannot continue the requester's Run |
+| `continuation.foreign-host-token-refused` | continuation | Foreign host actor token is not an attested actor |
 | `replay.duplicate-continuation` | replay | Replaying a completed continuation never creates a second draft |
 | `replay.concurrent-continuation` | replay | Concurrent continuations of one approved Run produce no duplicate logical draft |
 | `replay.approval-fingerprint-mismatch` | replay | An Approval binds its exact fingerprint and payload: another fingerprint or a changed payload is refused |
@@ -104,6 +112,13 @@ The cases were checked against reintroduced defects. Each mutation below makes i
 | `control-center.disabled-without-source` | control_center | Without a trusted inspection source (the non-loopback server path) no inspection route exists |
 | `observability.trace-has-no-payloads` | observability | A full governed Run's Trace carries no request text, proposed values or Approval subject |
 | `observability.sensitive-error-not-exposed` | observability | A secret-bearing provider error appears in no Trace, inspection API response or CLI output |
+| `audit.company-research-tool-access` | observability | Company Research emits canonical `tool.access.allowed` through the host Audit port |
+| `audit.document-intelligence-tool-access` | observability | Document Intelligence emits canonical `tool.access.allowed` through the host Audit port |
+| `audit.operational-request-approval-and-tool` | observability | Operational Request still emits `approval.*` and `tool.access.allowed` |
+| `audit.no-port-preserves-behavior` | observability | No Audit port: Workflows still complete with the same side effects |
+| `audit.tool-denial-where-reachable` | authorization | Tool-level denial emits `tool.access.denied` and never invokes the handler |
+| `audit.admission-denial-is-not-tool-denial` | authorization | Company admission refusal fabricates no Tool-access Audit event |
+| `audit.sink-failure-does-not-bypass-or-duplicate` | authorization | Throwing Audit sink does not bypass Governance or duplicate drafts |
 
 ## Known gaps
 

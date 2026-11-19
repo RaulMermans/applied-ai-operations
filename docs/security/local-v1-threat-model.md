@@ -28,6 +28,7 @@ The attacker controls **data that reaches the host's entry points**, not host co
 - submit arbitrary Run IDs, including IDs resembling another user's Run or a demo naming convention;
 - pass lookalike actor objects, bare `Principal` objects, or tokens from another attestor;
 - reuse a Run ID across actors, Workflows or companies, concurrently or after restart;
+- continue another requester's waiting Run using a valid same-company, same-role attestation;
 - alter, replay or reorder serialized `RuntimeExecutionState` (subject, revision, wait reference, extra fields);
 - replay Approval IDs across Runs, resolve concurrently, or submit a caller-chosen `resolvedBy`;
 - operate a malformed, slow, secret-leaking or prompt-injecting Model Adapter or Tool provider;
