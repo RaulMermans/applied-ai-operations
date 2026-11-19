@@ -17,6 +17,8 @@ import {
   type Workflow,
   type WorkflowExecutionResult,
 } from "@aao/framework";
+import type { AuditPort } from "@aao/contracts";
+import { currentApprovalFingerprint, type ApprovalNodeConfig } from "@aao/approval";
 import { deriveToolExecutionId } from "@aao/tool-runtime";
 import { OPERATIONAL_REQUEST_EXECUTORS, STATE_KEYS } from "./executors.js";
 import { INTERPRET_POLICY_REF } from "./model-requests.js";
@@ -48,6 +50,7 @@ export interface OperationalRequestProofOptions {
   tools?: readonly ToolDefinition[];
   modelPolicies?: readonly ModelPolicySpec[];
   trace?: RuntimeTracePort;
+  audit?: AuditPort;
   clock?: AAOClock;
   reliability?: Readonly<Record<string, ReliabilityPolicy>>;
 }
@@ -130,6 +133,7 @@ export function createOperationalRequestProof(
     modelPolicies,
     deterministicExecutors: OPERATIONAL_REQUEST_EXECUTORS,
     ...(options.trace !== undefined ? { trace: options.trace } : {}),
+    ...(options.audit !== undefined ? { audit: options.audit } : {}),
     ...(options.clock !== undefined ? { clock: options.clock } : {}),
   });
 
@@ -139,6 +143,27 @@ export function createOperationalRequestProof(
     operationalRequestWorkflow,
     options.reliability ? { reliability: { policiesByNodeId: options.reliability } } : undefined
   );
+
+  // currentApprovalFingerprint re-validates this config and throws if it is not an approval config.
+  const approvalNodeConfig = prepared.workflow.nodes.find((node) => node.id === "require_approval")
+    ?.config as unknown as ApprovalNodeConfig;
+  const approvedContinuation = (execution: RuntimeExecutionState): boolean => {
+    try {
+      const wait = execution.wait;
+      if (wait?.kind !== "approval" || wait.nodeId !== "require_approval") return false;
+      const record = app.approvals.get(wait.referenceId);
+      return (
+        record !== undefined &&
+        record.status === "approved" &&
+        record.runId === execution.run.runId &&
+        record.nodeId === wait.nodeId &&
+        record.requestFingerprint === wait.requestFingerprint &&
+        currentApprovalFingerprint(execution, approvalNodeConfig) === record.requestFingerprint
+      );
+    } catch {
+      return false; // malformed execution: never attested
+    }
+  };
 
   const registrationSnapshot: ProofRegistrationSnapshot = Object.freeze({
     workflow: Object.freeze({
@@ -195,9 +220,12 @@ export function createOperationalRequestProof(
       });
     },
     continue: async (execution: RuntimeExecutionState) => {
-      const runId = execution.run.runId;
-      const expectedToolExecutionId = deriveToolExecutionId(runId, "create_draft");
-      approvalVerifier.attestExecutionOrigin?.(runId, expectedToolExecutionId);
+      // Origin is attested only for a continuation the canonical Approval Engine
+      // already backs: an approved record for this exact Run, wait and fingerprint.
+      // Anything else continues unattested, and the Runtime returns its canonical failure.
+      if (approvedContinuation(execution)) {
+        approvalVerifier.attestExecutionOrigin(execution.run.runId, deriveToolExecutionId(execution.run.runId, "create_draft"));
+      }
       return prepared.continue(execution);
     },
   });

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { createAgentNodeExecutor } from "@aao/agent-runtime";
 import { createApprovalEngine, createApprovalNodeExecutor, continueApprovedWorkflow } from "@aao/approval";
 import { authorizationContextFromAuthority, type AuthorizationContext } from "@aao/authorization";
-import { canonicalJsonStringify, type ApprovalRecord, type GovernanceConfiguration, type JsonValue, type ModelPolicySpec, type NodeKind, type Principal, type ReliabilityPolicy, type RunState, type Workflow } from "@aao/contracts";
+import { canonicalJsonStringify, type ApprovalRecord, type AuditPort, type GovernanceConfiguration, type JsonValue, type ModelPolicySpec, type NodeKind, type Principal, type ReliabilityPolicy, type RunState, type Workflow } from "@aao/contracts";
 import { createGovernanceRegistry, resolveAuthority, type GovernanceRegistry } from "@aao/governance";
 import { createModelNodeExecutor, type ModelAdapterDefinition } from "@aao/model-runtime";
 import { createDeterministicNodeExecutor, createNodeRegistry, createSystemClock, executeWorkflow, finalOutputExecutor, type DeterministicExecutor, type NodeExecutor, type RuntimeClock, type RuntimeExecutionState, type RuntimeTracePort, type WorkflowExecutionResult } from "@aao/runtime";
@@ -51,6 +51,12 @@ export interface AAOOptions {
   deterministicExecutors?: readonly DeterministicExecutor[];
   /** Optional emit-only Trace port (e.g. an `@aao/observability` recorder). Observational only: it never changes an outcome. */
   trace?: RuntimeTracePort;
+  /**
+   * Optional emit-only Audit port (ADR-021), given to the Approval Engine and
+   * the Tool node for their canonical events (`approval.*`, `tool.access.*`).
+   * Evidence only: a failing port never changes an authorization outcome.
+   */
+  audit?: AuditPort;
   clock?: AAOClock;
 }
 
@@ -151,6 +157,8 @@ export function createAAO(options: AAOOptions): AAOApp {
   if (options.deterministicExecutors !== undefined && !Array.isArray(options.deterministicExecutors)) throw new AAOFrameworkError("FRAMEWORK_INVALID_CONFIGURATION", "deterministicExecutors must be an array");
   const trace = options.trace;
   if (trace !== undefined && typeof trace?.emit !== "function") throw new AAOFrameworkError("FRAMEWORK_INVALID_CONFIGURATION", "trace must provide emit()");
+  const audit = options.audit;
+  if (audit !== undefined && typeof audit?.emit !== "function") throw new AAOFrameworkError("FRAMEWORK_INVALID_CONFIGURATION", "audit must provide emit()");
 
   let governance: GovernanceRegistry;
   try {
@@ -179,9 +187,9 @@ export function createAAO(options: AAOOptions): AAOApp {
     throw registrationFailure("FRAMEWORK_INVALID_CONFIGURATION", "deterministic executor", error);
   }
 
-  const approvalEngine = createApprovalEngine({ governance, clock });
+  const approvalEngine = createApprovalEngine({ governance, clock, ...(audit !== undefined ? { audit } : {}) });
   const nodes = createNodeRegistry();
-  nodes.register(createToolNodeExecutor({ tools, resolveAuthorizationContext: governedAuthorization(governance, tools, principalForRun) }));
+  nodes.register(createToolNodeExecutor({ tools, resolveAuthorizationContext: governedAuthorization(governance, tools, principalForRun), ...(audit !== undefined ? { audit } : {}) }));
   nodes.register(createApprovalNodeExecutor(approvalEngine, (runId) => principalForRun(Object.freeze({ runId }))));
   nodes.register(createModelNodeExecutor({ models, policies }));
   nodes.register(createAgentNodeExecutor({ agents, models, policies }));

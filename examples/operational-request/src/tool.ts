@@ -448,7 +448,8 @@ export function createOperationalDraftTool(options: CreateOperationalDraftToolOp
       outputSchema: {
         type: "object",
         properties: {
-          draftId: { type: "string" },
+          // Exactly the handler's derived id: an oversized or foreign id from a substituted handler is a schema mismatch.
+          draftId: { type: "string", pattern: "^draft\\.[a-f0-9]{16}$" },
           status: { type: "string", enum: ["approved_draft"] },
           externalExecution: { type: "string", enum: ["not_executed"] },
         },
