@@ -2,6 +2,7 @@
   "name": "@aao/example-operator-inspection",
   "private": true,
   "version": "0.0.0",
+  "license": "MIT",
   "description": "Sprint 27 proof application: offline read-only Operator Inspection demonstration over canonical AAO evidence fixtures.",
   "type": "module",
   "engines": {

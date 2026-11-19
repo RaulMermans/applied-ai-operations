@@ -2,6 +2,7 @@
   "name": "@aao/example-document-intelligence",
   "private": true,
   "version": "0.0.0",
+  "license": "MIT",
   "description": "Sprint 23 proof application: bounded document ingestion, page/span provenance, and evidence-anchored extraction as a governed AAO Workflow.",
   "type": "module",
   "main": "./dist/src/index.js",
