@@ -67,7 +67,7 @@ export async function runInspectCommand(
   }
 
   try {
-    const source = customSource ?? (await createCanonicalDemoInspectionSource());
+    const source = customSource ?? (await createCanonicalDemoInspectionSource({ includeExtendedRuns: true }));
     const service = createOperatorInspectionService(source);
     const provenance = await service.getProvenance();
 

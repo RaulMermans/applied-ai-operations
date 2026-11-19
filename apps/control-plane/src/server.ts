@@ -11,7 +11,7 @@ async function main(): Promise<void> {
   // Inspection routes are enabled only on a loopback host. The source is the trusted,
   // offline demonstration fixture host (not live operational evidence).
   const inspectionSource = isLoopbackHost(config.host)
-    ? await createCanonicalDemoInspectionSource()
+    ? await createCanonicalDemoInspectionSource({ includeExtendedRuns: true })
     : undefined;
   if (inspectionSource === undefined) log("inspection_disabled", { reason: "non_loopback_host" });
   const app = buildApp(inspectionSource ? { inspectionSource } : {});

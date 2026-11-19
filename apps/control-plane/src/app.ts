@@ -173,17 +173,19 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     try {
       const runInspection = await service.getRunInspection(runId);
       let advanced: AdvancedRunInspection | undefined;
+      let advancedUnavailable: string | undefined;
       try {
         advanced = await service.getAdvancedRunInspection(runId);
-      } catch {
-        // Advanced projection fallback if unavailable
+      } catch (err) {
+        // Basic summary inspection still renders; the missing analysis is stated, never faked.
+        advancedUnavailable = normalizeInspectionError(err).code;
       }
       const provenance = await service.getProvenance();
       return reply
         .header("content-type", "text/html; charset=utf-8")
         .header("content-security-policy", "default-src 'none'; style-src 'unsafe-inline'")
         .header("x-content-type-options", "nosniff")
-        .send(renderRunDetailHtml(runInspection, provenance, advanced, nodeId));
+        .send(renderRunDetailHtml(runInspection, provenance, advanced, nodeId, advancedUnavailable));
     } catch (err) {
       const normalized = normalizeInspectionError(err);
       if (normalized.code === "INSPECTION_NOT_FOUND" || normalized.code === "INSPECTION_INVALID_REQUEST") {

@@ -644,22 +644,51 @@ export const NodeExecutionStatusSchema = z.enum([
 ]);
 export type NodeExecutionStatus = z.infer<typeof NodeExecutionStatusSchema>;
 
+/**
+ * Token accounting over distinct model invocations (never over lifecycle events).
+ * `status` reuses Observability's MetricCompleteness semantics:
+ * - complete: every invocation finished and reported input, output and total tokens
+ *   (also complete, trivially, when there were zero invocations);
+ * - partial: some usage was reported, but at least one invocation failed, never
+ *   finished, or omitted a field;
+ * - unavailable: invocations occurred and none reported usage.
+ * Exact totals (`inputTokens`…) are present only when that field is known for every
+ * invocation; `known*` fields are the sums of what was actually recorded. An unknown
+ * value is omitted, never zero.
+ */
 export const TokenUsageSummarySchema = z
   .object({
+    status: z.enum(["complete", "partial", "unavailable"]),
+    modelInvocations: z.number().int().nonnegative(),
+    callsCompleted: z.number().int().nonnegative(),
+    callsFailed: z.number().int().nonnegative(),
+    callsWithUsage: z.number().int().nonnegative(),
+    callsWithoutUsage: z.number().int().nonnegative(),
     inputTokens: z.number().int().nonnegative().optional(),
     outputTokens: z.number().int().nonnegative().optional(),
     totalTokens: z.number().int().nonnegative().optional(),
-    recorded: z.boolean(),
+    knownInputTokens: z.number().int().nonnegative(),
+    knownOutputTokens: z.number().int().nonnegative(),
+    knownTotalTokens: z.number().int().nonnegative(),
   })
   .strict();
 export type TokenUsageSummary = z.infer<typeof TokenUsageSummarySchema>;
 
+/**
+ * One observed node attempt: exactly one `node.started` event, identified by
+ * node + step + attempt + canonical span. Lifecycle and child events attach to it;
+ * they never create further attempts.
+ */
 export const NodeAttemptInspectionSchema = z
   .object({
+    nodeId: NodeIdSchema,
+    kind: NodeKindSchema,
+    step: z.number().int().min(1),
     attempt: z.number().int().min(1),
-    kind: z.enum(["tool", "model", "approval", "node", "unknown"]),
-    status: z.enum(["completed", "failed", "started", "waiting"]),
-    startedAt: isoTimestampSchema.optional(),
+    spanId: z.string().min(1).max(200),
+    status: z.enum(["completed", "failed", "waiting", "retried", "open"]),
+    recoveryReplay: z.boolean(),
+    startedAt: isoTimestampSchema,
     finishedAt: isoTimestampSchema.optional(),
     durationMs: z.number().int().nonnegative().optional(),
     toolRef: z.string().max(200).optional(),
@@ -667,8 +696,10 @@ export const NodeAttemptInspectionSchema = z
     modelBindingId: identifierSchema.optional(),
     approvalId: ApprovalIdSchema.optional(),
     reasonCode: z.string().max(128).optional(),
-    recoveryReplay: z.boolean().optional(),
+    toolPhysicalInvocations: z.number().int().nonnegative(),
+    modelInvocations: z.number().int().nonnegative(),
     tokenUsage: TokenUsageSummarySchema.optional(),
+    evidenceEventIds: z.array(z.string().min(1).max(200)).max(INSPECTION_LIMITS.MAX_TRACE_EVENTS),
   })
   .strict();
 export type NodeAttemptInspection = z.infer<typeof NodeAttemptInspectionSchema>;
@@ -681,8 +712,13 @@ export const NodeExecutionInspectionSchema = z
     status: NodeExecutionStatusSchema,
     planned: z.boolean(),
     executed: z.boolean(),
-    attempts: z.array(NodeAttemptInspectionSchema),
-    totalAttempts: z.number().int().nonnegative(),
+    attempts: z.array(NodeAttemptInspectionSchema).max(INSPECTION_LIMITS.MAX_TRACE_EVENTS),
+    /** Distinct workflow steps at which this node executed (a repeat is not a retry). */
+    executionCount: z.number().int().nonnegative(),
+    /** Observed attempts, excluding recovery replays. */
+    attemptCount: z.number().int().nonnegative(),
+    recoveryReplayCount: z.number().int().nonnegative(),
+    scheduledRetries: z.number().int().nonnegative(),
     toolRef: z.string().max(200).optional(),
     modelPolicyRef: ModelPolicyIdSchema.optional(),
     modelBindingId: identifierSchema.optional(),
@@ -697,19 +733,40 @@ export const NodeExecutionInspectionSchema = z
   .strict();
 export type NodeExecutionInspection = z.infer<typeof NodeExecutionInspectionSchema>;
 
-export const ExecutionAttemptSummarySchema = z
+/** Run-wide node attempts, in `node.started` order. Same record as a node's attempts. */
+export const ExecutionAttemptSummarySchema = NodeAttemptInspectionSchema;
+export type ExecutionAttemptSummary = NodeAttemptInspection;
+
+/**
+ * Distinct execution counters, all derived by Observability's `deriveRunMetrics`
+ * from a valid canonical Trace. Present only when the Trace is valid.
+ */
+export const ExecutionCountersSchema = z
   .object({
-    sequence: z.number().int().nonnegative(),
-    nodeId: NodeIdSchema.optional(),
-    kind: z.string().min(1).max(64),
-    attempt: z.number().int().min(1),
-    status: z.string().min(1).max(64),
-    reasonCode: z.string().max(128).optional(),
-    recoveryReplay: z.boolean().optional(),
-    occurredAt: isoTimestampSchema,
+    traceEvents: z.number().int().nonnegative(),
+    nodeExecutionOccurrences: z.number().int().nonnegative(),
+    nodeAttempts: z.number().int().nonnegative(),
+    recoveryReplayAttempts: z.number().int().nonnegative(),
+    toolPhysicalInvocations: z.number().int().nonnegative(),
+    toolLogicalExecutions: z.number().int().nonnegative(),
+    toolBlocked: z.number().int().nonnegative(),
+    modelInvocations: z.number().int().nonnegative(),
+    scheduledRetries: z.number().int().nonnegative(),
+    exhaustedRetries: z.number().int().nonnegative(),
   })
   .strict();
-export type ExecutionAttemptSummary = z.infer<typeof ExecutionAttemptSummarySchema>;
+export type ExecutionCounters = z.infer<typeof ExecutionCountersSchema>;
+
+/** Valid Trace evidence that could not be attributed to any observed node attempt. */
+export const UnattributedEventSchema = z
+  .object({
+    sequence: z.number().int().nonnegative(),
+    eventId: z.string().min(1).max(200),
+    type: z.string().min(1).max(64),
+    nodeId: NodeIdSchema.optional(),
+  })
+  .strict();
+export type UnattributedEvent = z.infer<typeof UnattributedEventSchema>;
 
 export const RunDiagnosticSchema = z
   .object({
@@ -735,7 +792,10 @@ export const AdvancedRunInspectionSchema = z
     evidenceHealth: TraceHealthStatusSchema,
     eventCount: z.number().int().nonnegative(),
     nodes: z.array(NodeExecutionInspectionSchema),
-    attempts: z.array(ExecutionAttemptSummarySchema),
+    attempts: z.array(ExecutionAttemptSummarySchema).max(INSPECTION_LIMITS.MAX_TRACE_EVENTS),
+    attemptsTruncated: z.boolean(),
+    counters: ExecutionCountersSchema.optional(),
+    unattributedEvents: z.array(UnattributedEventSchema).max(INSPECTION_LIMITS.MAX_TRACE_EVENTS),
     approvals: z.array(ApprovalSummarySchema),
     evaluations: z.array(EvaluationSummarySchema),
     tokenUsage: TokenUsageSummarySchema.optional(),
