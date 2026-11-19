@@ -1,0 +1,38 @@
+{
+  "name": "@aao/example-security-hardening",
+  "private": true,
+  "version": "0.0.0",
+  "license": "MIT",
+  "description": "Sprint 29 offline security proof: trusted identity, Run binding, continuation integrity, adapter and Control Center boundaries.",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": ">=20.20.0 <21.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "proof": "node dist/demo/run.js",
+    "smoke:sprint29": "node smoke/sprint29.mjs"
+  },
+  "dependencies": {
+    "@aao/contracts": "workspace:*",
+    "@aao/control-plane": "workspace:*",
+    "@aao/example-company-portability": "workspace:*",
+    "@aao/example-operational-request": "workspace:*",
+    "@aao/framework": "workspace:*",
+    "@aao/mcp-connector": "workspace:*",
+    "@aao/observability": "workspace:*",
+    "@aao/operator-inspection": "workspace:*",
+    "@aao/tool-runtime": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.30.0"
+  }
+}

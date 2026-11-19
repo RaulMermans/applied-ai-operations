@@ -273,6 +273,39 @@ importers:
         specifier: ^3.1.3
         version: 3.2.7(@types/node@22.20.4)(tsx@4.23.15)(yaml@2.9.1)
 
+  examples/security-hardening:
+    dependencies:
+      '@aao/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@aao/control-plane':
+        specifier: workspace:*
+        version: link:../../apps/control-plane
+      '@aao/example-company-portability':
+        specifier: workspace:*
+        version: link:../company-portability
+      '@aao/example-operational-request':
+        specifier: workspace:*
+        version: link:../operational-request
+      '@aao/framework':
+        specifier: workspace:*
+        version: link:../../packages/framework
+      '@aao/mcp-connector':
+        specifier: workspace:*
+        version: link:../../packages/mcp-connector
+      '@aao/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
+      '@aao/operator-inspection':
+        specifier: workspace:*
+        version: link:../../packages/operator-inspection
+      '@aao/tool-runtime':
+        specifier: workspace:*
+        version: link:../../packages/tool-runtime
+      '@modelcontextprotocol/sdk':
+        specifier: 1.30.0
+        version: 1.30.0(@cfworker/json-schema@4.1.1)(zod@3.25.76)
+
   packages/adapters:
     dependencies:
       '@aao/contracts':
