@@ -4,7 +4,6 @@ import {
   RunIdSchema,
   identifierSchema,
   type ApprovalRecord,
-  type RunStatus,
   type TraceEvent,
   type Workflow,
 } from "@aao/contracts";
@@ -639,89 +638,14 @@ export function createOperatorInspectionService(
       }
     }
 
-    // Fallback to getRunInspection and synthesize projection
-    const runInspection = await getRunInspection(parsedId.data);
-    const provenance = await getProvenance();
-
-    const simulatedEvidence: KnownRunEvidence = {
-      runId: runInspection.summary.runId,
-      companyId: runInspection.summary.companyId,
-      packIdentity: runInspection.summary.packIdentity,
-      authoritativeRun:
-        runInspection.summary.statusSource === "authoritative_runtime"
-          ? {
-              schemaVersion: 1,
-              runId: runInspection.summary.runId,
-              workflowId: runInspection.summary.workflowId,
-              workflowVersion: runInspection.summary.workflowVersion,
-              status: runInspection.summary.status as RunStatus,
-              createdAt: runInspection.summary.startedAt ?? "2026-02-01T10:00:00.000Z",
-              updatedAt: runInspection.summary.finishedAt ?? "2026-02-01T10:00:00.000Z",
-              ...(runInspection.summary.currentNodeId
-                ? { currentNodeId: runInspection.summary.currentNodeId }
-                : {}),
-            }
-          : undefined,
-      traceEvents: runInspection.trace.events.map((e) => ({
-        sequence: e.sequence,
-        eventId: e.eventId,
-        traceId: e.traceId,
-        runId: e.runId,
-        type: e.type,
-        occurredAt: e.occurredAt,
-        workflowId: e.workflowId,
-        workflowVersion: e.workflowVersion,
-        ...(e.nodeId ? { nodeId: e.nodeId } : {}),
-        spanId: e.spanId,
-        ...(e.parentSpanId ? { parentSpanId: e.parentSpanId } : {}),
-        ...(e.status ? { status: e.status } : {}),
-        payload: {
-          ...(e.reasonCode ? { code: e.reasonCode } : {}),
-          ...(e.toolRef ? { toolRef: e.toolRef } : {}),
-          ...(e.modelPolicyRef ? { modelPolicyRef: e.modelPolicyRef } : {}),
-          ...(e.modelBindingId ? { modelBindingId: e.modelBindingId } : {}),
-          ...(e.approvalId ? { approvalId: e.approvalId } : {}),
-          ...(e.tokenUsage ? { usage: e.tokenUsage } : {}),
-          ...(e.attempt !== undefined ? { attempt: e.attempt } : {}),
-          ...(e.maxAttempts !== undefined ? { maxAttempts: e.maxAttempts } : {}),
-          ...(e.recoveryReplay !== undefined ? { recoveryReplay: e.recoveryReplay } : {}),
-        },
-      })) as unknown as readonly TraceEvent[],
-      approvalRecords: runInspection.approvals.map((a) => ({
-        schemaVersion: 2,
-        approvalId: a.approvalId,
-        runId: a.runId,
-        nodeId: a.nodeId,
-        requestFingerprint: a.requestFingerprint,
-        requestedBy: a.requestedBy,
-        requiredApproverRoleIds: a.requiredApproverRoleIds,
-        allowSelfApproval: a.allowSelfApproval,
-        status: a.status,
-        requestedAt: a.requestedAt,
-        ...(a.resolvedAt ? { resolvedAt: a.resolvedAt } : {}),
-        ...(a.resolvedBy ? { resolvedBy: a.resolvedBy } : {}),
-        permissionClasses: a.permissionClasses,
-      })) as unknown as readonly ApprovalRecord[],
-      evaluations: runInspection.evaluations.map((e) => ({
-        evalProfileRef: e.evalProfileRef,
-        packIdentity: e.packIdentity,
-        workflowId: e.workflowId,
-        companyId: e.companyId,
-        runId: e.runId,
-        datasetRef: e.datasetRef,
-        graderRefs: e.graderRefs,
-        executed: e.executed,
-        executedAt: e.executedAt,
-        totalCases: e.totalCases,
-        passedCases: e.passedCases,
-        failedCases: e.failedCases,
-        failureCodes: e.failureCodes,
-        baselineComparisonStatus: e.baselineComparisonStatus,
-      })),
-      workflow: runInspection.workflow as unknown as Workflow | undefined,
-    };
-
-    return projectAdvancedRunInspection(simulatedEvidence, provenance);
+    // No trusted canonical-evidence path. A redacted RunInspection is never turned back
+    // into Trace or Runtime records; confirm the Run exists (NOT_FOUND otherwise), then
+    // fail explicitly.
+    await getRunInspection(parsedId.data);
+    throw new OperatorInspectionError(
+      "INSPECTION_SOURCE_UNAVAILABLE",
+      `Advanced inspection for Run '${parsedId.data}' requires canonical Trace evidence, which this inspection source does not provide.`
+    );
   };
 
   const getOverview = async (): Promise<OverviewInspection> => {

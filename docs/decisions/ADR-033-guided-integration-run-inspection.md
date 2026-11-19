@@ -103,3 +103,71 @@ Extend `@aao/operator-inspection` with deterministic, read-only diagnostic proje
 - Operators and developers can diagnose Capability Pack onboarding and run execution without reading internal engine code or inspecting raw JSON files.
 - All three surfaces (CLI, HTTP API, Control Center UI) share identical deterministic schemas, DTOs, and formatting rules.
 - Local-first architecture and bounded security guarantees are fully preserved: loopback guards, read-only GET methods, no external network dependencies, bounded string lengths and payload sizes.
+
+## Amendment (Sprint 28C): Execution Evidence Integrity, Attempt Correlation & Diagnostic Accuracy
+
+Status: accepted. This amends the decision above; it does not replace it.
+
+Decision: deterministic evidence correlation using existing Observability contracts, fail-closed source handling, and independently verified requirement diagnostics. No new runtime, registry, storage, agent or execution authority.
+
+### Defects corrected
+
+1. **Lifecycle events were counted as attempts.** The original projection appended an attempt summary for every `node.*`, `tool.call.*`, `model.call.*` and `approval.*` event and grouped node events by the payload `attempt` field (defaulting to 1). The UI showed the event count as "Total Attempts". One Tool step (four events) therefore looked like four attempts. Two Tool invocations inside one node attempt looked like a node retry, and a node repeated at a later step was merged with its earlier execution.
+2. **Lossy Trace reconstruction.** When a source had no advanced-inspection path, the service rebuilt `TraceEvent`, `RunRecord` and `ApprovalRecord` objects from the redacted `RunInspection` DTO using `as unknown as` casts, with invented timestamps and missing payload fields, and projected them as if they were canonical.
+3. **Requirement statuses inherited the global verdict.** `validatePackCompatibility` throws on the first incompatibility. Every requirement not named by that one reason code defaulted to `SATISFIED`, so a missing Tool hid a missing Eval profile. Missing eval-registration evidence was coerced to `[]` and reported as a confirmed absence.
+4. **Token accounting claimed completeness.** Any recorded usage set `recorded: true`, and formatters printed unknown fields as `0`.
+5. **Read-only purity was asserted, not measured.** The purity test ended with `expect(true).toBe(true)`.
+
+### Canonical execution identity
+
+An attempt is exactly one `node.started` event, identified by node + step + attempt + canonical span (the span ID the recorder derives from node, step and attempt). The projection reuses `deriveRunMetrics` (ADR-021), which already defines node attempts, execution occurrences, recovery-replay attempts, retries, Tool physical vs logical invocations and model invocations. It does not introduce a competing algorithm. The inspector adds only the attachment of child evidence to attempts by `parentSpanId`/`spanId`. Lifecycle event count, execution occurrences, attempts, physical invocations and retries are separate, explicitly named counters. A repeated node ID at another step is a new execution occurrence, never a retry. A retry needs `retry.scheduled` evidence.
+
+**Recovery replay** is an attempt with `recoveryReplay: true` on the same logical span as the attempt it replays. It is counted under recovery replays, not node attempts; later evidence on that span belongs to the replay. Attempt-scoped events with no attributable span are listed as unattributed evidence rather than credited to a node. A Tool event without a node parent is invalid Trace evidence, and the Trace is reported corrupt.
+
+### Evidence source
+
+`getAdvancedRunInspection` uses only a source method that projects canonical evidence (`KnownRunEvidence.traceEvents` or the `TraceStore`) before redaction. Without one, it confirms the Run exists and then fails with `INSPECTION_SOURCE_UNAVAILABLE`. An invalid Trace yields `corrupt` health with no attempts, counters or token totals. `validateTrace` is unchanged.
+
+### Independently verified requirements
+
+`diagnoseRequirementsIndependently` checks each requirement against its own evidence:
+
+- exact Tool `id@version`;
+- each Model Policy;
+- model capabilities, satisfied only by one real binding/adapter pair that covers all of them;
+- workflow identity and fingerprint;
+- proof enablement;
+- approver-role definitions;
+- exact eval profile registration.
+
+Absent evidence gives `NOT_VERIFIED`. `MISSING` requires a present source that confirms absence.
+
+Two categories are always `NOT_VERIFIED`:
+
+- **Integration slots**: a configured provider reference is not proof of a live provider.
+- **Preliminary permissions**: authorized per principal at run time.
+
+`validatePackCompatibility` remains the sole authority for `READY`. The granular statuses explain the verdict and grant nothing.
+
+### Token completeness
+
+`TokenUsageSummary` now carries `status: complete | partial | unavailable` (Observability `MetricCompleteness` semantics), `modelInvocations`, calls with and without usage, exact totals only when fully known, and `known*` recorded totals. A failed or unfinished invocation has unknown usage. Unknown values are omitted and rendered as "not recorded", never `0`. CLI and UI share `formatTokenUsageText` and `executionCounterRows`.
+
+### Read-only purity evidence
+
+Tests measure the read-only behavior instead of asserting it:
+
+- a TraceStore `append` spy;
+- a global `fetch` spy;
+- before/after snapshots of all evidence;
+- a package-boundary check that `@aao/operator-inspection` neither depends on nor imports any runtime, model, Tool, approval, durability, evaluation or integration package.
+
+The demo and the compiled smoke report the same measurements.
+
+### Known limitations
+
+- Eval grader definitions are not part of registration evidence, so a `SATISFIED` eval profile means registered only, not graded or passed.
+- Integration provider availability and per-principal permissions cannot be verified by inspection.
+- Model events are not required by `validateTrace` to carry a node parent span. A model call emitted outside a node span is valid but unattributed.
+- Attempts and per-attempt evidence IDs are bounded at 500 (`attemptsTruncated` flags truncation). Counters are always exact.
+- The default CLI demo source now includes the extended fixture runs (`run.northstar.cr.retry`, `run.northstar.cr.repeat`, `run.northstar.ops.recovery`), so the documented commands work.

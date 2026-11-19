@@ -51,6 +51,8 @@ export {
   NodeAttemptInspectionSchema,
   NodeExecutionInspectionSchema,
   ExecutionAttemptSummarySchema,
+  ExecutionCountersSchema,
+  UnattributedEventSchema,
   RunDiagnosticSchema,
   AdvancedRunInspectionSchema,
   findForbiddenInspectionKeys,
@@ -91,6 +93,8 @@ export {
   type NodeAttemptInspection,
   type NodeExecutionInspection,
   type ExecutionAttemptSummary,
+  type ExecutionCounters,
+  type UnattributedEvent,
   type RunDiagnostic,
   type AdvancedRunInspection,
 } from "./contracts.js";
@@ -110,6 +114,8 @@ export {
   projectRunInspection,
   projectIntegrationDiagnostics,
   projectAdvancedRunInspection,
+  summarizeTokenUsage,
+  diagnoseRequirementsIndependently,
   type ProjectCompanyInput,
   type TrustedProofRegistrationEvidence,
   type ProjectPackCompatibilityInput,
@@ -170,6 +176,8 @@ export {
   formatIntegrationDiagnosticsText,
   formatAdvancedRunInspectionNodesText,
   formatAdvancedRunInspectionTimelineText,
+  formatTokenUsageText,
+  executionCounterRows,
 } from "./formatters.js";
 
 export {

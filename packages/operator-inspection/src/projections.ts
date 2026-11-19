@@ -6,7 +6,6 @@ import {
   WorkflowSchema,
   canonicalJsonStringify,
   type ApprovalRecord,
-  type ApprovalStatus,
   type JsonValue,
   type PermissionClass,
   type RunRecord,
@@ -31,7 +30,7 @@ import {
   type VerifiedModelBinding,
 } from "@aao/capability-packs";
 import { compileWorkflow } from "@aao/workflow-dsl";
-import { validateTrace } from "@aao/observability";
+import { deriveRunMetrics, validateTrace } from "@aao/observability";
 import {
   ApprovalSummarySchema,
   CapabilityPackSummarySchema,
@@ -70,7 +69,8 @@ import {
   type AdvancedRunInspection,
   type NodeExecutionInspection,
   type NodeAttemptInspection,
-  type ExecutionAttemptSummary,
+  type ExecutionCounters,
+  type UnattributedEvent,
   type RunDiagnostic,
   type TokenUsageSummary,
 } from "./contracts.js";
@@ -327,7 +327,7 @@ export function projectPackCompatibilitySummary(
     snapshot?.modelBindings ?? evidence.registeredModelBindings ?? evidence.modelBindings;
   const modelAdapters =
     snapshot?.modelAdapters ?? evidence.registeredModelAdapters ?? evidence.modelAdapters;
-  const evalProfiles = evidence.registeredEvalProfiles ?? [];
+  const evalProfiles = evidence.registeredEvalProfiles;
 
   if (!workflow || !tools || !modelPolicies || !modelBindings) {
     const summary: PackCompatibilitySummary = {
@@ -361,7 +361,7 @@ export function projectPackCompatibilitySummary(
       registeredModelPolicies: modelPolicies as readonly string[],
       registeredModelBindings: modelBindings as readonly VerifiedModelBinding[],
       registeredModelAdapters: modelAdapters as readonly VerifiedModelAdapter[] | undefined,
-      registeredEvalProfiles: evalProfiles as readonly string[],
+      registeredEvalProfiles: evalProfiles as readonly string[], // undefined → PACK_EVIDENCE_UNAVAILABLE, never "missing"
     });
 
     const summary: PackCompatibilitySummary = {
@@ -1155,183 +1155,13 @@ export function projectIntegrationDiagnostics(
     reportStatus = "UNAVAILABLE";
   }
 
-  const requirements: IntegrationRequirementDiagnostic[] = [];
-
-  // 1. Workflow
-  const wfMismatch = compat.reasonCode === "PACK_WORKFLOW_MISMATCH";
-  const proofDisabled = compat.reasonCode === "PACK_PROOF_DISABLED";
-  requirements.push({
-    category: "workflow",
-    name: "Workflow Pinned Plan Fingerprint",
-    requiredRef: `${pManifest.workflow.id}@${pManifest.workflow.version}`,
-    status:
-      reportStatus === "READY"
-        ? "SATISFIED"
-        : wfMismatch || proofDisabled
-          ? "INCOMPATIBLE"
-          : reportStatus === "NOT_VERIFIED"
-            ? "NOT_VERIFIED"
-            : "SATISFIED",
-    ...(wfMismatch ? { reasonCode: "PACK_WORKFLOW_MISMATCH", diagnostic: compat.diagnostic, remediation: getRemediationForCode("PACK_WORKFLOW_MISMATCH") } : {}),
-  });
-
-  // 2. Tools
-  const evidenceTools = input.registrationEvidence?.snapshot?.tools ?? input.registrationEvidence?.registeredTools ?? input.registrationEvidence?.tools;
-  const registeredToolKeys = new Set(
-    (evidenceTools ?? []).map((t) => `${t.id}@${t.version}`)
-  );
-  for (const t of pManifest.requirements.toolRefs) {
-    const key = `${t.id}@${t.version}`;
-    const missing =
-      compat.reasonCode === "PACK_REQUIREMENT_MISSING" &&
-      (!evidenceTools || !registeredToolKeys.has(key));
-    requirements.push({
-      category: "tool",
-      name: `Tool: ${key}`,
-      requiredRef: key,
-      status:
-        reportStatus === "READY"
-          ? "SATISFIED"
-          : missing
-            ? "MISSING"
-            : proofDisabled
-              ? "INCOMPATIBLE"
-              : reportStatus === "NOT_VERIFIED"
-                ? "NOT_VERIFIED"
-                : "SATISFIED",
-      ...(missing ? { reasonCode: "PACK_REQUIREMENT_MISSING", diagnostic: `Tool '${key}' is not registered in the host proof environment.`, remediation: getRemediationForCode("PACK_REQUIREMENT_MISSING") } : {}),
-    });
-  }
-
-  // 3. Model Policies
-  const evidencePolicies = input.registrationEvidence?.snapshot?.modelPolicies ?? input.registrationEvidence?.registeredModelPolicies ?? input.registrationEvidence?.modelPolicies;
-  const registeredPolicies = new Set(evidencePolicies ?? []);
-  for (const pol of pManifest.requirements.modelPolicyRefs) {
-    const missing =
-      compat.reasonCode === "PACK_REQUIREMENT_MISSING" &&
-      (!evidencePolicies || !registeredPolicies.has(pol));
-    requirements.push({
-      category: "model_policy",
-      name: `Model Policy: ${pol}`,
-      requiredRef: pol,
-      status:
-        reportStatus === "READY"
-          ? "SATISFIED"
-          : missing
-            ? "MISSING"
-            : proofDisabled
-              ? "INCOMPATIBLE"
-              : reportStatus === "NOT_VERIFIED"
-                ? "NOT_VERIFIED"
-                : "SATISFIED",
-      ...(missing ? { reasonCode: "PACK_REQUIREMENT_MISSING", diagnostic: `Model policy '${pol}' is not registered in the host proof environment.`, remediation: getRemediationForCode("PACK_REQUIREMENT_MISSING") } : {}),
-    });
-  }
-
-  // 4. Model Capabilities
-  const capIncompatible = compat.reasonCode === "PACK_CAPABILITY_INCOMPATIBLE";
-  for (const cap of pManifest.requirements.modelCapabilities) {
-    requirements.push({
-      category: "model_capability",
-      name: `Model Capability: ${cap}`,
-      requiredRef: cap,
-      status:
-        reportStatus === "READY"
-          ? "SATISFIED"
-          : capIncompatible || proofDisabled
-            ? "INCOMPATIBLE"
-            : reportStatus === "NOT_VERIFIED"
-              ? "NOT_VERIFIED"
-              : "SATISFIED",
-      ...(capIncompatible ? { reasonCode: "PACK_CAPABILITY_INCOMPATIBLE", diagnostic: compat.diagnostic, remediation: getRemediationForCode("PACK_CAPABILITY_INCOMPATIBLE") } : {}),
-    });
-  }
-
-  // 5. Integration Slots
-  for (const slot of pManifest.requirements.integrationSlots) {
-    let boundRef: string | undefined;
-    if (slot.slot === "public_web") boundRef = cManifest.integrations.publicWebProviderRef;
-    else if (slot.slot === "document_source") boundRef = cManifest.integrations.documentSourceProviderRef;
-    else if (slot.slot === "draft_repository") boundRef = cManifest.integrations.draftRepositoryRef;
-
-    const isSlotMissing = !boundRef;
-    requirements.push({
-      category: "integration",
-      name: `Integration Slot: ${slot.slot}`,
-      requiredRef: boundRef ? `${slot.slot} -> ${boundRef}` : slot.slot,
-      status:
-        isSlotMissing
-          ? "MISSING"
-          : reportStatus === "READY"
-            ? "SATISFIED"
-            : reportStatus === "NOT_VERIFIED"
-              ? "NOT_VERIFIED"
-              : "SATISFIED",
-      ...(isSlotMissing
-        ? {
-            reasonCode: "PACK_REQUIREMENT_MISSING",
-            diagnostic: `Integration slot '${slot.slot}' is not configured for company '${cManifest.companyId}'.`,
-            remediation: getRemediationForCode("PACK_REQUIREMENT_MISSING"),
-          }
-        : reportStatus === "NOT_VERIFIED"
-          ? {
-              diagnostic: `Provider binding '${boundRef}' is configured, but registration snapshot evidence is unavailable.`,
-            }
-          : {}),
-    });
-  }
-
-  // 6. Governance Preliminary Permissions
-  requirements.push({
-    category: "governance",
-    name: "Preliminary Permissions",
-    requiredRef: `[${pManifest.requirements.preliminaryPermissions.join(", ")}]`,
-    status:
-      reportStatus === "READY"
-        ? "SATISFIED"
-        : proofDisabled
-          ? "INCOMPATIBLE"
-          : reportStatus === "NOT_VERIFIED"
-            ? "NOT_VERIFIED"
-            : "SATISFIED",
-  });
-
-  // 7. Approval Requirements
-  if (pManifest.requirements.approval && pManifest.requirements.approval.required) {
-    const govIncompatible = compat.reasonCode === "PACK_GOVERNANCE_INCOMPATIBLE";
-    requirements.push({
-      category: "approval",
-      name: "Human Approval Role Gate",
-      requiredRef: `Roles: [${pManifest.requirements.approval.requiredRoleIds.join(", ")}]`,
-      status:
-        reportStatus === "READY"
-          ? "SATISFIED"
-          : govIncompatible || proofDisabled
-            ? "INCOMPATIBLE"
-            : reportStatus === "NOT_VERIFIED"
-              ? "NOT_VERIFIED"
-              : "SATISFIED",
-      ...(govIncompatible ? { reasonCode: "PACK_GOVERNANCE_INCOMPATIBLE", diagnostic: compat.diagnostic, remediation: getRemediationForCode("PACK_GOVERNANCE_INCOMPATIBLE") } : {}),
-    });
-  }
-
-  // 8. Evaluation Profile
-  const evalMissing = compat.reasonCode === "PACK_VERIFICATION_PROFILE_MISSING";
-  requirements.push({
-    category: "evaluation",
-    name: "Verification Profile",
-    requiredRef: pManifest.verification.evalProfileRef,
-    status:
-      reportStatus === "READY"
-        ? "SATISFIED"
-        : evalMissing
-          ? "MISSING"
-          : proofDisabled
-            ? "INCOMPATIBLE"
-            : reportStatus === "NOT_VERIFIED"
-              ? "NOT_VERIFIED"
-              : "SATISFIED",
-    ...(evalMissing ? { reasonCode: "PACK_VERIFICATION_PROFILE_MISSING", diagnostic: compat.diagnostic, remediation: getRemediationForCode("PACK_VERIFICATION_PROFILE_MISSING") } : {}),
+  // Per-requirement evidence. Each status is checked against that requirement's own
+  // evidence, independently of the canonical verdict above (which stops at the first
+  // failure). These diagnostics explain the verdict; they never grant readiness.
+  const requirements = diagnoseRequirementsIndependently({
+    company: cManifest,
+    manifest: pManifest,
+    evidence: input.registrationEvidence,
   });
 
   // Diagnostics and next steps
@@ -1385,302 +1215,367 @@ export function projectIntegrationDiagnostics(
   return assertSafeInspectionPayload(IntegrationDiagnosticReportSchema.parse(report));
 }
 
+
+// --- 9a. Independent per-requirement evidence ---
+
+interface RequirementDiagnosisInput {
+  readonly company: CompanyManifestV1;
+  readonly manifest: CapabilityPack["manifest"];
+  readonly evidence?: TrustedProofRegistrationEvidence;
+}
+
+function requirement(
+  category: IntegrationRequirementDiagnostic["category"],
+  name: string,
+  requiredRef: string,
+  status: IntegrationRequirementDiagnostic["status"],
+  diagnostic?: string,
+  reasonCode?: string
+): IntegrationRequirementDiagnostic {
+  return {
+    category,
+    name: name.slice(0, INSPECTION_LIMITS.MAX_STRING_LENGTH),
+    requiredRef: requiredRef.slice(0, INSPECTION_LIMITS.MAX_STRING_LENGTH),
+    status,
+    ...(reasonCode ? { reasonCode } : {}),
+    ...(diagnostic ? { diagnostic: diagnostic.slice(0, INSPECTION_LIMITS.MAX_STRING_LENGTH) } : {}),
+    ...(reasonCode && status !== "SATISFIED" ? { remediation: getRemediationForCode(reasonCode) } : {}),
+  };
+}
+
+/**
+ * SATISFIED only with that requirement's own supporting evidence; MISSING only when
+ * the evidence source is present and confirms absence; NOT_VERIFIED when the
+ * evidence that would decide it is absent. Pure and deterministic.
+ */
+export function diagnoseRequirementsIndependently(input: RequirementDiagnosisInput): IntegrationRequirementDiagnostic[] {
+  const { company, manifest: m, evidence } = input;
+  const snapshot = evidence?.snapshot;
+  const workflow = snapshot?.workflow ?? evidence?.workflow;
+  const tools = snapshot?.tools ?? evidence?.registeredTools ?? evidence?.tools;
+  const policies = snapshot?.modelPolicies ?? evidence?.registeredModelPolicies ?? evidence?.modelPolicies;
+  const bindings = snapshot?.modelBindings ?? evidence?.registeredModelBindings ?? evidence?.modelBindings;
+  const adapters = snapshot?.modelAdapters ?? evidence?.registeredModelAdapters ?? evidence?.modelAdapters;
+  const evalProfiles = evidence?.registeredEvalProfiles;
+  const out: IntegrationRequirementDiagnostic[] = [];
+
+  // Workflow identity and pinned plan fingerprint.
+  const wfRef = `${m.workflow.id}@${m.workflow.version}`;
+  if (!workflow) out.push(requirement("workflow", "Workflow Pinned Plan Fingerprint", wfRef, "NOT_VERIFIED", "Prepared workflow registration evidence is unavailable."));
+  else if (workflow.id !== m.workflow.id || workflow.version !== m.workflow.version || workflow.planFingerprint !== m.workflow.planFingerprint) {
+    out.push(requirement("workflow", "Workflow Pinned Plan Fingerprint", wfRef, "INCOMPATIBLE", `Prepared workflow is '${workflow.id}@${workflow.version}' with a different identity or plan fingerprint.`, "PACK_WORKFLOW_MISMATCH"));
+  } else out.push(requirement("workflow", "Workflow Pinned Plan Fingerprint", wfRef, "SATISFIED", "Prepared workflow identity and plan fingerprint match."));
+
+  // Company proof enablement.
+  const proof = getRequiredProofName(m.id);
+  out.push((company.enabledProofs as readonly string[]).includes(proof)
+    ? requirement("governance", `Proof Enabled: ${proof}`, proof, "SATISFIED", `Company enables proof '${proof}'.`)
+    : requirement("governance", `Proof Enabled: ${proof}`, proof, "INCOMPATIBLE", `Company '${company.companyId}' does not enable proof '${proof}'.`, "PACK_PROOF_DISABLED"));
+
+  // Tools: exact id@version, each independently.
+  for (const t of m.requirements.toolRefs) {
+    const key = `${t.id}@${t.version}`;
+    if (!tools) out.push(requirement("tool", `Tool: ${key}`, key, "NOT_VERIFIED", "Tool registration evidence is unavailable."));
+    else if (tools.some((r) => r.id === t.id && r.version === t.version)) out.push(requirement("tool", `Tool: ${key}`, key, "SATISFIED", "Exact Tool version is registered."));
+    else if (tools.some((r) => r.id === t.id)) out.push(requirement("tool", `Tool: ${key}`, key, "INCOMPATIBLE", `Tool '${t.id}' is registered only at version(s) ${tools.filter((r) => r.id === t.id).map((r) => r.version).join(", ")}.`, "PACK_REQUIREMENT_MISSING"));
+    else out.push(requirement("tool", `Tool: ${key}`, key, "MISSING", `Tool '${key}' is not registered in the host proof environment.`, "PACK_REQUIREMENT_MISSING"));
+  }
+
+  // Model policies, each independently.
+  for (const pol of m.requirements.modelPolicyRefs) {
+    if (!policies) out.push(requirement("model_policy", `Model Policy: ${pol}`, pol, "NOT_VERIFIED", "Model policy registration evidence is unavailable."));
+    else if (policies.includes(pol)) out.push(requirement("model_policy", `Model Policy: ${pol}`, pol, "SATISFIED", "Model policy is registered."));
+    else out.push(requirement("model_policy", `Model Policy: ${pol}`, pol, "MISSING", `Model policy '${pol}' is not registered in the host proof environment.`, "PACK_REQUIREMENT_MISSING"));
+  }
+
+  // Model capabilities: only real binding/adapter pairs count, and all required
+  // capabilities must be met by one pair (never combined across unrelated bindings).
+  const required = m.requirements.modelCapabilities;
+  const pairs = (bindings ?? []).map((b) => {
+    // Registered adapter list present but lacking this adapter: confirmed unsupported ([]).
+    // No adapter list and no attached adapter: unverifiable (undefined).
+    const adapter = adapters !== undefined
+      ? adapters.find((a) => a.id === b.adapterRef.id && a.version === b.adapterRef.version)
+      : b.adapter;
+    if (!adapter) return adapters !== undefined ? [] : undefined;
+    return b.capabilities.filter((c) => adapter.capabilities.some((ac) => ac.capability === c && ac.support === "supported"));
+  });
+  const singlePair = pairs.some((caps) => caps !== undefined && required.every((c) => caps.includes(c)));
+  for (const cap of required) {
+    if (!bindings) out.push(requirement("model_capability", `Model Capability: ${cap}`, cap, "NOT_VERIFIED", "Model binding registration evidence is unavailable."));
+    else if (singlePair) out.push(requirement("model_capability", `Model Capability: ${cap}`, cap, "SATISFIED", "A single registered binding/adapter pair supports all required capabilities."));
+    else if (pairs.some((caps) => caps?.includes(cap))) out.push(requirement("model_capability", `Model Capability: ${cap}`, cap, "INCOMPATIBLE", `Capability '${cap}' is supported only by a binding that does not cover all required capabilities.`, "PACK_CAPABILITY_INCOMPATIBLE"));
+    else if (pairs.some((caps) => caps === undefined)) out.push(requirement("model_capability", `Model Capability: ${cap}`, cap, "NOT_VERIFIED", "A registered binding's adapter evidence is unavailable, so its support cannot be verified.", "PACK_EVIDENCE_UNAVAILABLE"));
+    else out.push(requirement("model_capability", `Model Capability: ${cap}`, cap, "INCOMPATIBLE", `No registered binding/adapter pair supports '${cap}'.`, "PACK_CAPABILITY_INCOMPATIBLE"));
+  }
+
+  // Integration slots: a configured provider reference is not proof of a usable provider.
+  for (const slot of m.requirements.integrationSlots) {
+    const boundRef =
+      slot.slot === "public_web" ? company.integrations.publicWebProviderRef
+        : slot.slot === "document_source" ? company.integrations.documentSourceProviderRef
+          : slot.slot === "draft_repository" ? company.integrations.draftRepositoryRef
+            : undefined;
+    out.push(boundRef
+      ? requirement("integration", `Integration Slot: ${slot.slot}`, `${slot.slot} -> ${boundRef}`, "NOT_VERIFIED", `Provider '${boundRef}' is configured; its live availability is not verified by inspection.`)
+      : requirement("integration", `Integration Slot: ${slot.slot}`, slot.slot, "MISSING", `Integration slot '${slot.slot}' is not configured for company '${company.companyId}'.`, "PACK_REQUIREMENT_MISSING"));
+  }
+
+  // Preliminary permissions: enforced by Authorization per principal at run time; role
+  // configuration alone is not proof of authorization.
+  out.push(requirement("governance", "Preliminary Permissions", `[${m.requirements.preliminaryPermissions.join(", ")}]`, "NOT_VERIFIED", "Permissions are authorized per principal at run time; compatibility does not verify them."));
+
+  // Approval role configuration (not any particular Run's approval decision).
+  if (m.requirements.approval?.required) {
+    const roles = m.requirements.approval.requiredRoleIds;
+    const undefinedRoles = roles.filter((id) => !company.governance.roles.some((r) => r.id === id));
+    out.push(undefinedRoles.length === 0
+      ? requirement("approval", "Human Approval Role Gate", `Roles: [${roles.join(", ")}]`, "SATISFIED", "Required approver roles are defined in company governance.")
+      : requirement("approval", "Human Approval Role Gate", `Roles: [${roles.join(", ")}]`, "INCOMPATIBLE", `Approver role(s) not defined in governance: ${undefinedRoles.join(", ")}.`, "PACK_GOVERNANCE_INCOMPATIBLE"));
+  }
+
+  // Evaluation profile: registration only. Registered does not mean its Evals passed,
+  // and grader definitions are not part of the registration evidence.
+  const profile = m.verification.evalProfileRef;
+  const profileId = profile.split("@")[0];
+  if (!evalProfiles) out.push(requirement("evaluation", "Verification Profile", profile, "NOT_VERIFIED", "Evaluation profile registration evidence is unavailable."));
+  else if (evalProfiles.includes(profile)) out.push(requirement("evaluation", "Verification Profile", profile, "SATISFIED", "Profile is registered (registration only; not an Eval pass)."));
+  else if (evalProfiles.some((r) => r.split("@")[0] === profileId)) out.push(requirement("evaluation", "Verification Profile", profile, "INCOMPATIBLE", `Profile '${profileId}' is registered at a different version.`, "PACK_VERIFICATION_PROFILE_MISSING"));
+  else out.push(requirement("evaluation", "Verification Profile", profile, "MISSING", `Evaluation profile '${profile}' is not registered.`, "PACK_VERIFICATION_PROFILE_MISSING"));
+
+  return out;
+}
+
 // --- 10. Advanced Run Inspection Projection ---
+
+/**
+ * Token accounting over the model invocations found in `events`. One invocation is
+ * one `model.call.started`; usage is read only from its single terminal
+ * `model.call.completed` (a valid Trace cannot carry a duplicate). Completeness
+ * follows Observability's MetricCompleteness rules, and additionally treats an
+ * invocation that never finished as unknown usage.
+ */
+export function summarizeTokenUsage(events: readonly TraceEvent[]): TokenUsageSummary {
+  let invocations = 0;
+  let completed = 0;
+  let failed = 0;
+  let withUsage = 0;
+  let anyReported = false;
+  const known = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+  const missing = { inputTokens: false, outputTokens: false, totalTokens: false };
+  for (const event of events) {
+    if (event.type === "model.call.started") invocations += 1;
+    else if (event.type === "model.call.failed") failed += 1;
+    else if (event.type === "model.call.completed") {
+      completed += 1;
+      const usage = ((event.payload as Record<string, unknown>).usage ?? {}) as Partial<Record<keyof typeof known, number>>;
+      for (const field of ["inputTokens", "outputTokens", "totalTokens"] as const) {
+        const value = usage[field];
+        if (value === undefined) missing[field] = true;
+        else { known[field] += value; anyReported = true; }
+      }
+      if (usage.inputTokens !== undefined && usage.outputTokens !== undefined) withUsage += 1;
+    }
+  }
+  // Failed or unfinished invocations have unknown usage.
+  const unknownCalls = invocations - completed;
+  const exact = (field: keyof typeof known) => unknownCalls === 0 && !missing[field];
+  const status: TokenUsageSummary["status"] =
+    invocations === 0 || (exact("inputTokens") && exact("outputTokens") && exact("totalTokens"))
+      ? "complete"
+      : anyReported ? "partial" : "unavailable";
+  return {
+    status,
+    modelInvocations: invocations,
+    callsCompleted: completed,
+    callsFailed: failed,
+    callsWithUsage: withUsage,
+    callsWithoutUsage: invocations - withUsage,
+    ...(exact("inputTokens") ? { inputTokens: known.inputTokens } : {}),
+    ...(exact("outputTokens") ? { outputTokens: known.outputTokens } : {}),
+    ...(exact("totalTokens") ? { totalTokens: known.totalTokens } : {}),
+    knownInputTokens: known.inputTokens,
+    knownOutputTokens: known.outputTokens,
+    knownTotalTokens: known.totalTokens,
+  };
+}
+
+/** Events that belong to a node attempt; anything else (run, state, checkpoint, recovery) is run-scoped. */
+const ATTEMPT_SCOPED_EVENT = /^(node\.(completed|failed|waiting)|retry\.|tool\.call\.|model\.call\.|agent\.|approval\.requested$)/;
+
+const TERMINAL_RUN_STATUSES: readonly OperatorRunStatus[] = ["COMPLETED", "FAILED", "CANCELLED"];
 
 export function projectAdvancedRunInspection(
   evidence: KnownRunEvidence,
   provenance?: OperatorSourceProvenance
 ): AdvancedRunInspection {
   const baseInspection = projectRunInspection(evidence, provenance);
-  const summary = baseInspection.summary;
-  const trace = baseInspection.trace;
-  const approvals = baseInspection.approvals;
-  const evaluations = baseInspection.evaluations;
-  const workflow = baseInspection.workflow;
+  const { summary, trace, approvals, evaluations, workflow } = baseInspection;
 
-  // 1. Token usage aggregation
-  let hasTokenUsage = false;
-  let totalInputTokens = 0;
-  let totalOutputTokens = 0;
-  let totalTokens = 0;
+  // 1. Canonical correlation. Only a valid Trace yields attempts, counters or tokens;
+  //    a corrupt or missing Trace yields none of them (never normal-looking numbers).
+  interface AttemptDraft { nodeId: string; record: { kind: NodeAttemptInspection["kind"]; step: number; attempt: number; recoveryReplay: boolean; outcome: NodeAttemptInspection["status"]; startedAt: string; durationMs: number | null }; spanId: string; events: TraceEvent[] }
+  const drafts: AttemptDraft[] = [];
+  const unattributed: TraceEvent[] = [];
+  let counters: ExecutionCounters | undefined;
+  let tokenUsage: TokenUsageSummary | undefined;
 
-  for (const ev of trace.events) {
-    if (ev.tokenUsage) {
-      hasTokenUsage = true;
-      if (typeof ev.tokenUsage.inputTokens === "number") totalInputTokens += ev.tokenUsage.inputTokens;
-      if (typeof ev.tokenUsage.outputTokens === "number") totalOutputTokens += ev.tokenUsage.outputTokens;
-      if (typeof ev.tokenUsage.totalTokens === "number") totalTokens += ev.tokenUsage.totalTokens;
+  if (trace.health === "healthy" && evidence.traceEvents) {
+    const metrics = deriveRunMetrics({ trace: evidence.traceEvents });
+    if (!metrics.ok) {
+      throw new OperatorInspectionError("INSPECTION_TRACE_CORRUPT", `Run metrics could not be derived for '${evidence.runId}' (${metrics.code}).`);
+    }
+    const m = metrics.metrics;
+    counters = {
+      traceEvents: evidence.traceEvents.length,
+      nodeExecutionOccurrences: m.nodes.executions,
+      nodeAttempts: m.nodes.attempts,
+      recoveryReplayAttempts: m.nodes.recoveryReplayAttempts,
+      toolPhysicalInvocations: m.tools.physicalInvocations,
+      toolLogicalExecutions: m.tools.logicalExecutions,
+      toolBlocked: m.tools.blocked,
+      modelInvocations: m.models.callsStarted,
+      scheduledRetries: m.retries.scheduled,
+      exhaustedRetries: m.retries.exhausted,
+    };
+    tokenUsage = summarizeTokenUsage(evidence.traceEvents);
+
+    // deriveRunMetrics emits one attempt record per `node.started`, in Trace order; pair
+    // each with its span, then attach evidence by span (a recovery replay re-opens its
+    // logical span, so later evidence belongs to the replay).
+    const records = m.nodes.attemptDetails;
+    const owner = new Map<string, AttemptDraft>();
+    for (const event of evidence.traceEvents) {
+      if (event.type === "node.started") {
+        const record = records[drafts.length]!;
+        const draft: AttemptDraft = { nodeId: record.nodeId, record: { ...record }, spanId: event.spanId, events: [event] };
+        drafts.push(draft);
+        owner.set(event.spanId, draft);
+        continue;
+      }
+      if (!ATTEMPT_SCOPED_EVENT.test(event.type)) continue;
+      const draft = (event.parentSpanId !== undefined ? owner.get(event.parentSpanId) : undefined) ?? owner.get(event.spanId);
+      if (!draft) { unattributed.push(event); continue; }
+      draft.events.push(event);
+      owner.set(event.spanId, draft);
+    }
+    if (drafts.length !== records.length) {
+      throw new OperatorInspectionError("INSPECTION_TRACE_CORRUPT", `Attempt correlation mismatch for '${evidence.runId}'.`);
     }
   }
 
-  const tokenUsage: TokenUsageSummary = hasTokenUsage
-    ? {
-        inputTokens: totalInputTokens,
-        outputTokens: totalOutputTokens,
-        totalTokens: totalTokens,
-        recorded: true,
-      }
-    : { recorded: false };
-
-  // 2. Map trace events by nodeId and collect attempts
-  const eventsByNodeId = new Map<string, TraceEventSummary[]>();
-  const executionAttempts: ExecutionAttemptSummary[] = [];
-
-  for (const ev of trace.events) {
-    if (ev.nodeId) {
-      let list = eventsByNodeId.get(ev.nodeId);
-      if (!list) {
-        list = [];
-        eventsByNodeId.set(ev.nodeId, list);
-      }
-      list.push(ev);
-    }
-
-    if (
-      ev.type.startsWith("tool.call.") ||
-      ev.type.startsWith("model.call.") ||
-      ev.type.startsWith("node.") ||
-      ev.type.startsWith("approval.")
-    ) {
-      let kind = "node";
-      if (ev.type.startsWith("tool.call.")) kind = "tool";
-      else if (ev.type.startsWith("model.call.")) kind = "model";
-      else if (ev.type.startsWith("approval.")) kind = "approval";
-
-      executionAttempts.push({
-        sequence: ev.sequence,
-        ...(ev.nodeId ? { nodeId: ev.nodeId } : {}),
-        kind,
-        attempt: ev.attempt ?? 1,
-        status: ev.status ?? ev.type,
-        ...(ev.reasonCode ? { reasonCode: ev.reasonCode } : {}),
-        ...(ev.recoveryReplay !== undefined ? { recoveryReplay: ev.recoveryReplay } : {}),
-        occurredAt: ev.occurredAt,
-      });
-    }
-  }
-
-  // 3. Node-by-node execution inspection
-  const nodeInspections: NodeExecutionInspection[] = [];
-  const plannedNodeIds = new Set<string>();
-
-  const processNodeEvents = (
-    nodeId: string,
-    wNode: WorkflowNodeSummary | undefined,
-    planned: boolean
-  ): NodeExecutionInspection => {
-    const nodeEvents = eventsByNodeId.get(nodeId) ?? [];
-    const executed = nodeEvents.length > 0;
-
-    // Group events by attempt
-    const attemptMap = new Map<number, TraceEventSummary[]>();
-    for (const ev of nodeEvents) {
-      const attNum = ev.attempt ?? 1;
-      let attEvents = attemptMap.get(attNum);
-      if (!attEvents) {
-        attEvents = [];
-        attemptMap.set(attNum, attEvents);
-      }
-      attEvents.push(ev);
-    }
-
-    const attempts: NodeAttemptInspection[] = [];
-    const attemptNumbers = [...attemptMap.keys()].sort((a, b) => a - b);
-
-    let nodeStartedAt: string | undefined;
-    let nodeFinishedAt: string | undefined;
-    let nodeToolRef: string | undefined = wNode?.toolRef;
-    let nodeModelPolicyRef = wNode?.modelPolicyId;
-    let nodeModelBindingId: string | undefined;
-    let nodeApprovalId: string | undefined;
-    let nodeApprovalStatus: ApprovalStatus | undefined;
-    let nodeHasTokenUsage = false;
-    let nodeInputTokens = 0;
-    let nodeOutputTokens = 0;
-    let nodeTotalTokens = 0;
-    let nodeFailedCode: string | undefined;
-
-    for (const attNum of attemptNumbers) {
-      const attEvents = attemptMap.get(attNum)!;
-      const first = attEvents[0]!;
-      const last = attEvents[attEvents.length - 1]!;
-
-      if (!nodeStartedAt) nodeStartedAt = first.occurredAt;
-
-      let attKind: NodeAttemptInspection["kind"] = "unknown";
-      if (wNode?.kind === "tool" || attEvents.some((e) => e.type.startsWith("tool.") || e.toolRef)) {
-        attKind = "tool";
-      } else if (wNode?.kind === "model" || attEvents.some((e) => e.type.startsWith("model.") || e.modelPolicyRef)) {
-        attKind = "model";
-      } else if (wNode?.kind === "approval" || attEvents.some((e) => e.type.startsWith("approval.") || e.approvalId)) {
-        attKind = "approval";
-      } else if (wNode?.kind) {
-        attKind = "node";
-      }
-
-      let attStatus: NodeAttemptInspection["status"] = "started";
-      if (attEvents.some((e) => e.type === "node.completed" || e.type.endsWith(".completed") || e.status === "succeeded")) {
-        attStatus = "completed";
-        nodeFinishedAt = last.occurredAt;
-      } else if (attEvents.some((e) => e.type === "node.failed" || e.type.endsWith(".failed") || e.status === "failed")) {
-        attStatus = "failed";
-        nodeFinishedAt = last.occurredAt;
-      } else if (attEvents.some((e) => e.type === "node.waiting" || e.type === "approval.requested")) {
-        attStatus = "waiting";
-      }
-
-      const attToolRef = attEvents.find((e) => e.toolRef)?.toolRef ?? wNode?.toolRef;
-      if (attToolRef) nodeToolRef = attToolRef;
-
-      const attModelPolicyRef = attEvents.find((e) => e.modelPolicyRef)?.modelPolicyRef ?? wNode?.modelPolicyId;
-      if (attModelPolicyRef) nodeModelPolicyRef = attModelPolicyRef;
-
-      const attModelBindingId = attEvents.find((e) => e.modelBindingId)?.modelBindingId;
-      if (attModelBindingId) nodeModelBindingId = attModelBindingId;
-
-      const attApprovalId = attEvents.find((e) => e.approvalId)?.approvalId;
-      if (attApprovalId) nodeApprovalId = attApprovalId;
-
-      const attReasonCode = attEvents.find((e) => e.reasonCode)?.reasonCode;
-      if (attReasonCode && attStatus === "failed") nodeFailedCode = attReasonCode;
-
-      const attRecoveryReplay = attEvents.some((e) => e.recoveryReplay === true);
-
-      let attTokenUsage: TokenUsageSummary | undefined;
-      const usageEv = attEvents.find((e) => e.tokenUsage);
-      if (usageEv && usageEv.tokenUsage) {
-        nodeHasTokenUsage = true;
-        if (usageEv.tokenUsage.inputTokens !== undefined) nodeInputTokens += usageEv.tokenUsage.inputTokens;
-        if (usageEv.tokenUsage.outputTokens !== undefined) nodeOutputTokens += usageEv.tokenUsage.outputTokens;
-        if (usageEv.tokenUsage.totalTokens !== undefined) nodeTotalTokens += usageEv.tokenUsage.totalTokens;
-        attTokenUsage = {
-          ...(usageEv.tokenUsage.inputTokens !== undefined ? { inputTokens: usageEv.tokenUsage.inputTokens } : {}),
-          ...(usageEv.tokenUsage.outputTokens !== undefined ? { outputTokens: usageEv.tokenUsage.outputTokens } : {}),
-          ...(usageEv.tokenUsage.totalTokens !== undefined ? { totalTokens: usageEv.tokenUsage.totalTokens } : {}),
-          recorded: true,
-        };
-      }
-
-      const attStartedAt = first.occurredAt;
-      const attFinishedAt = attStatus === "completed" || attStatus === "failed" ? last.occurredAt : undefined;
-      let attDurationMs: number | undefined;
-      if (attStartedAt && attFinishedAt) {
-        const ms = Date.parse(attFinishedAt) - Date.parse(attStartedAt);
-        if (!Number.isNaN(ms) && ms >= 0) attDurationMs = ms;
-      }
-
-      attempts.push({
-        attempt: attNum,
-        kind: attKind,
-        status: attStatus,
-        startedAt: attStartedAt,
-        ...(attFinishedAt ? { finishedAt: attFinishedAt } : {}),
-        ...(attDurationMs !== undefined ? { durationMs: attDurationMs } : {}),
-        ...(attToolRef ? { toolRef: attToolRef } : {}),
-        ...(attModelPolicyRef ? { modelPolicyRef: attModelPolicyRef } : {}),
-        ...(attModelBindingId ? { modelBindingId: attModelBindingId } : {}),
-        ...(attApprovalId ? { approvalId: attApprovalId } : {}),
-        ...(attReasonCode ? { reasonCode: attReasonCode } : {}),
-        ...(attRecoveryReplay ? { recoveryReplay: true } : {}),
-        ...(attTokenUsage ? { tokenUsage: attTokenUsage } : {}),
-      });
-    }
-
-    // Determine overall node status conservatively
-    let nodeStatus: NodeExecutionInspection["status"];
-    if (!executed) {
-      nodeStatus = "NOT_OBSERVED";
-    } else if (nodeEvents.some((e) => e.type === "node.completed")) {
-      nodeStatus = "OBSERVED_COMPLETED";
-    } else if (nodeEvents.some((e) => e.type === "node.failed") || attempts.some((a) => a.status === "failed")) {
-      nodeStatus = "OBSERVED_FAILED";
-    } else {
-      const isTerminalRun =
-        summary.status === "COMPLETED" ||
-        summary.status === "FAILED" ||
-        summary.status === "CANCELLED" ||
-        trace.terminalEventType !== undefined;
-      if (isTerminalRun) {
-        nodeStatus = "EVIDENCE_INCOMPLETE";
-      } else {
-        nodeStatus = "OBSERVED_STARTED";
-      }
-    }
-
-    // Approvals correlation
-    if (nodeApprovalId) {
-      const matchedApproval = approvals.find((a) => a.approvalId === nodeApprovalId);
-      if (matchedApproval) {
-        nodeApprovalStatus = matchedApproval.status;
-      }
-    }
-
-    let nodeDurationMs: number | undefined;
-    if (nodeStartedAt && nodeFinishedAt) {
-      const ms = Date.parse(nodeFinishedAt) - Date.parse(nodeStartedAt);
-      if (!Number.isNaN(ms) && ms >= 0) nodeDurationMs = ms;
-    }
-
-    const nodeDiagnostics: string[] = [];
-    if (!planned) {
-      nodeDiagnostics.push("Node executed was not present in the compiled workflow plan.");
-    }
-    if (nodeStatus === "OBSERVED_FAILED") {
-      nodeDiagnostics.push(`Node execution failed${nodeFailedCode ? ` (${nodeFailedCode})` : ""}.`);
-    }
-    if (attempts.length > 1) {
-      nodeDiagnostics.push(`Node recorded ${attempts.length} execution attempts (retries observed).`);
-    }
-    if (nodeStatus === "EVIDENCE_INCOMPLETE") {
-      nodeDiagnostics.push("Node execution began but no terminal completion event was observed.");
-    }
-
+  const attemptOf = (draft: AttemptDraft): NodeAttemptInspection => {
+    const r = draft.record;
+    const summaries = draft.events.map(projectSingleTraceEvent);
+    const find = <K extends keyof TraceEventSummary>(key: K) => summaries.find((e) => e[key] !== undefined)?.[key];
+    const failureCodes = summaries.filter((e) => e.reasonCode && (e.type.endsWith(".failed") || e.type.startsWith("retry.") || e.type === "tool.call.blocked"));
+    const waiting = draft.events.find((e) => e.type === "node.waiting");
+    const approvalId = find("approvalId") ?? (waiting ? ((waiting.payload as Record<string, unknown>).referenceId as string) : undefined);
+    const toolPhysicalInvocations = draft.events.filter((e) => e.type === "tool.call.started").length;
+    const modelEvents = draft.events.filter((e) => e.type.startsWith("model.call."));
+    const finishedAt = r.durationMs !== null ? new Date(Date.parse(r.startedAt) + r.durationMs).toISOString() : undefined;
+    const toolRef = find("toolRef");
+    const modelPolicyRef = find("modelPolicyRef");
+    const modelBindingId = find("modelBindingId");
+    const reasonCode = failureCodes[failureCodes.length - 1]?.reasonCode;
     return {
-      nodeId,
-      nodeKind: wNode?.kind ?? "unknown",
-      ...(wNode?.name ? { name: wNode.name } : {}),
-      status: nodeStatus,
-      planned,
-      executed,
-      attempts,
-      totalAttempts: attempts.length,
-      ...(nodeToolRef ? { toolRef: nodeToolRef } : {}),
-      ...(nodeModelPolicyRef ? { modelPolicyRef: nodeModelPolicyRef } : {}),
-      ...(nodeModelBindingId ? { modelBindingId: nodeModelBindingId } : {}),
-      ...(nodeApprovalId ? { approvalId: nodeApprovalId } : {}),
-      ...(nodeApprovalStatus ? { approvalStatus: nodeApprovalStatus } : {}),
-      ...(nodeStartedAt ? { startedAt: nodeStartedAt } : {}),
-      ...(nodeFinishedAt ? { finishedAt: nodeFinishedAt } : {}),
-      ...(nodeDurationMs !== undefined ? { durationMs: nodeDurationMs } : {}),
-      ...(nodeHasTokenUsage
-        ? {
-            tokenUsage: {
-              inputTokens: nodeInputTokens,
-              outputTokens: nodeOutputTokens,
-              totalTokens: nodeTotalTokens,
-              recorded: true,
-            },
-          }
-        : {}),
-      diagnostics: nodeDiagnostics,
+      nodeId: draft.nodeId,
+      kind: r.kind,
+      step: r.step,
+      attempt: r.attempt,
+      spanId: draft.spanId,
+      status: r.outcome,
+      recoveryReplay: r.recoveryReplay,
+      startedAt: r.startedAt,
+      ...(finishedAt ? { finishedAt } : {}),
+      ...(r.durationMs !== null ? { durationMs: r.durationMs } : {}),
+      ...(toolRef ? { toolRef } : {}),
+      ...(modelPolicyRef ? { modelPolicyRef } : {}),
+      ...(modelBindingId ? { modelBindingId } : {}),
+      ...(approvalId ? { approvalId } : {}),
+      ...(reasonCode ? { reasonCode } : {}),
+      toolPhysicalInvocations,
+      modelInvocations: modelEvents.filter((e) => e.type === "model.call.started").length,
+      ...(modelEvents.length > 0 ? { tokenUsage: summarizeTokenUsage(modelEvents) } : {}),
+      evidenceEventIds: draft.events.slice(0, INSPECTION_LIMITS.MAX_TRACE_EVENTS).map((e) => e.eventId),
     };
   };
 
-  if (workflow?.nodes) {
-    for (const wNode of workflow.nodes) {
-      plannedNodeIds.add(wNode.id);
-      nodeInspections.push(processNodeEvents(wNode.id, wNode, true));
-    }
+  const allAttempts = drafts.map(attemptOf);
+  const runTerminal = TERMINAL_RUN_STATUSES.includes(summary.status) || trace.terminalEventType !== undefined;
+
+  // 2. Node-by-node view: one entry per planned node, plus any observed unplanned node.
+  const processNode = (nodeId: string, wNode: WorkflowNodeSummary | undefined, planned: boolean): NodeExecutionInspection => {
+    const mine = drafts.filter((d) => d.nodeId === nodeId);
+    const attempts = allAttempts.filter((a) => a.nodeId === nodeId);
+    const last = attempts[attempts.length - 1];
+    const executed = attempts.length > 0;
+    const status: NodeExecutionInspection["status"] = !last
+      ? "NOT_OBSERVED"
+      : last.status === "completed"
+        ? "OBSERVED_COMPLETED"
+        : last.status === "failed"
+          ? "OBSERVED_FAILED"
+          : runTerminal ? "EVIDENCE_INCOMPLETE" : "OBSERVED_STARTED";
+    const executionCount = new Set(attempts.map((a) => a.step)).size;
+    const attemptCount = attempts.filter((a) => !a.recoveryReplay).length;
+    const recoveryReplayCount = attempts.length - attemptCount;
+    const scheduledRetries = mine.reduce((n, d) => n + d.events.filter((e) => e.type === "retry.scheduled").length, 0);
+    const latest = <K extends "toolRef" | "modelPolicyRef" | "modelBindingId" | "approvalId">(key: K) => [...attempts].reverse().find((a) => a[key] !== undefined)?.[key];
+    const toolRef = latest("toolRef") ?? wNode?.toolRef;
+    const modelPolicyRef = latest("modelPolicyRef") ?? wNode?.modelPolicyId;
+    const modelBindingId = latest("modelBindingId");
+    const approvalId = latest("approvalId");
+    const approvalStatus = approvalId ? approvals.find((a) => a.approvalId === approvalId)?.status : undefined;
+    const modelEvents = mine.flatMap((d) => d.events.filter((e) => e.type.startsWith("model.call.")));
+    const startedAt = attempts[0]?.startedAt;
+    const finishedAt = last?.finishedAt;
+    const durationMs = startedAt && finishedAt ? Math.max(0, Date.parse(finishedAt) - Date.parse(startedAt)) : undefined;
+
+    const diagnostics: string[] = [];
+    if (!planned) diagnostics.push("Node executed was not present in the compiled workflow plan.");
+    if (status === "OBSERVED_FAILED") diagnostics.push(`Node execution failed${last?.reasonCode ? ` (${last.reasonCode})` : ""}.`);
+    if (scheduledRetries > 0) diagnostics.push(`Node recorded ${attemptCount} attempts with ${scheduledRetries} explicitly scheduled retries.`);
+    if (executionCount > 1) diagnostics.push(`Node executed at ${executionCount} distinct workflow steps (repeat executions, not retries).`);
+    if (recoveryReplayCount > 0) diagnostics.push(`Node includes ${recoveryReplayCount} recovery replay attempt(s) of an already-recorded logical attempt.`);
+    if (status === "EVIDENCE_INCOMPLETE") diagnostics.push("Node execution began but no terminal completion event was observed.");
+
+    return {
+      nodeId,
+      nodeKind: wNode?.kind ?? last?.kind ?? "unknown",
+      ...(wNode?.name ? { name: wNode.name } : {}),
+      status,
+      planned,
+      executed,
+      attempts,
+      executionCount,
+      attemptCount,
+      recoveryReplayCount,
+      scheduledRetries,
+      ...(toolRef ? { toolRef } : {}),
+      ...(modelPolicyRef ? { modelPolicyRef } : {}),
+      ...(modelBindingId ? { modelBindingId } : {}),
+      ...(approvalId ? { approvalId } : {}),
+      ...(approvalStatus ? { approvalStatus } : {}),
+      ...(startedAt ? { startedAt } : {}),
+      ...(finishedAt ? { finishedAt } : {}),
+      ...(durationMs !== undefined ? { durationMs } : {}),
+      ...(modelEvents.length > 0 ? { tokenUsage: summarizeTokenUsage(modelEvents) } : {}),
+      diagnostics,
+    };
+  };
+
+  const nodeInspections: NodeExecutionInspection[] = [];
+  const plannedNodeIds = new Set<string>();
+  for (const wNode of workflow?.nodes ?? []) {
+    plannedNodeIds.add(wNode.id);
+    nodeInspections.push(processNode(wNode.id, wNode, true));
+  }
+  for (const nodeId of new Set(drafts.map((d) => d.nodeId))) {
+    if (!plannedNodeIds.has(nodeId)) nodeInspections.push(processNode(nodeId, undefined, false));
   }
 
-  // Include any extra nodes observed in trace that were not in planned nodes
-  for (const [nodeId] of eventsByNodeId) {
-    if (!plannedNodeIds.has(nodeId)) {
-      nodeInspections.push(processNodeEvents(nodeId, undefined, false));
-    }
-  }
-
-  // 4. Collect Run Diagnostics
+  // 3. Run diagnostics.
   const diagnostics: RunDiagnostic[] = [];
 
   if (summary.statusSource === "unavailable") {
@@ -1698,7 +1593,7 @@ export function projectAdvancedRunInspection(
       code: "TRACE_CORRUPT",
       severity: "error",
       observed: `Trace for '${evidence.runId}' failed integrity checks.`,
-      explanation: `Trace integrity validation detected issues: ${trace.diagnostics.map((d) => d.code).join(", ")}.`,
+      explanation: `Trace integrity validation detected issues: ${trace.diagnostics.map((d) => d.code).join(", ")}. No attempts, counters or token totals are derived from corrupt evidence.`,
       suggestedCheck: "Inspect trace recorder logs and storage integrity.",
     });
   } else if (!summary.traceAvailable) {
@@ -1714,7 +1609,7 @@ export function projectAdvancedRunInspection(
   if (
     trace.health === "healthy" &&
     trace.terminalEventType === undefined &&
-    (summary.status === "COMPLETED" || summary.status === "FAILED" || summary.status === "CANCELLED")
+    TERMINAL_RUN_STATUSES.includes(summary.status)
   ) {
     diagnostics.push({
       code: "TRACE_INCOMPLETE",
@@ -1727,31 +1622,69 @@ export function projectAdvancedRunInspection(
 
   for (const n of nodeInspections) {
     if (n.status === "OBSERVED_FAILED") {
-      const failedAttempt = n.attempts.find((a) => a.status === "failed");
+      const failedAttempt = [...n.attempts].reverse().find((a) => a.status === "failed");
       diagnostics.push(describeRunFailure(failedAttempt?.reasonCode, {
         nodeId: n.nodeId,
         toolRef: n.toolRef,
         modelPolicyRef: n.modelPolicyRef,
       }));
     }
-    if (n.totalAttempts > 1) {
+    if (n.scheduledRetries > 0) {
       diagnostics.push({
         code: "RETRIES_OBSERVED",
         severity: "info",
-        observed: `Node '${n.nodeId}' required ${n.totalAttempts} attempts.`,
-        explanation: "Transient or recoverable failures triggered execution retries.",
+        observed: `Node '${n.nodeId}' recorded ${n.attemptCount} attempts after ${n.scheduledRetries} explicitly scheduled retries.`,
+        explanation: "The Runtime scheduled retries after retryable attempt failures (retry.scheduled evidence).",
         suggestedCheck: "Review upstream tool reliability and timeout settings.",
+      });
+    }
+    if (n.executionCount > 1) {
+      diagnostics.push({
+        code: "NODE_REPEATED",
+        severity: "info",
+        observed: `Node '${n.nodeId}' executed at ${n.executionCount} distinct workflow steps.`,
+        explanation: "Each workflow step is a separate execution occurrence; repeat executions are not retries.",
+        suggestedCheck: "Confirm the workflow routing intends to revisit this node.",
       });
     }
   }
 
-  const modelCallsObserved = trace.events.some((e) => e.type.startsWith("model.call."));
-  if (modelCallsObserved && !tokenUsage.recorded) {
+  for (const a of allAttempts) {
+    if (a.status === "retried" && !allAttempts.some((b) => b.nodeId === a.nodeId && b.step === a.step && b.attempt === a.attempt + 1)) {
+      diagnostics.push({
+        code: "RETRY_NOT_STARTED",
+        severity: "warning",
+        observed: `Retry of node '${a.nodeId}' (step ${a.step}) to attempt ${a.attempt + 1} was scheduled but never observed starting.`,
+        explanation: "The Trace ends before the scheduled attempt began; its outcome is unknown.",
+        suggestedCheck: "Inspect worker termination and durable recovery for this run.",
+      });
+    }
+  }
+
+  if (unattributed.length > 0) {
+    diagnostics.push({
+      code: "UNATTRIBUTED_EVIDENCE",
+      severity: "warning",
+      observed: `${unattributed.length} Trace event(s) could not be attributed to an observed node attempt.`,
+      explanation: "These events carry no span relationship to any recorded node.started; they are listed separately and not counted against any node.",
+      suggestedCheck: "Inspect span propagation in the emitting adapter.",
+    });
+  }
+
+  if (tokenUsage && tokenUsage.status === "unavailable") {
     diagnostics.push({
       code: "TOKEN_USAGE_NOT_RECORDED",
       severity: "info",
-      observed: "Model invocation token usage was not recorded.",
+      observed: `None of ${tokenUsage.modelInvocations} model invocation(s) recorded token usage.`,
       explanation: "The model adapter or provider did not report token usage metadata.",
+      suggestedCheck: "Verify model adapter usage reporting configuration.",
+    });
+  } else if (tokenUsage && tokenUsage.status === "partial") {
+    diagnostics.push({
+      code: "TOKEN_USAGE_PARTIAL",
+      severity: "info",
+      observed: `${tokenUsage.callsWithUsage} of ${tokenUsage.modelInvocations} model invocation(s) recorded usage; totals are known recorded totals only.`,
+      explanation: "Failed, unfinished, or usage-less invocations make run-level token accounting partial.",
       suggestedCheck: "Verify model adapter usage reporting configuration.",
     });
   }
@@ -1770,6 +1703,13 @@ export function projectAdvancedRunInspection(
     }
   }
 
+  const unattributedEvents: UnattributedEvent[] = unattributed.slice(0, INSPECTION_LIMITS.MAX_TRACE_EVENTS).map((e) => ({
+    sequence: e.sequence,
+    eventId: e.eventId,
+    type: e.type,
+    ...(e.nodeId ? { nodeId: e.nodeId } : {}),
+  }));
+
   const advancedInspection: AdvancedRunInspection = {
     runId: summary.runId,
     workflowId: summary.workflowId,
@@ -1782,10 +1722,13 @@ export function projectAdvancedRunInspection(
     evidenceHealth: trace.health,
     eventCount: trace.eventCount,
     nodes: nodeInspections,
-    attempts: executionAttempts,
+    attempts: allAttempts.slice(0, INSPECTION_LIMITS.MAX_TRACE_EVENTS),
+    attemptsTruncated: allAttempts.length > INSPECTION_LIMITS.MAX_TRACE_EVENTS,
+    ...(counters ? { counters } : {}),
+    unattributedEvents,
     approvals,
     evaluations,
-    tokenUsage,
+    ...(tokenUsage ? { tokenUsage } : {}),
     diagnostics,
     provenance: provenance ?? (baseInspection.provenance ?? {
       mode: "demo",
