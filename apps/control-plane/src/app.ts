@@ -28,6 +28,8 @@ export interface BuildAppOptions {
 }
 
 const LOOPBACK_NAMES = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
+// No scripts, no external loads, and never framed by another page (clickjacking).
+const HTML_CSP = "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
 
 function hostnameOf(hostHeader: string): string {
   const trimmed = hostHeader.trim().toLowerCase();
@@ -41,6 +43,8 @@ function hostnameOf(hostHeader: string): string {
 function isLoopbackRequest(request: FastifyRequest): boolean {
   const host = request.headers.host;
   if (typeof host !== "string" || !LOOPBACK_NAMES.has(hostnameOf(host))) return false;
+  // A browser marks requests initiated by another site; they never reach inspection, even as GET.
+  if (request.headers["sec-fetch-site"] === "cross-site") return false;
   const origin = request.headers.origin;
   if (origin !== undefined) {
     try {
@@ -123,7 +127,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       const overview = await service.getOverview();
       return reply
         .header("content-type", "text/html; charset=utf-8")
-        .header("content-security-policy", "default-src 'none'; style-src 'unsafe-inline'")
+        .header("content-security-policy", HTML_CSP)
         .header("x-content-type-options", "nosniff")
         .send(renderControlCenterHtml(overview));
     } catch (err) {
@@ -143,7 +147,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
         const provenance = await service.getProvenance();
         return reply
           .header("content-type", "text/html; charset=utf-8")
-          .header("content-security-policy", "default-src 'none'; style-src 'unsafe-inline'")
+          .header("content-security-policy", HTML_CSP)
           .header("x-content-type-options", "nosniff")
           .send(renderIntegrationDiagnosticsHtml(report, provenance));
       } catch (err) {
@@ -153,7 +157,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
           return reply
             .code(normalized.code === "INSPECTION_NOT_FOUND" ? 404 : 400)
             .header("content-type", "text/html; charset=utf-8")
-            .header("content-security-policy", "default-src 'none'; style-src 'unsafe-inline'")
+            .header("content-security-policy", HTML_CSP)
             .header("x-content-type-options", "nosniff")
             .send(
               renderNotFoundHtml(
@@ -183,7 +187,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       const provenance = await service.getProvenance();
       return reply
         .header("content-type", "text/html; charset=utf-8")
-        .header("content-security-policy", "default-src 'none'; style-src 'unsafe-inline'")
+        .header("content-security-policy", HTML_CSP)
         .header("x-content-type-options", "nosniff")
         .send(renderRunDetailHtml(runInspection, provenance, advanced, nodeId, advancedUnavailable));
     } catch (err) {
@@ -193,7 +197,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
         return reply
           .code(normalized.code === "INSPECTION_NOT_FOUND" ? 404 : 400)
           .header("content-type", "text/html; charset=utf-8")
-          .header("content-security-policy", "default-src 'none'; style-src 'unsafe-inline'")
+          .header("content-security-policy", HTML_CSP)
           .header("x-content-type-options", "nosniff")
           .send(
             renderNotFoundHtml(
