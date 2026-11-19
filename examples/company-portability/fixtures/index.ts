@@ -46,6 +46,8 @@ export {
   NORTHSTAR_OPERATIONAL_REQUEST,
   ARBOR_OPERATIONAL_REQUEST,
   createCompanyApprovalVerifier,
+  createNorthstarModelAdapter,
+  NORTHSTAR_MODEL_BINDING,
 };
 
 export interface TestHostEnvironment {
@@ -79,7 +81,8 @@ export function createTestHostEnvironment(options: TestHostOptions = {}): TestHo
   const northstarDraftRepo = createNorthstarDraftRepository();
   const arborDraftRepo = createArborDraftRepository();
 
-  const northstarModelAdapterDef = createNorthstarModelAdapter();
+  const northstarModelRequests: unknown[] = [];
+  const northstarModelAdapterDef = createNorthstarModelAdapter(northstarModelRequests as never[]);
   const arborModel = createArborModelAdapter();
 
   const hostCapabilities = createHostCapabilityCatalog({
@@ -105,6 +108,7 @@ export function createTestHostEnvironment(options: TestHostOptions = {}): TestHo
     },
   });
 
+  // shortcut: demo-only identity convention (Run ID text picks the actor); hardened hosts use trustedIdentity (ADR-034).
   const northstarPrincipalForRun: PrincipalForRun = ({ runId }) => {
     if (options.northstarPrincipalOverride) {
       return options.northstarPrincipalOverride(runId);
@@ -136,7 +140,6 @@ export function createTestHostEnvironment(options: TestHostOptions = {}): TestHo
     northstarPrincipalForRun,
     arborPrincipalForRun,
     getArborProviderCalls: arborModel.providerCalls,
-    getNorthstarProviderCalls: () =>
-      (northstarModelAdapterDef.adapter as unknown as { requests: unknown[] }).requests.length,
+    getNorthstarProviderCalls: () => northstarModelRequests.length,
   };
 }

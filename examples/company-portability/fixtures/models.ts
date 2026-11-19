@@ -325,8 +325,8 @@ function synthesizeDocumentDraft(
   };
 }
 
-export function createNorthstarModelAdapter(): ModelAdapterDefinition {
-  const requests: ModelAdapterRequest[] = [];
+/** `requests` records every invocation (the caller keeps the array: the registered adapter is a copy). */
+export function createNorthstarModelAdapter(requests: ModelAdapterRequest[] = []): ModelAdapterDefinition {
 
   const adapter: ModelAdapter & { requests: ModelAdapterRequest[] } = {
     requests,
