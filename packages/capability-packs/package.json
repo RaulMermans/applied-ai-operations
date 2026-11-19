@@ -1,6 +1,7 @@
 {
   "name": "@aao/capability-packs",
   "version": "0.0.0",
+  "license": "MIT",
   "private": true,
   "description": "AAO Capability Packs: versioned, declarative contracts for reusable business capabilities and templates.",
   "type": "module",

@@ -2,6 +2,7 @@
   "name": "@aao/integration-documents",
   "private": true,
   "version": "0.0.0",
+  "license": "MIT",
   "description": "AAO Integration Fabric: bounded document ingestion and canonical page text extraction as normal governed read_only AAO Tools around a host-supplied provider.",
   "type": "module",
   "main": "./dist/index.js",

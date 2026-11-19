@@ -2,6 +2,7 @@
   "name": "@aao/example-operational-request",
   "private": true,
   "version": "0.0.0",
+  "license": "MIT",
   "description": "Sprint 24 proof application: governed action proposals, human approval, and safe draft execution as an AAO Workflow.",
   "type": "module",
   "main": "./dist/src/index.js",

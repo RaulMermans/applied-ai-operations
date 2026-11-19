@@ -2,6 +2,7 @@
   "name": "@aao/example-capability-packs",
   "private": true,
   "version": "0.0.0",
+  "license": "MIT",
   "description": "Sprint 26 proof application: Capability Packs & Reusable Business Templates demonstrating declarative capability packaging, multi-company resolution, and canonical AAO execution.",
   "type": "module",
   "main": "./dist/src/index.js",
