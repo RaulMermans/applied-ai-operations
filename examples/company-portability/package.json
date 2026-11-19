@@ -2,6 +2,7 @@
   "name": "@aao/example-company-portability",
   "private": true,
   "version": "0.0.0",
+  "license": "MIT",
   "description": "Sprint 25 proof application: company configuration & portability demonstrating multi-company composition without core forks.",
   "type": "module",
   "main": "./dist/src/index.js",

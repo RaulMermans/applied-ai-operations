@@ -2,6 +2,7 @@
   "name": "@aao/toolbox",
   "private": true,
   "version": "0.0.0",
+  "license": "MIT",
   "description": "The AAO Toolbox: curated, versioned, provider-neutral Tool definitions with discovery metadata. Tools execute only through the canonical Tool Runtime.",
   "type": "module",
   "main": "./dist/index.js",

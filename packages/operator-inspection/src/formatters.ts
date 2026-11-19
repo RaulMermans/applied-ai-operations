@@ -10,6 +10,7 @@ import type {
   WorkflowSummary,
   IntegrationDiagnosticReport,
   AdvancedRunInspection,
+  TokenUsageSummary,
 } from "./contracts.js";
 
 export function formatCompaniesText(companies: readonly CompanySummary[]): string {
@@ -238,73 +239,103 @@ export function formatIntegrationDiagnosticsText(report: IntegrationDiagnosticRe
   return `${lines.join("\n")}\n`;
 }
 
-export function formatAdvancedRunInspectionNodesText(inspection: AdvancedRunInspection): string {
-  const tokenStr = inspection.tokenUsage?.recorded
-    ? `input=${inspection.tokenUsage.inputTokens ?? 0}, output=${inspection.tokenUsage.outputTokens ?? 0}, total=${inspection.tokenUsage.totalTokens ?? 0}`
-    : "NOT RECORDED";
+/** "Not recorded" for an unknown value: an unknown token count is never shown as 0. */
+const known = (value: number | undefined) => (value === undefined ? "not recorded" : String(value));
 
-  const lines: string[] = [
-    `Run Node Execution: ${inspection.runId}`,
-    `  Workflow: ${inspection.workflowId}@${inspection.workflowVersion} | Status: ${inspection.authoritativeStatus} [${inspection.statusSource}]`,
-    `  Trace Health: ${inspection.evidenceHealth} (events=${inspection.eventCount}) | Token Usage: ${tokenStr}`,
-    "",
-    `  Nodes (${inspection.nodes.length}):`,
-  ];
-
-  for (const n of inspection.nodes) {
-    const detailParts: string[] = [`kind=${n.nodeKind}`];
-    if (n.totalAttempts > 0) detailParts.push(`attempts=${n.totalAttempts}`);
-    if (n.toolRef) detailParts.push(`tool=${n.toolRef}`);
-    if (n.modelPolicyRef) detailParts.push(`policy=${n.modelPolicyRef}`);
-    if (n.approvalId) detailParts.push(`approval=${n.approvalId}${n.approvalStatus ? ` (${n.approvalStatus})` : ""}`);
-    if (n.tokenUsage?.recorded) detailParts.push(`tokens=${n.tokenUsage.totalTokens ?? 0}`);
-    lines.push(`    - [${n.status}] ${n.nodeId} (${detailParts.join(", ")})`);
+/**
+ * One shared rendering of token accounting for CLI and UI. Partial accounting is
+ * labelled as known recorded totals, never as the full execution total.
+ */
+export function formatTokenUsageText(usage: TokenUsageSummary | undefined): string {
+  if (!usage) return "UNAVAILABLE (no valid Trace evidence)";
+  if (usage.modelInvocations === 0) return "COMPLETE (0 model invocations)";
+  const calls = `${usage.callsWithUsage}/${usage.modelInvocations} invocations with usage`;
+  if (usage.status === "complete") {
+    return `COMPLETE (input=${known(usage.inputTokens)}, output=${known(usage.outputTokens)}, total=${known(usage.totalTokens)}; ${calls})`;
   }
+  if (usage.status === "unavailable") return `NOT RECORDED (${calls})`;
+  return `PARTIAL (known recorded totals: input=${usage.knownInputTokens}, output=${usage.knownOutputTokens}, total=${usage.knownTotalTokens}; ${calls})`;
+}
 
+/** One shared rendering of the execution counters for CLI and UI. */
+export function executionCounterRows(inspection: AdvancedRunInspection): ReadonlyArray<readonly [string, string]> {
+  const c = inspection.counters;
+  const v = (n: number | undefined) => (n === undefined ? "unavailable" : String(n));
+  return [
+    ["Trace Events", String(inspection.eventCount)],
+    ["Node Execution Occurrences", v(c?.nodeExecutionOccurrences)],
+    ["Node Attempts", v(c?.nodeAttempts)],
+    ["Recovery Replays", v(c?.recoveryReplayAttempts)],
+    ["Scheduled Retries", v(c?.scheduledRetries)],
+    ["Exhausted Retries", v(c?.exhaustedRetries)],
+    ["Tool Physical Invocations", v(c?.toolPhysicalInvocations)],
+    ["Tool Logical Executions", v(c?.toolLogicalExecutions)],
+    ["Tool Calls Blocked", v(c?.toolBlocked)],
+    ["Model Invocations", v(c?.modelInvocations)],
+    ["Token Accounting", formatTokenUsageText(inspection.tokenUsage)],
+  ];
+}
+
+function headerLines(inspection: AdvancedRunInspection, title: string): string[] {
+  return [
+    `${title}: ${inspection.runId}`,
+    `  Workflow: ${inspection.workflowId}@${inspection.workflowVersion} | Status: ${inspection.authoritativeStatus} [${inspection.statusSource}]`,
+    `  Trace Health: ${inspection.evidenceHealth}`,
+    ...executionCounterRows(inspection).map(([label, value]) => `  ${label}: ${value}`),
+  ];
+}
+
+function diagnosticLines(inspection: AdvancedRunInspection): string[] {
+  const lines: string[] = [];
+  if (inspection.unattributedEvents.length > 0) {
+    lines.push("", `  Unattributed Evidence (${inspection.unattributedEvents.length}):`);
+    for (const e of inspection.unattributedEvents) lines.push(`    ? [seq=${e.sequence}] ${e.type}${e.nodeId ? ` [node=${e.nodeId}]` : ""}`);
+  }
   if (inspection.diagnostics.length > 0) {
-    lines.push("");
-    lines.push(`  Diagnostics (${inspection.diagnostics.length}):`);
+    lines.push("", `  Diagnostics (${inspection.diagnostics.length}):`);
     for (const d of inspection.diagnostics) {
       lines.push(`    ! [${d.code}] ${d.observed}`);
       lines.push(`      Explanation: ${d.explanation}`);
       lines.push(`      Suggested check: ${d.suggestedCheck}`);
     }
   }
+  return lines;
+}
 
+export function formatAdvancedRunInspectionNodesText(inspection: AdvancedRunInspection): string {
+  const lines: string[] = [...headerLines(inspection, "Run Node Execution"), "", `  Nodes (${inspection.nodes.length}):`];
+  for (const n of inspection.nodes) {
+    const detailParts: string[] = [`kind=${n.nodeKind}`];
+    if (n.executed) {
+      detailParts.push(`executions=${n.executionCount}`, `attempts=${n.attemptCount}`);
+      if (n.scheduledRetries > 0) detailParts.push(`retries=${n.scheduledRetries}`);
+      if (n.recoveryReplayCount > 0) detailParts.push(`replays=${n.recoveryReplayCount}`);
+    }
+    if (n.toolRef) detailParts.push(`tool=${n.toolRef}`);
+    if (n.modelPolicyRef) detailParts.push(`policy=${n.modelPolicyRef}`);
+    if (n.approvalId) detailParts.push(`approval=${n.approvalId}${n.approvalStatus ? ` (${n.approvalStatus})` : ""}`);
+    if (n.tokenUsage) detailParts.push(`tokens=${formatTokenUsageText(n.tokenUsage)}`);
+    lines.push(`    - [${n.status}] ${n.nodeId} (${detailParts.join(", ")})`);
+  }
+  lines.push(...diagnosticLines(inspection));
   return `${lines.join("\n")}\n`;
 }
 
 export function formatAdvancedRunInspectionTimelineText(inspection: AdvancedRunInspection): string {
-  const tokenStr = inspection.tokenUsage?.recorded
-    ? `input=${inspection.tokenUsage.inputTokens ?? 0}, output=${inspection.tokenUsage.outputTokens ?? 0}, total=${inspection.tokenUsage.totalTokens ?? 0}`
-    : "NOT RECORDED";
-
   const lines: string[] = [
-    `Run Execution Timeline: ${inspection.runId}`,
-    `  Workflow: ${inspection.workflowId}@${inspection.workflowVersion} | Status: ${inspection.authoritativeStatus}`,
-    `  Trace Health: ${inspection.evidenceHealth} (events=${inspection.eventCount}) | Token Usage: ${tokenStr}`,
+    ...headerLines(inspection, "Run Execution Timeline"),
     "",
-    `  Execution Attempts (${inspection.attempts.length}):`,
+    `  Node Attempts (${inspection.attempts.length}${inspection.attemptsTruncated ? ", truncated" : ""}):`,
   ];
-
   for (const a of inspection.attempts) {
-    const nodePart = a.nodeId ? ` [node=${a.nodeId}]` : "";
-    const attPart = ` (attempt=${a.attempt})`;
-    const codePart = a.reasonCode ? ` code=${a.reasonCode}` : "";
-    const replayPart = a.recoveryReplay ? " (recovery/replay)" : "";
-    lines.push(
-      `    [seq=${a.sequence}]${nodePart} ${a.kind}: ${a.status}${attPart}${codePart}${replayPart} (${a.occurredAt})`
-    );
+    const parts = [`step=${a.step}`, `attempt=${a.attempt}`, `span=${a.spanId}`];
+    if (a.toolPhysicalInvocations > 0) parts.push(`tool invocations=${a.toolPhysicalInvocations}`);
+    if (a.modelInvocations > 0) parts.push(`model invocations=${a.modelInvocations}`);
+    if (a.tokenUsage) parts.push(`tokens=${formatTokenUsageText(a.tokenUsage)}`);
+    if (a.reasonCode) parts.push(`code=${a.reasonCode}`);
+    const replayPart = a.recoveryReplay ? " (recovery replay)" : "";
+    lines.push(`    [${a.startedAt}] ${a.nodeId} ${a.kind}: ${a.status}${replayPart} (${parts.join(", ")})`);
   }
-
-  if (inspection.diagnostics.length > 0) {
-    lines.push("");
-    lines.push(`  Diagnostics (${inspection.diagnostics.length}):`);
-    for (const d of inspection.diagnostics) {
-      lines.push(`    ! [${d.code}] ${d.observed}`);
-      lines.push(`      Suggested check: ${d.suggestedCheck}`);
-    }
-  }
-
+  lines.push(...diagnosticLines(inspection));
   return `${lines.join("\n")}\n`;
 }

@@ -1,6 +1,8 @@
 // Sprint 28 compiled smoke: Guided Integration Diagnostics & Advanced Run Inspector.
 // Offline, read-only, deterministic execution over compiled package outputs only.
+import { readFileSync } from "node:fs";
 import process from "node:process";
+import { URL } from "node:url";
 import {
   CANONICAL_NORTHSTAR_MANIFEST,
   COMPANY_RESEARCH_PACK,
@@ -10,10 +12,12 @@ import {
   formatAdvancedRunInspectionNodesText,
   formatAdvancedRunInspectionTimelineText,
   formatIntegrationDiagnosticsText,
+  formatTokenUsageText,
   getRemediationForCode,
   projectIntegrationDiagnostics,
 } from "@aao/operator-inspection";
 import { buildApp } from "../../../apps/control-plane/dist/app.js";
+import { runInspectCommand } from "../../../packages/framework/dist/cli/inspect.js";
 
 const assert = (condition, message) => {
   if (!condition) {
@@ -24,8 +28,14 @@ const assert = (condition, message) => {
 
 process.stdout.write("Running Sprint 28 Compiled Smoke...\n");
 
+// Side-effect instrumentation: every network call during the smoke is counted.
+let networkCalls = 0;
+const realFetch = globalThis.fetch;
+globalThis.fetch = (...args) => { networkCalls += 1; return realFetch(...args); };
+
 // 1. Diagnostics: Verified Pack -> READY
 const nsEvidence = createVerifiedRegistrationEvidenceForCompany("northstar-commerce");
+const evidenceBefore = JSON.stringify([CANONICAL_NORTHSTAR_MANIFEST, nsEvidence]);
 const readyReport = projectIntegrationDiagnostics({
   companyManifest: CANONICAL_NORTHSTAR_MANIFEST,
   pack: COMPANY_RESEARCH_PACK,
@@ -33,7 +43,10 @@ const readyReport = projectIntegrationDiagnostics({
 });
 assert(readyReport.status === "READY", "Verified pack must produce READY status");
 assert(readyReport.requirements.length > 0, "Requirements checklist must be populated");
-assert(readyReport.requirements.every((r) => r.status === "SATISFIED"), "All requirements must be SATISFIED");
+for (const r of readyReport.requirements) {
+  const expected = r.category === "integration" || r.name === "Preliminary Permissions" ? "NOT_VERIFIED" : "SATISFIED";
+  assert(r.status === expected, `READY requirement '${r.name}' must be ${expected}, got ${r.status}`);
+}
 assert(readyReport.nextSteps.length > 0, "Next steps must be provided");
 const formattedReport = formatIntegrationDiagnosticsText(readyReport);
 assert(formattedReport.includes("READY"), "Formatted diagnostic report must include status");
@@ -115,48 +128,63 @@ assert(getRemediationForCode("PACK_CAPABILITY_INCOMPATIBLE").includes("adapter c
 const source = await createCanonicalDemoInspectionSource({ includeExtendedRuns: true });
 const service = createOperatorInspectionService(source);
 
-// 8a. Single-attempt run (run.northstar.cr.001)
+// 8a. Single Tool lifecycle -> 1 physical invocation (4 lifecycle events, 1 attempt)
 const singleRun = await service.getAdvancedRunInspection("run.northstar.cr.001");
-assert(singleRun.runId === "run.northstar.cr.001", "runId matches");
 assert(singleRun.authoritativeStatus === "COMPLETED", "Authoritative status COMPLETED");
-assert(singleRun.statusSource === "authoritative_runtime", "Source authoritative_runtime");
-assert(singleRun.nodes.length > 0, "Nodes mapped");
-assert(singleRun.attempts.length > 0, "Attempts mapped");
-assert(singleRun.attempts.every((a) => a.attempt === 1), "Single attempt per step");
+const singleSearch = singleRun.attempts.find((a) => a.nodeId === "search");
+assert(singleSearch && singleSearch.toolPhysicalInvocations === 1, "Single Tool lifecycle -> 1 physical invocation");
+assert(singleSearch.evidenceEventIds.length === 4, "Four lifecycle events attach to one attempt");
+assert(singleRun.counters.nodeAttempts === 2 && singleRun.counters.toolPhysicalInvocations === 1 && singleRun.counters.modelInvocations === 1, "Single-run counters");
+assert(singleRun.counters.traceEvents === singleRun.eventCount && singleRun.eventCount > singleRun.counters.nodeAttempts, "Trace events are not attempts");
 
-const singleNodesText = formatAdvancedRunInspectionNodesText(singleRun);
-assert(singleNodesText.includes("Run Node Execution: run.northstar.cr.001"), "CLI format nodes text includes header");
-assert(singleNodesText.includes("OBSERVED_COMPLETED"), "CLI format includes node status");
-
-// 8b. Multi-attempt tool retry run (run.northstar.cr.retry)
+// 8b. Explicit retry -> correct attempt and retry counts
 const retryRun = await service.getAdvancedRunInspection("run.northstar.cr.retry");
-assert(retryRun.runId === "run.northstar.cr.retry", "Retry run matches");
 const searchNode = retryRun.nodes.find((n) => n.nodeId === "search");
-assert(searchNode && searchNode.totalAttempts === 2, "Search node has 2 attempts");
-assert(searchNode.attempts[0].status === "failed", "Attempt 1 failed");
-assert(searchNode.attempts[1].status === "completed", "Attempt 2 completed");
-assert(searchNode.diagnostics.some((d) => d.includes("retries observed")), "Retries flagged in diagnostics");
+assert(searchNode && searchNode.executionCount === 1 && searchNode.attemptCount === 2 && searchNode.scheduledRetries === 1, "Explicit retry: 1 execution, 2 attempts, 1 scheduled retry");
+assert(searchNode.attempts[0].status === "retried" && searchNode.attempts[1].status === "completed", "Retry attempt outcomes");
+assert(retryRun.counters.scheduledRetries === 1 && retryRun.counters.toolPhysicalInvocations === 2, "Retry counters");
 
-const retryTimelineText = formatAdvancedRunInspectionTimelineText(retryRun);
-assert(retryTimelineText.includes("attempt=1") && retryTimelineText.includes("attempt=2"), "Timeline shows both attempts");
+// 8c. Repeated node at a different step -> 2 distinct execution occurrences, not a retry
+const repeatRun = await service.getAdvancedRunInspection("run.northstar.cr.repeat");
+const planNode = repeatRun.nodes.find((n) => n.nodeId === "plan");
+assert(planNode && planNode.executionCount === 2 && planNode.scheduledRetries === 0, "Repeated node -> 2 distinct execution occurrences");
+assert(new Set(planNode.attempts.map((a) => a.spanId)).size === 2, "Repeated executions keep distinct spans");
 
-// 8c. Recovery replay run (run.northstar.ops.recovery)
+// 8d. Partial token evidence -> PARTIAL; unknown field -> not recorded, never 0
+assert(repeatRun.tokenUsage.status === "partial", "Partial token evidence -> PARTIAL, not COMPLETE");
+assert(repeatRun.tokenUsage.totalTokens === undefined && repeatRun.tokenUsage.knownTotalTokens === 250, "Partial totals are known recorded totals only");
+assert(planNode.attempts[1].tokenUsage.status === "unavailable" && planNode.attempts[1].tokenUsage.totalTokens === undefined, "Unknown token field stays undefined");
+const repeatText = formatAdvancedRunInspectionNodesText(repeatRun);
+assert(repeatText.includes("Token Accounting: PARTIAL (known recorded totals"), "CLI text labels partial totals");
+const repeatTimeline = formatAdvancedRunInspectionTimelineText(repeatRun);
+assert(repeatTimeline.includes("tokens=NOT RECORDED (0/1 invocations with usage)"), "Unknown token usage -> Not Recorded");
+assert(!/total=0\b/.test(repeatText + repeatTimeline), "Unknown token usage is never displayed as 0");
+
+// 8e. Recovery replay keeps its logical identity
 const recoveryRun = await service.getAdvancedRunInspection("run.northstar.ops.recovery");
-assert(recoveryRun.runId === "run.northstar.ops.recovery", "Recovery run matches");
-const recoveryAttempt = recoveryRun.attempts.find((a) => a.recoveryReplay === true);
-assert(recoveryAttempt !== undefined, "Recovery attempt flagged with recoveryReplay=true");
+assert(recoveryRun.counters.recoveryReplayAttempts === 1 && recoveryRun.counters.nodeAttempts === 0, "Recovery replay is not a new attempt");
+assert(formatAdvancedRunInspectionTimelineText(recoveryRun).includes("(recovery replay)"), "Timeline marks recovery replay");
 
-// 8d. Token usage: unrecorded reported as NOT RECORDED (never substituted with zero)
-const unrecordedRun = await service.getAdvancedRunInspection("run.arbor.di.001");
-assert(unrecordedRun.tokenUsage?.recorded === false, "tokenUsage.recorded must be false");
-assert(unrecordedRun.tokenUsage?.totalTokens === undefined, "totalTokens must be undefined, not 0");
-const unrecordedText = formatAdvancedRunInspectionNodesText(unrecordedRun);
-assert(unrecordedText.includes("Token Usage: NOT RECORDED"), "CLI text reports NOT RECORDED");
-
-// 8e. Incomplete run reported as UNKNOWN
+// 8f. Incomplete run reported as UNKNOWN
 const incompleteRun = await service.getAdvancedRunInspection("run.arbor.cr.incomplete");
 assert(incompleteRun.authoritativeStatus === "UNKNOWN", "Incomplete run reported as UNKNOWN");
-assert(incompleteRun.statusSource === "unavailable", "Status source unavailable");
+assert(incompleteRun.attempts.every((a) => a.status === "open"), "Incomplete attempt stays open");
+
+// 8g. Redacted summary only -> INSPECTION_SOURCE_UNAVAILABLE (no fabricated Trace)
+const redactedService = createOperatorInspectionService({ getProvenance: source.getProvenance, getRunInspection: source.getRunInspection });
+let redactedCode;
+try { await redactedService.getAdvancedRunInspection("run.northstar.cr.001"); } catch (err) { redactedCode = err.code; }
+assert(redactedCode === "INSPECTION_SOURCE_UNAVAILABLE", "Redacted summary only -> INSPECTION_SOURCE_UNAVAILABLE");
+
+// 8h. Missing Tool + missing Eval profile -> both reported MISSING
+const multiMissing = projectIntegrationDiagnostics({
+  companyManifest: CANONICAL_NORTHSTAR_MANIFEST,
+  pack: COMPANY_RESEARCH_PACK,
+  registrationEvidence: { ...nsEvidence.company_research, registeredTools: [], registeredEvalProfiles: [] },
+});
+assert(multiMissing.status === "BLOCKED", "Multi-missing -> BLOCKED");
+assert(multiMissing.requirements.filter((r) => r.category === "tool").every((r) => r.status === "MISSING"), "Missing Tool reported MISSING");
+assert(multiMissing.requirements.find((r) => r.category === "evaluation").status === "MISSING", "Missing Eval profile reported MISSING alongside the Tool");
 
 // 9. Fastify Control Plane API & UI routes
 const app = buildApp({ inspectionSource: source });
@@ -209,7 +237,8 @@ assert(uiRunRes.body.includes("Execution Summary (Correlated Runtime &amp; Trace
 assert(uiRunRes.body.includes("Workflow Node Execution Map"), "Node map in HTML");
 assert(uiRunRes.body.includes("Selected Node Detail"), "Selected node detail in HTML");
 assert(uiRunRes.body.includes("search"), "Selected node id rendered");
-assert(uiRunRes.body.includes("Chronological Execution Attempts"), "Attempts timeline in HTML");
+assert(uiRunRes.body.includes("Node Attempts (2)"), "Node attempts in HTML");
+assert(!uiRunRes.body.includes("Total Attempts"), "No ambiguous Total Attempts metric");
 assert(!uiRunRes.body.match(/<form|<button|<input|method="post"/i), "No mutating HTML controls on run detail");
 
 // 9e. Mutation guard
@@ -231,5 +260,43 @@ const foreignRes = await app.inject({
 assert(foreignRes.statusCode === 403, "Foreign host must return 403");
 
 await app.close();
+
+// 10. CLI = HTTP = UI over one shared source
+const blockedEvidence = { "northstar-commerce": { company_research: { ...nsEvidence.company_research, registeredTools: [], registeredEvalProfiles: [] } } };
+const sharedSource = await createCanonicalDemoInspectionSource({ includeExtendedRuns: true, registrationEvidenceByCompany: blockedEvidence });
+const sharedApp = buildApp({ inspectionSource: sharedSource });
+for (const runId of ["run.northstar.cr.retry", "run.northstar.cr.repeat"]) {
+  const cli = JSON.parse((await runInspectCommand(["run", runId, "--view", "nodes", "--format", "json"], sharedSource)).output);
+  const http = (await sharedApp.inject({ method: "GET", url: `/api/v1/inspection/runs/${runId}/analysis`, headers: loopbackHeaders })).json();
+  const html = (await sharedApp.inject({ method: "GET", url: `/control-center/runs/${runId}`, headers: loopbackHeaders })).body;
+  assert(JSON.stringify(cli.counters) === JSON.stringify(http.counters), `${runId}: CLI counters = HTTP counters`);
+  assert(JSON.stringify(cli.attempts) === JSON.stringify(http.attempts), `${runId}: CLI attempts = HTTP attempts`);
+  assert(JSON.stringify(cli.tokenUsage) === JSON.stringify(http.tokenUsage), `${runId}: CLI token accounting = HTTP token accounting`);
+  const uiCounter = (label) => html.match(new RegExp(`data-counter="${label}">\\s*<div class="label">[^<]*</div>\\s*<div class="value-id">([^<]*)</div>`))?.[1];
+  assert(uiCounter("Node Attempts") === String(http.counters.nodeAttempts), `${runId}: UI Node Attempts = HTTP`);
+  assert(uiCounter("Scheduled Retries") === String(http.counters.scheduledRetries), `${runId}: UI Scheduled Retries = HTTP`);
+  assert(uiCounter("Tool Physical Invocations") === String(http.counters.toolPhysicalInvocations), `${runId}: UI Tool Physical Invocations = HTTP`);
+  assert(uiCounter("Token Accounting") === formatTokenUsageText(http.tokenUsage), `${runId}: UI token accounting = HTTP`);
+  const cliText = (await runInspectCommand(["run", runId, "--view", "nodes"], sharedSource)).output;
+  assert(cliText.includes(`Node Attempts: ${http.counters.nodeAttempts}`) && cliText.includes(`Token Accounting: ${formatTokenUsageText(http.tokenUsage)}`), `${runId}: CLI text = HTTP`);
+}
+const cliReadiness = JSON.parse((await runInspectCommand(["readiness", "--company", "northstar-commerce", "--pack", "aao.company-research@1.0.0", "--format", "json"], sharedSource)).output);
+const httpReadiness = (await sharedApp.inject({ method: "GET", url: "/api/v1/inspection/companies/northstar-commerce/packs/aao.company-research@1.0.0/diagnostics", headers: loopbackHeaders })).json();
+const uiReadiness = (await sharedApp.inject({ method: "GET", url: "/control-center/companies/northstar-commerce/packs/aao.company-research@1.0.0", headers: loopbackHeaders })).body;
+const statuses = (report) => report.requirements.map((r) => `${r.requiredRef}=${r.status}`).join("|");
+assert(statuses(cliReadiness) === statuses(httpReadiness), "CLI requirement statuses = HTTP");
+const uiStatuses = [...uiReadiness.matchAll(/data-requirement-ref="([^"]*)" data-requirement-status="([^"]*)"/g)].map((m) => `${m[1].replace(/&gt;/g, ">")}=${m[2]}`).join("|");
+assert(uiStatuses === statuses(httpReadiness), "UI requirement statuses = HTTP");
+assert(httpReadiness.requirements.filter((r) => r.status === "MISSING").length >= 2, "Shared source reports both missing requirements");
+await sharedApp.close();
+
+// 11. Zero side effects (measured)
+assert(networkCalls === 0, "Inspection -> zero network/provider calls");
+assert(JSON.stringify([CANONICAL_NORTHSTAR_MANIFEST, nsEvidence]) === evidenceBefore, "Inspection -> zero evidence/config mutations");
+const inspectionDeps = Object.keys(JSON.parse(readFileSync(new URL("../../../packages/operator-inspection/package.json", import.meta.url), "utf8")).dependencies);
+for (const dep of ["@aao/runtime", "@aao/model-runtime", "@aao/tool-runtime", "@aao/approval", "@aao/evaluation", "@aao/durability"]) {
+  assert(!inspectionDeps.includes(dep), `Inspection cannot reach ${dep} (zero model/Tool/approval/business-write capability)`);
+}
+globalThis.fetch = realFetch;
 
 process.stdout.write("SPRINT_28_GUIDED_INTEGRATION_RUN_INSPECTOR_SMOKE_OK\n");

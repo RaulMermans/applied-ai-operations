@@ -1,9 +1,11 @@
-import type {
-  AdvancedRunInspection,
-  IntegrationDiagnosticReport,
-  OperatorSourceProvenance,
-  OverviewInspection,
-  RunInspection,
+import {
+  executionCounterRows,
+  formatTokenUsageText,
+  type AdvancedRunInspection,
+  type IntegrationDiagnosticReport,
+  type OperatorSourceProvenance,
+  type OverviewInspection,
+  type RunInspection,
 } from "@aao/operator-inspection";
 
 export function escapeHtml(raw: string): string {
@@ -561,12 +563,12 @@ export function renderIntegrationDiagnosticsHtml(
   const reqRows = report.requirements
     .map(
       (r) =>
-        `<tr>
+        `<tr data-requirement-ref="${escapeHtml(r.requiredRef)}" data-requirement-status="${escapeHtml(r.status)}">
           <td><code>${escapeHtml(r.category)}</code></td>
           <td>${escapeHtml(r.name)}<br/><small><code>${escapeHtml(r.requiredRef)}</code></small></td>
           <td><span class="badge readiness-${escapeHtml(r.status.toLowerCase())}">${escapeHtml(r.status)}</span></td>
           <td>${r.diagnostic ? escapeHtml(r.diagnostic) : r.reasonCode ? `<code>${escapeHtml(r.reasonCode)}</code>` : "—"}</td>
-          <td>${r.remediation ? escapeHtml(r.remediation) : "No action required"}</td>
+          <td>${r.remediation ? escapeHtml(r.remediation) : r.status === "SATISFIED" ? "No action required" : "Cannot be verified from inspection evidence; confirm out of band before relying on it"}</td>
         </tr>`
     )
     .join("\n");
@@ -823,7 +825,8 @@ export function renderRunDetailHtml(
   runInspection: RunInspection,
   provenance?: OperatorSourceProvenance,
   advanced?: AdvancedRunInspection,
-  selectedNodeId?: string
+  selectedNodeId?: string,
+  advancedUnavailableCode?: string
 ): string {
   const s = runInspection.summary;
   const t = runInspection.trace;
@@ -855,19 +858,29 @@ export function renderRunDetailHtml(
   let attemptsSection = "";
   let runDiagnosticsSection = "";
 
+  if (!advanced && advancedUnavailableCode) {
+    executionSummarySection = `<section id="section-execution-summary" data-section="execution-summary">
+      <div class="diagnostics-box" data-advanced-unavailable="${escapeHtml(advancedUnavailableCode)}">
+        <strong>Advanced Run inspection unavailable</strong> (<code>${escapeHtml(advancedUnavailableCode)}</code>):
+        node attempts, counters and token accounting require canonical Trace evidence from the inspection source. No figures are shown rather than reconstructed ones.
+      </div>
+    </section>`;
+  }
+
   if (advanced) {
     const executedPlanCount = advanced.nodes.filter((n) => n.executed).length;
     const totalPlanCount = advanced.nodes.filter((n) => n.planned).length;
-    const toolCallCount = advanced.attempts.filter((a) => a.kind === "tool").length;
-    const modelCallCount = advanced.attempts.filter((a) => a.kind === "model").length;
+    // Same counter rows and token wording as the CLI (shared formatter, shared DTO).
+    const counterCards = executionCounterRows(advanced)
+      .map(([label, value]) => `<div class="metric-card" data-counter="${escapeHtml(label)}">
+          <div class="label">${escapeHtml(label)}</div>
+          <div class="value-id">${escapeHtml(value)}</div>
+        </div>`)
+      .join("\n");
 
     executionSummarySection = `<section id="section-execution-summary" data-section="execution-summary">
       <h2>Execution Summary (Correlated Runtime &amp; Trace Evidence)</h2>
       <div class="metrics-grid">
-        <div class="metric-card">
-          <div class="label">Total Attempts</div>
-          <div class="value">${advanced.attempts.length}</div>
-        </div>
         <div class="metric-card">
           <div class="label">Plan Nodes</div>
           <div class="value">${executedPlanCount} / ${totalPlanCount}</div>
@@ -876,29 +889,8 @@ export function renderRunDetailHtml(
         <div class="metric-card">
           <div class="label">Evidence Health</div>
           <div class="value"><span class="badge trace-${escapeHtml(advanced.evidenceHealth)}">${escapeHtml(advanced.evidenceHealth)}</span></div>
-          <small>${advanced.eventCount} events</small>
         </div>
-        <div class="metric-card">
-          <div class="label">Token Usage</div>
-          <div class="value-id">${
-            advanced.tokenUsage?.recorded
-              ? `${advanced.tokenUsage.totalTokens?.toLocaleString() ?? "—"} tokens`
-              : `<span class="badge">Not recorded</span>`
-          }</div>
-          <small>${
-            advanced.tokenUsage?.recorded
-              ? `Prompt: ${advanced.tokenUsage.inputTokens ?? 0} | Completion: ${advanced.tokenUsage.outputTokens ?? 0}`
-              : "Token accounting omitted or unavailable"
-          }</small>
-        </div>
-        <div class="metric-card">
-          <div class="label">Tool Invocations</div>
-          <div class="value">${toolCallCount}</div>
-        </div>
-        <div class="metric-card">
-          <div class="label">Model Invocations</div>
-          <div class="value">${modelCallCount}</div>
-        </div>
+        ${counterCards}
       </div>
     </section>`;
 
@@ -906,18 +898,18 @@ export function renderRunDetailHtml(
       .map((n, idx) => {
         const isSelected = selectedNodeId === n.nodeId;
         const rowStyle = isSelected ? ` style="background: #f0fdf4; font-weight: 600;"` : "";
-        const tokens = n.tokenUsage?.recorded
-          ? `${n.tokenUsage.totalTokens ?? "—"}`
-          : "Not recorded";
+        const tokens = n.tokenUsage ? formatTokenUsageText(n.tokenUsage) : "—";
         return `<tr${rowStyle} data-node-id="${escapeHtml(n.nodeId)}">
           <td>${idx + 1}</td>
           <td><a href="?nodeId=${encodeURIComponent(n.nodeId)}#section-node-detail"><code>${escapeHtml(n.nodeId)}</code></a></td>
           <td><code>${escapeHtml(n.nodeKind)}</code></td>
           <td><span class="badge node-${escapeHtml(n.status.toLowerCase())}">${escapeHtml(n.status)}</span></td>
-          <td>${n.totalAttempts}</td>
+          <td>${n.executionCount}</td>
+          <td>${n.attemptCount}</td>
+          <td>${n.scheduledRetries}</td>
           <td>${n.toolRef ? `<code>${escapeHtml(n.toolRef)}</code>` : "—"}</td>
           <td>${n.modelPolicyRef ? `<code>${escapeHtml(n.modelPolicyRef)}</code>` : "—"}</td>
-          <td>${tokens}</td>
+          <td>${escapeHtml(tokens)}</td>
           <td>${n.approvalStatus ? `<span class="badge approval-${escapeHtml(n.approvalStatus.toLowerCase())}">${escapeHtml(n.approvalStatus)}</span>` : "—"}</td>
           <td>${n.durationMs !== undefined ? `${n.durationMs} ms` : "—"}</td>
           <td>${n.diagnostics.length > 0 ? escapeHtml(n.diagnostics.join("; ")) : "—"}</td>
@@ -934,7 +926,9 @@ export function renderRunDetailHtml(
             <th>Node ID</th>
             <th>Kind</th>
             <th>Status</th>
-            <th>Attempts</th>
+            <th>Executions</th>
+            <th>Node Attempts</th>
+            <th>Scheduled Retries</th>
             <th>Tool</th>
             <th>Model Policy</th>
             <th>Tokens</th>
@@ -949,29 +943,40 @@ export function renderRunDetailHtml(
       </table>
     </section>`;
 
+    const attemptRow = (att: AdvancedRunInspection["attempts"][number], withNode: boolean) => `<tr>
+                    ${withNode ? `<td><code>${escapeHtml(att.nodeId)}</code></td>` : ""}
+                    <td>${att.step}</td>
+                    <td>#${att.attempt}</td>
+                    <td><span class="badge node-${escapeHtml(att.status.toLowerCase())}">${escapeHtml(att.status)}</span></td>
+                    <td><code>${escapeHtml(att.startedAt)}</code></td>
+                    <td>${att.durationMs !== undefined ? `${att.durationMs} ms` : "—"}</td>
+                    <td>${att.toolPhysicalInvocations}</td>
+                    <td>${att.modelInvocations}</td>
+                    <td>${att.tokenUsage ? escapeHtml(formatTokenUsageText(att.tokenUsage)) : "—"}</td>
+                    <td>${att.reasonCode ? `<code>${escapeHtml(att.reasonCode)}</code>` : "—"}</td>
+                    <td>${att.recoveryReplay ? `<span class="badge">RECOVERY REPLAY</span>` : "—"}</td>
+                  </tr>`;
+    const attemptHeader = (withNode: boolean) => `<tr>
+                ${withNode ? "<th>Node ID</th>" : ""}
+                <th>Step</th>
+                <th>Attempt</th>
+                <th>Outcome</th>
+                <th>Started At</th>
+                <th>Duration</th>
+                <th>Tool Invocations</th>
+                <th>Model Invocations</th>
+                <th>Tokens</th>
+                <th>Reason Code</th>
+                <th>Recovery Replay</th>
+              </tr>`;
+
     if (selectedNodeId) {
       const selectedNode = advanced.nodes.find((n) => n.nodeId === selectedNodeId);
       if (selectedNode) {
         const attemptRows =
           selectedNode.attempts.length === 0
-            ? `<tr><td colspan="8" class="empty-state">No execution attempts recorded for node '${escapeHtml(selectedNodeId)}'.</td></tr>`
-            : selectedNode.attempts
-                .map((att) => {
-                  const attTokens = att.tokenUsage?.recorded
-                    ? `${att.tokenUsage.totalTokens ?? "—"}`
-                    : "Not recorded";
-                  return `<tr>
-                    <td>#${att.attempt}</td>
-                    <td><span class="badge node-${escapeHtml(att.status.toLowerCase())}">${escapeHtml(att.status)}</span></td>
-                    <td>${att.startedAt ? `<code>${escapeHtml(att.startedAt)}</code>` : "—"}</td>
-                    <td>${att.durationMs !== undefined ? `${att.durationMs} ms` : "—"}</td>
-                    <td>${att.toolRef ? `<code>${escapeHtml(att.toolRef)}</code>` : "—"}</td>
-                    <td>${att.modelPolicyRef ? `<code>${escapeHtml(att.modelPolicyRef)}</code>` : "—"}</td>
-                    <td>${attTokens}</td>
-                    <td>${att.reasonCode ? `<code>${escapeHtml(att.reasonCode)}</code>` : "—"}</td>
-                  </tr>`;
-                })
-                .join("\n");
+            ? `<tr><td colspan="10" class="empty-state">No node attempts observed for node '${escapeHtml(selectedNodeId)}'.</td></tr>`
+            : selectedNode.attempts.map((att) => attemptRow(att, false)).join("\n");
 
         selectedNodeSection = `<section id="section-node-detail" data-section="selected-node-detail">
           <h2>Selected Node Detail: <code>${escapeHtml(selectedNode.nodeId)}</code></h2>
@@ -986,8 +991,13 @@ export function renderRunDetailHtml(
               <div class="value"><span class="badge node-${escapeHtml(selectedNode.status.toLowerCase())}">${escapeHtml(selectedNode.status)}</span></div>
             </div>
             <div class="metric-card">
-              <div class="label">Total Attempts</div>
-              <div class="value">${selectedNode.totalAttempts}</div>
+              <div class="label">Execution Occurrences</div>
+              <div class="value">${selectedNode.executionCount}</div>
+            </div>
+            <div class="metric-card">
+              <div class="label">Node Attempts</div>
+              <div class="value">${selectedNode.attemptCount}</div>
+              <small>${selectedNode.scheduledRetries} scheduled retries; ${selectedNode.recoveryReplayCount} recovery replays</small>
             </div>
             <div class="metric-card">
               <div class="label">Duration</div>
@@ -998,16 +1008,7 @@ export function renderRunDetailHtml(
           <h3>Node Attempts</h3>
           <table>
             <thead>
-              <tr>
-                <th>Attempt</th>
-                <th>Status</th>
-                <th>Started At</th>
-                <th>Duration</th>
-                <th>Tool</th>
-                <th>Model Policy</th>
-                <th>Tokens</th>
-                <th>Reason Code</th>
-              </tr>
+              ${attemptHeader(false)}
             </thead>
             <tbody>
               ${attemptRows}
@@ -1019,40 +1020,24 @@ export function renderRunDetailHtml(
 
     const allAttemptRows =
       advanced.attempts.length === 0
-        ? `<tr><td colspan="7" class="empty-state">No execution attempts recorded for this run.</td></tr>`
-        : advanced.attempts
-            .map(
-              (att) =>
-                `<tr>
-                  <td>#${att.attempt} (seq: ${att.sequence})</td>
-                  <td>${att.nodeId ? `<code>${escapeHtml(att.nodeId)}</code>` : "—"}</td>
-                  <td><code>${escapeHtml(att.kind)}</code></td>
-                  <td><span class="badge node-${escapeHtml(att.status.toLowerCase())}">${escapeHtml(att.status)}</span></td>
-                  <td><code>${escapeHtml(att.occurredAt)}</code></td>
-                  <td>${att.reasonCode ? `<code>${escapeHtml(att.reasonCode)}</code>` : "—"}</td>
-                  <td>${att.recoveryReplay ? `<span class="badge">RECOVERY / REPLAY</span>` : "—"}</td>
-                </tr>`
-            )
-            .join("\n");
+        ? `<tr><td colspan="11" class="empty-state">No node attempts observed for this run.</td></tr>`
+        : advanced.attempts.map((att) => attemptRow(att, true)).join("\n");
+    const unattributedRows = advanced.unattributedEvents
+      .map((e) => `<li>seq ${e.sequence}: <code>${escapeHtml(e.type)}</code>${e.nodeId ? ` (node <code>${escapeHtml(e.nodeId)}</code>)` : ""}</li>`)
+      .join("");
 
     attemptsSection = `<section id="section-attempts" data-section="execution-attempts">
-      <h2>Chronological Execution Attempts (${advanced.attempts.length})</h2>
+      <h2>Node Attempts (${advanced.attempts.length}${advanced.attemptsTruncated ? ", truncated" : ""})</h2>
+      <p><small>One row per observed <code>node.started</code>; lifecycle and Tool/model events attach to their attempt by canonical span.</small></p>
       <table>
         <thead>
-          <tr>
-            <th>Attempt</th>
-            <th>Node ID</th>
-            <th>Kind</th>
-            <th>Status</th>
-            <th>Occurred At</th>
-            <th>Reason Code</th>
-            <th>Replay / Recovery</th>
-          </tr>
+          ${attemptHeader(true)}
         </thead>
         <tbody>
           ${allAttemptRows}
         </tbody>
       </table>
+      ${unattributedRows ? `<div class="diagnostics-box" data-unattributed="true"><strong>Unattributed Evidence (${advanced.unattributedEvents.length}):</strong><ul>${unattributedRows}</ul></div>` : ""}
     </section>`;
 
     const diagRows =

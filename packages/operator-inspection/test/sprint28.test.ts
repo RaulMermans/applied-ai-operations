@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { TraceEvent } from "@aao/contracts";
 import {
   COMPANY_RESEARCH_PACK,
@@ -36,7 +36,11 @@ describe("Sprint 28: Guided Integration Diagnostics", () => {
     expect(report.companyId).toBe("northstar-commerce");
     expect(report.packIdentity).toBe(COMPANY_RESEARCH_PACK.identity);
     expect(report.requirements.length).toBeGreaterThan(0);
-    expect(report.requirements.every((r) => r.status === "SATISFIED")).toBe(true);
+    // Every requirement with supporting evidence is SATISFIED; configured integrations and
+    // run-time permissions cannot be verified by inspection and say so.
+    for (const r of report.requirements) {
+      expect(r.status).toBe(r.category === "integration" || r.name === "Preliminary Permissions" ? "NOT_VERIFIED" : "SATISFIED");
+    }
     expect(report.diagnostics).toEqual([]);
     expect(report.nextSteps[0]).toContain("verified and ready for governed");
 
@@ -209,16 +213,19 @@ describe("Sprint 28: Advanced Run Inspector", () => {
     expect(advanced.runId).toBe("run.northstar.cr.retry");
     expect(advanced.authoritativeStatus).toBe("COMPLETED");
 
-    // Search node had 2 attempts
+    // One execution occurrence, two attempts, one explicit retry.scheduled
     const searchNode = advanced.nodes.find((n) => n.nodeId === "search");
     expect(searchNode).toBeDefined();
-    expect(searchNode!.totalAttempts).toBe(2);
-    expect(searchNode!.attempts[0]!.status).toBe("failed");
+    expect(searchNode!.executionCount).toBe(1);
+    expect(searchNode!.attemptCount).toBe(2);
+    expect(searchNode!.scheduledRetries).toBe(1);
+    expect(searchNode!.attempts[0]!.status).toBe("retried");
     expect(searchNode!.attempts[0]!.reasonCode).toBe("PROVIDER_TIMEOUT");
     expect(searchNode!.attempts[1]!.status).toBe("completed");
+    expect(advanced.counters).toMatchObject({ traceEvents: 10, nodeAttempts: 2, scheduledRetries: 1, toolPhysicalInvocations: 2 });
 
-    // Node diagnostics flag retry
-    expect(searchNode!.diagnostics.some((d) => d.includes("retries observed"))).toBe(true);
+    // Node diagnostics flag the scheduled retry
+    expect(searchNode!.diagnostics.some((d) => d.includes("explicitly scheduled retries"))).toBe(true);
 
     const text = formatAdvancedRunInspectionTimelineText(advanced);
     expect(text).toContain("attempt=1");
@@ -238,28 +245,35 @@ describe("Sprint 28: Advanced Run Inspector", () => {
     expect(replayAttempt).toBeDefined();
 
     const timelineText = formatAdvancedRunInspectionTimelineText(advanced);
-    expect(timelineText).toContain("(recovery/replay)");
+    expect(timelineText).toContain("(recovery replay)");
+    expect(advanced.counters).toMatchObject({ nodeAttempts: 0, recoveryReplayAttempts: 1 });
   });
 
-  it("reports token usage as unrecorded (NOT 0) when omitted from evidence (run.arbor.di.001)", () => {
-    const runRecord = CANONICAL_RUN_RECORDS["run.arbor.di.001"];
-    const runTraces = tracesByRunId["run.arbor.di.001"];
-
-    const advanced = projectAdvancedRunInspection({
+  it("distinguishes zero model calls (run.arbor.di.001) from partially recorded usage (run.northstar.cr.repeat)", () => {
+    const noModel = projectAdvancedRunInspection({
       runId: "run.arbor.di.001",
-      authoritativeRun: runRecord,
-      traceEvents: runTraces,
+      authoritativeRun: CANONICAL_RUN_RECORDS["run.arbor.di.001"],
+      traceEvents: tracesByRunId["run.arbor.di.001"],
       workflow: CANONICAL_DOCUMENT_INTELLIGENCE_WORKFLOW,
     });
+    expect(noModel.tokenUsage).toMatchObject({ status: "complete", modelInvocations: 0 });
+    expect(formatAdvancedRunInspectionNodesText(noModel)).toContain("Token Accounting: COMPLETE (0 model invocations)");
 
-    expect(advanced.tokenUsage?.recorded).toBe(false);
-    expect(advanced.tokenUsage?.totalTokens).toBeUndefined();
+    const partial = projectAdvancedRunInspection({
+      runId: "run.northstar.cr.repeat",
+      authoritativeRun: CANONICAL_RUN_RECORDS["run.northstar.cr.repeat"],
+      traceEvents: tracesByRunId["run.northstar.cr.repeat"],
+      workflow: CANONICAL_COMPANY_RESEARCH_WORKFLOW,
+    });
+    expect(partial.tokenUsage).toMatchObject({ status: "partial", modelInvocations: 2, callsWithUsage: 1, knownTotalTokens: 250 });
+    expect(partial.tokenUsage?.totalTokens).toBeUndefined();
+    const plan = partial.nodes.find((n) => n.nodeId === "plan")!;
+    expect(plan.executionCount).toBe(2);
+    expect(plan.attempts[1]!.tokenUsage).toMatchObject({ status: "unavailable" });
+    expect(plan.attempts[1]!.tokenUsage?.totalTokens).toBeUndefined();
 
-    const nodesText = formatAdvancedRunInspectionNodesText(advanced);
-    expect(nodesText).toContain("Token Usage: NOT RECORDED");
-
-    const timelineText = formatAdvancedRunInspectionTimelineText(advanced);
-    expect(timelineText).toContain("Token Usage: NOT RECORDED");
+    const timelineText = formatAdvancedRunInspectionTimelineText(partial);
+    expect(timelineText).toContain("Token Accounting: PARTIAL (known recorded totals: input=200, output=50, total=250; 1/2 invocations with usage)");
   });
 
   it("flags corrupt trace integrity explicitly", () => {
@@ -293,6 +307,8 @@ describe("Sprint 28: Advanced Run Inspector", () => {
   });
 
   it("guarantees read-only purity: zero model calls, zero tool executions, zero config mutations", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const evidenceBefore = JSON.stringify([CANONICAL_RUN_RECORDS, CANONICAL_NORTHSTAR_MANIFEST, tracesByRunId]);
     const source = await createCanonicalDemoInspectionSource({ includeExtendedRuns: true });
     const service = createOperatorInspectionService(source);
 
@@ -306,7 +322,10 @@ describe("Sprint 28: Advanced Run Inspector", () => {
     await service.getAdvancedRunInspection("run.northstar.cr.retry");
     await service.getIntegrationDiagnostics("northstar-commerce", "aao.company-research@1.0.0");
 
-    // Pure projection: no writes, no active network or model calls
-    expect(true).toBe(true);
+    // Measured: no network access and no mutation of any evidence the queries read.
+    // (Trace-store write spies and package-boundary checks live in sprint28c.test.ts.)
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(JSON.stringify([CANONICAL_RUN_RECORDS, CANONICAL_NORTHSTAR_MANIFEST, tracesByRunId])).toBe(evidenceBefore);
+    fetchSpy.mockRestore();
   });
 });

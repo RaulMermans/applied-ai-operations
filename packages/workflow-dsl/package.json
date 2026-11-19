@@ -2,6 +2,7 @@
   "name": "@aao/workflow-dsl",
   "private": true,
   "version": "0.0.0",
+  "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./src/index.ts",

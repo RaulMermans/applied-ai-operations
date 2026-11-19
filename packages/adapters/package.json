@@ -2,6 +2,7 @@
   "name": "@aao/adapters",
   "private": true,
   "version": "0.0.0",
+  "license": "MIT",
   "description": "The vendor-free AAO adapter and portability contract: manifests, kinds, capabilities, compatibility, and the conformance vocabulary.",
   "type": "module",
   "main": "./dist/index.js",

@@ -2,6 +2,7 @@
   "name": "@aao/integration-public-web",
   "private": true,
   "version": "0.0.0",
+  "license": "MIT",
   "description": "AAO Integration Fabric: public-web search and page fetch as normal governed read_only AAO Tools around a host-supplied provider.",
   "type": "module",
   "main": "./dist/index.js",

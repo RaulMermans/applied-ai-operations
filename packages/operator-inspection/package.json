@@ -1,6 +1,7 @@
 {
   "name": "@aao/operator-inspection",
   "version": "0.0.0",
+  "license": "MIT",
   "private": true,
   "description": "Read-only operator inspection contracts, metadata-only projections, and bounded query service for the AAO Control Center.",
   "type": "module",
