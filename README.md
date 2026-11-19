@@ -107,6 +107,7 @@ Each proof is a full end-to-end workflow. All of them run offline from fixtures,
 | 🏢 [Company Portability](docs/proofs/company-portability.md) | Two companies run the same workflows with zero forks, fully isolated | `pnpm proof:company-portability` |
 | 📦 [Capability Packs](docs/guides/use-capability-packs.md) | Versioned, reusable workflow packs adopted across companies | `pnpm proof:capability-packs` |
 | 🛰️ [Operator Inspection](docs/guides/operator-control-center.md) | A read-only control center: CLI, a GET-only API, and a local page | `pnpm proof:operator-inspection` |
+| 🛡️ [Security Hardening](docs/architecture/security-boundaries.md) | Trusted host identity, immutable Run binding, verified continuation, and 65 adversarial regression cases | `pnpm proof:security-hardening` |
 
 ## What's inside
 
