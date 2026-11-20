@@ -114,7 +114,7 @@ describe("@aao/integration-public-web package manifest (packaged as if publishab
   });
 
   it("allowlists only compiled output and the README; stays private with no bin or install hook", () => {
-    expect(manifest.files).toEqual(["dist/**/*.js", "dist/**/*.d.ts", "README.md"]);
+    expect(manifest.files).toEqual(["dist/**/*.js", "dist/**/*.d.ts", "README.md", "LICENSE"]);
     expect(manifest.private).toBe(true);
     expect(manifest.bin).toBeUndefined();
     expect(Object.keys(manifest.scripts as object).filter((name) => /install|prepare|publish/.test(name))).toEqual([]);

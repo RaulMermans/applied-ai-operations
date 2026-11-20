@@ -20,7 +20,7 @@ describe("@aao/framework package manifest (packaged as if publishable; not publi
   });
 
   it("allowlists only compiled output and the README: no tests, fixtures, maps, reports, logs, or env files", () => {
-    expect(manifest.files).toEqual(["dist/**/*.js", "dist/**/*.d.ts", "README.md"]);
+    expect(manifest.files).toEqual(["dist/**/*.js", "dist/**/*.d.ts", "README.md", "LICENSE"]);
   });
 
   it("stays private (no accidental publication) and pins the repository's Node range", () => {
