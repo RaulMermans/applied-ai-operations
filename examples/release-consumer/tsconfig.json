@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "paths": {
+      "@aao/framework": ["../../packages/framework/src/index.ts"],
+      "@aao/evaluation": ["../../packages/evaluation/src/index.ts"],
+      "@aao/observability": ["../../packages/observability/src/index.ts"],
+      "@aao/operator-inspection": ["../../packages/operator-inspection/src/index.ts"],
+      "@aao/capability-packs": ["../../packages/capability-packs/src/index.ts"]
+    }
+  },
+  "include": ["src", "demo", "test"]
+}
