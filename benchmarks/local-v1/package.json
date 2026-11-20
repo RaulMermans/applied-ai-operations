@@ -1,0 +1,22 @@
+{
+  "name": "@aao/benchmarks-local-v1",
+  "private": true,
+  "version": "0.0.0",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20.20.0 <21.0.0"
+  },
+  "scripts": {
+    "benchmark": "node runner/run.mjs"
+  },
+  "dependencies": {
+    "@aao/capability-packs": "workspace:*",
+    "@aao/durability": "workspace:*",
+    "@aao/framework": "workspace:*",
+    "@aao/observability": "workspace:*",
+    "@aao/operator-inspection": "workspace:*",
+    "@aao/runtime": "workspace:*",
+    "@aao/workflow-dsl": "workspace:*"
+  }
+}
