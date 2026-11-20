@@ -187,7 +187,7 @@ The Core Toolbox catalog (`docs/generated/toolbox-core.json`, `docs/toolbox/core
 ```sh
 pnpm --filter @aao/example-release-consumer proof
 pnpm benchmark:local-v1
-pnpm release:verify:local-v1 --after-core   # after `pnpm check`; omit --after-core to include check
+pnpm release:verify:local-v1   # always includes `pnpm check`; writes docs/release/out/latest-verify.json bound to HEAD
 ```
 
 See [getting started](../guides/getting-started-local-v1.md) and [acceptance](../release/local-v1-acceptance.md).

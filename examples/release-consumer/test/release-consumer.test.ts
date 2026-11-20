@@ -91,7 +91,8 @@ describe("release contracts", () => {
 
   it("wires Local V1 release verification into CI", () => {
     const ci = readFileSync(join(root, ".github/workflows/ci.yml"), "utf8");
-    expect(ci).toContain("pnpm release:verify:local-v1 --after-core");
+    expect(ci).toContain("pnpm release:verify:local-v1");
+    expect(ci).not.toContain("--after-core");
     expect(ci).not.toContain("npm publish");
   });
 
