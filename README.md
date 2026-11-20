@@ -4,7 +4,13 @@
 
 **Governed AI workflows that a model can't talk its way out of.**
 
-AAO is a TypeScript runtime and control layer for running AI-powered business workflows<br/>with real permissions, human approvals, durable recovery, tracing, and evaluation built in.
+AAO is a TypeScript runtime and control layer for **governed business workflows**. It is for teams that need models inside an operation without giving those models authority. Workflows own structure and side-effect gates; agents are optional and bounded; Tools run only after Authorization; humans approve exact proposals.
+
+> Workflows control the operation. Agents handle uncertainty. Tools perform capabilities. Policies control authority.
+
+A model SDK calls a provider. An agent framework lets the model steer. AAO is the layer that compiles the workflow, enforces permission classes, binds Approval to a fingerprint, records Trace/Audit, and fails closed — verified offline, without claiming universal superiority over every other framework.
+
+**Local V1** is a source-distributable release candidate: clone, install, run proofs. Packages are not published to npm. [Getting started](docs/guides/getting-started-local-v1.md) · [limitations](docs/release/local-v1-limitations.md) · [acceptance](docs/release/local-v1-acceptance.md)
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white)
@@ -31,7 +37,7 @@ Most agent frameworks give the model the steering wheel and add guardrails after
 | 🧭 **Structure** | Interprets, plans, synthesizes | Compiled workflow graph and explicit state patches |
 | 🔐 **Permissions** | Asks to call a Tool | Every call is authorized against a host-attested principal. Nothing is allowed by default. |
 | ✋ **Approvals** | Drafts a change | A human approval is bound to a SHA-256 fingerprint of the exact proposal, and no one can approve their own request |
-| 💾 **Durability** | — | Checkpoints at safe boundaries, crash recovery, and no re-execution of completed work |
+| 💾 **Durability** | — | Checkpoints at safe boundaries and recovery-safe replay; Framework Approvals are in-memory (see limitations) |
 | 🔭 **Observability** | — | Privacy-minimized traces, derived metrics, and a hash-chained audit log |
 | ✅ **Evaluation** | — | Versioned evals, deterministic graders, and a CI gate against an approved baseline |
 
@@ -67,7 +73,7 @@ flowchart LR
 
 ## Quickstart
 
-**Requirements:** Node 20.20+ and pnpm 10.
+**Requirements:** Node `>=20.20.0 <21.0.0` and pnpm `10.26.0`.
 
 ```sh
 git clone https://github.com/RaulMermans/applied-ai-operations.git && cd applied-ai-operations
@@ -93,7 +99,9 @@ const result = await lookup.execute({
 });
 ```
 
-Then read the [framework quickstart](docs/framework/quickstart.md) and the [`aao` CLI reference](docs/framework/cli.md).
+Then read [Getting started (Local V1)](docs/guides/getting-started-local-v1.md), the [framework quickstart](docs/framework/quickstart.md), and the [`aao` CLI reference](docs/framework/cli.md).
+
+Reproduce the evidence: `pnpm check`, `pnpm proof:security-hardening`, `pnpm --filter @aao/example-release-consumer proof`.
 
 ## See it run
 
@@ -107,7 +115,8 @@ Each proof is a full end-to-end workflow. All of them run offline from fixtures,
 | 🏢 [Company Portability](docs/proofs/company-portability.md) | Two companies run the same workflows with zero forks, fully isolated | `pnpm proof:company-portability` |
 | 📦 [Capability Packs](docs/guides/use-capability-packs.md) | Versioned, reusable workflow packs adopted across companies | `pnpm proof:capability-packs` |
 | 🛰️ [Operator Inspection](docs/guides/operator-control-center.md) | A read-only control center: CLI, a GET-only API, and a local page | `pnpm proof:operator-inspection` |
-| 🛡️ [Security Hardening](docs/architecture/security-boundaries.md) | Trusted host identity, immutable Run binding, verified continuation, and 65 adversarial regression cases | `pnpm proof:security-hardening` |
+| 🛡️ [Security Hardening](docs/architecture/security-boundaries.md) | Trusted host identity, immutable Run binding, original-requester continuation, Audit coverage; cases in `examples/security-hardening` | `pnpm proof:security-hardening` |
+| 📦 [Local V1 consumer](docs/guides/getting-started-local-v1.md) | Offline golden path, pack adoption, and release smoke | `pnpm --filter @aao/example-release-consumer smoke:sprint30` |
 
 ## What's inside
 
@@ -147,7 +156,7 @@ docs/        architecture, 30+ ADRs, guides, and proofs
 
 ## Honest scope
 
-AAO is **pre-release**, and none of its packages are published to npm yet. Some things are out of scope by design:
+AAO Local V1 is a **source-distributable release candidate**. None of its packages are published to npm. Some things are out of scope by design:
 
 - **No autonomous agents.** Agents reason within fixed bounds. They have no tool use, no memory, and no delegation.
 - **No external side effects.** Tools that need `external_side_effect`, `destructive`, or `sensitive_data` permissions fail closed.
@@ -161,6 +170,7 @@ The full inventory of what exists and what deliberately doesn't is in [docs/capa
 - [Architecture decisions (ADRs)](docs/decisions/): why each boundary is where it is
 - [Product contract](docs/product/product-contract.md) · [System boundaries](docs/architecture/system-boundaries.md) · [Roadmap](docs/roadmap/flagship-v1.md)
 - [Local development](docs/engineering/local-development.md) · [Repository structure](docs/engineering/repository-structure.md)
+- [Public API](docs/framework/public-api.md) · [Release notes](docs/release/local-v1-release-notes.md) · [Benchmarks](docs/benchmarks/local-v1-results.md)
 
 ## Contributing
 

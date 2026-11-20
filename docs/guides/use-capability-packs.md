@@ -392,3 +392,9 @@ A Capability Pack **cannot**:
 | **Outcome Class** | `draft_only` |
 | **Evaluation Profile** | `aao.operational-request.evals@1.0.0` |
 | **Non-Goals** | Never executes live mutations against external production systems (`externalExecution: "not_executed"`), never allows self-approval, never writes a draft before explicit human Approval |
+
+## Control Center `NOT_VERIFIED` is not a Runtime failure
+
+The default Operator Control Center demo source does **not** attach trusted proof-registration snapshots. Pack bindings therefore show `NOT_VERIFIED` / `PACK_EVIDENCE_UNAVAILABLE`. That means inspection lacked host evidence, not that `validatePackCompatibility` or the Workflows are broken.
+
+A trusted host supplies registration evidence (the proof's `registrationSnapshot`, or `createVerifiedRegistrationEvidenceForCompany` in tests). With that evidence, compatibility is `COMPATIBLE` or `INCOMPATIBLE` against **actual** registrations. Live operational readiness is still a host/production concern; the demo view is not live operations.

@@ -74,9 +74,9 @@ try {
   const tarball = readdirSync(packDir).find((file) => file.endsWith('.tgz'));
   assert(tarball, 'pnpm pack produced no tarball');
   const entries = execFileSync('tar', ['-tzf', join(packDir, tarball)], { encoding: 'utf8' }).trim().split('\n').sort();
-  const unexpected = entries.filter((entry) => !/^package\/(package\.json|README\.md|dist\/.+\.(js|d\.ts))$/.test(entry));
+  const unexpected = entries.filter((entry) => !/^package\/(package\.json|README\.md|LICENSE|dist\/.+\.(js|d\.ts))$/.test(entry));
   assert(unexpected.length === 0, `unexpected packed files: ${unexpected.join(', ')}`);
-  for (const required of ['package/package.json', 'package/README.md', 'package/dist/index.js', 'package/dist/index.d.ts', 'package/dist/cli/main.js']) assert(entries.includes(required), `missing packed file ${required}`);
+  for (const required of ['package/package.json', 'package/README.md', 'package/LICENSE', 'package/dist/index.js', 'package/dist/index.d.ts', 'package/dist/cli/main.js']) assert(entries.includes(required), `missing packed file ${required}`);
   assert(!entries.some((entry) => /test|fixture|\.map$|\.env|\.log$|src\//.test(entry)), 'pack leaked tests, fixtures, maps, env, logs, or sources');
   process.stdout.write(`${JSON.stringify({ publicExports: expected.length, consumer: { approved: approved.completed.status, toolCalls: approved.draftCalls, rejected: rejected.result.failure, denied: denied.result.executorFailure, unsupported: 'TOOL_PERMISSION_UNSUPPORTED' }, cli: { help: 0, validate: 0, invalid: 1, compile: 0, evalCi: 0, evalAdapters: 0, baselinePropose: 0, run: 1 }, pack: { files: entries.length } })}\n`);
 } finally {

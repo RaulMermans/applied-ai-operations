@@ -27,6 +27,8 @@
     "proof:capability-packs": "pnpm --silent --filter \"@aao/example-capability-packs...\" run build 1>&2 && node examples/capability-packs/dist/demo/run.js",
     "proof:security-hardening": "pnpm --silent --filter \"@aao/example-security-hardening...\" run build 1>&2 && node examples/security-hardening/dist/demo/run.js",
     "proof:operator-inspection": "pnpm --silent --filter \"@aao/example-operator-inspection...\" run build 1>&2 && node examples/operator-inspection/dist/demo/run.js",
+    "benchmark:local-v1": "pnpm --filter @aao/benchmarks-local-v1 benchmark",
+    "release:verify:local-v1": "node scripts/release-verify-local-v1.mjs",
     "check": "pnpm run typecheck && pnpm run lint && pnpm run test && node packages/framework/dist/cli/main.js eval ci && node packages/framework/dist/cli/main.js eval adapters"
   },
   "devDependencies": {

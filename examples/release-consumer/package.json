@@ -1,0 +1,41 @@
+{
+  "name": "@aao/example-release-consumer",
+  "private": true,
+  "version": "0.0.0",
+  "license": "MIT",
+  "description": "Sprint 30 Local V1 golden-path consumer: offline governed workflow, Approval, Capability Pack adoption, and inspection.",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": ">=20.20.0 <21.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "proof": "node dist/demo/run.js",
+    "smoke:sprint30": "node smoke/sprint30.mjs"
+  },
+  "dependencies": {
+    "@aao/capability-packs": "workspace:*",
+    "@aao/example-capability-packs": "workspace:*",
+    "@aao/example-company-portability": "workspace:*",
+    "@aao/example-security-hardening": "workspace:*",
+    "@aao/evaluation": "workspace:*",
+    "@aao/framework": "workspace:*",
+    "@aao/observability": "workspace:*",
+    "@aao/operator-inspection": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.3"
+  }
+}

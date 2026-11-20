@@ -6,6 +6,15 @@ export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {
+    files: ["**/*.mjs"],
+    languageOptions: {
+      globals: {
+        process: "readonly",
+        URL: "readonly",
+      },
+    },
+  },
+  {
     rules: {
       // Allow a leading underscore to mark a destructured binding as
       // intentionally unused (e.g. `const { x: _x, ...rest } = value`), a
