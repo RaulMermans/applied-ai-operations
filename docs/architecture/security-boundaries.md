@@ -79,4 +79,4 @@ Trace and Audit are metadata-only (ADR-020/021): no request text, proposed value
 
 ## Unsupported security claims
 
-AAO Local V1 does **not** claim: protection against a compromised host; cryptographic or remote attestation; authenticated remote operations; MCP sandboxing; exactly-once external effects; multi-tenant isolation; prompt-injection immunity beyond validation and mandatory human Approval; or canonical Audit records for admission denials (deferred, see ADR-034).
+AAO Local V1 does **not** claim: protection against a compromised host; cryptographic or remote attestation; authenticated remote Control Center or remote operations; MCP executable sandboxing; full restart-resumable human Approval on the Framework/proof path; exactly-once external effects; general external side-effect execution; identity federation; long-term Agent memory; unrestricted autonomous Tool use; adversarial distributed multitenancy; prompt-injection immunity beyond validation and mandatory human Approval; or canonical Audit records for admission denials (deferred, see ADR-034).

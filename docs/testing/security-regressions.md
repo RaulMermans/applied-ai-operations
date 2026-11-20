@@ -7,6 +7,7 @@ The Sprint 29 security suite lives in [`examples/security-hardening`](../../exam
 | `pnpm vitest run examples/security-hardening` | One Vitest test per case, against current source (part of `pnpm test` / `pnpm check`) |
 | `pnpm proof:security-hardening` | Builds, then prints every case grouped by area; exit 1 on any failure |
 | `node examples/security-hardening/smoke/sprint29.mjs` | Compiled smoke (after `pnpm build`): mandatory checks, then `SPRINT_29_SECURITY_IDENTITY_ADAPTER_HARDENING_SMOKE_OK` |
+| `pnpm release:verify:local-v1` | Local V1 gate: includes the security proof/smoke so Foundation Evals cannot substitute for it |
 
 Everything runs offline, on fictional Northstar and Arbor fixtures from `@aao/example-company-portability`, with a local hostile MCP server (`fixtures/mcp-server.mjs`). No credentials are used and no public services are contacted.
 

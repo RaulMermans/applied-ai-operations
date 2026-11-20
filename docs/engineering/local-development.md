@@ -181,3 +181,13 @@ The Core Toolbox catalog (`docs/generated/toolbox-core.json`, `docs/toolbox/core
 ## Operator Control Center (Sprint 27)
 
 `pnpm dev:control-plane` serves the read-only Control Center at `http://127.0.0.1:4000/` (loopback only; inspection routes are disabled on other hosts). `pnpm proof:operator-inspection` prints the offline demo; `node examples/operator-inspection/smoke/sprint27.mjs` runs the compiled smoke.
+
+## Local V1 release qualification (Sprint 30)
+
+```sh
+pnpm --filter @aao/example-release-consumer proof
+pnpm benchmark:local-v1
+pnpm release:verify:local-v1 --after-core   # after `pnpm check`; omit --after-core to include check
+```
+
+See [getting started](../guides/getting-started-local-v1.md) and [acceptance](../release/local-v1-acceptance.md).

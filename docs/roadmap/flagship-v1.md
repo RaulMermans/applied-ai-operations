@@ -94,10 +94,10 @@ Complete: Tool Registry, safe Tool execution, deterministic Authorization, and t
 | 24 | Operational Request Proof ✅ | Complete |
 | 25 | Company Configuration & Portability ✅ | Complete (`SPRINT_25_COMPANY_CONFIGURATION_PORTABILITY_COMPLETE`) |
 | 26 | Capability Packs / Templates ✅ | Complete (`SPRINT_26_CAPABILITY_PACKS_TEMPLATES_COMPLETE`) |
-| 27 | Control Center Foundation | Planned |
-| 28 | Guided Integration / Run Inspector | Planned |
-| 29 | Security / Adapter Hardening | Planned |
-| 30 | Benchmark / Docs / Local V1 | Planned |
+| 27 | Control Center Foundation | Complete (`SPRINT_27_CONTROL_CENTER_FOUNDATION_COMPLETE`) |
+| 28 | Guided Integration / Run Inspector | Complete (`SPRINT_28_GUIDED_INTEGRATION_RUN_INSPECTOR_SMOKE_OK`) |
+| 29 | Security / Adapter Hardening | Complete (including Sprint 29C continuation ownership and Audit coverage) |
+| 30 | Benchmark / Docs / Local V1 | Complete when `pnpm release:verify:local-v1` prints `LOCAL_V1_READY` |
 
 Direction for the next portability-related sprints (documentation only; nothing here is implemented early):
 
@@ -119,7 +119,9 @@ Direction for the next portability-related sprints (documentation only; nothing 
 - **Sprint 22 (complete)** proved that composition ([ADR-027](../decisions/ADR-027-company-research-proof.md), [Company Research proof](../proofs/company-research.md)). The first Integration Fabric capability, `@aao/integration-public-web`, exposes public-web search and fetch as normal governed `read_only` Tools, and the Company Research Workflow uses two bounded model calls with deterministic citation validation. Core, the Toolbox, and the Framework did not change.
 - **Sprint 23 (complete)** proved bounded document ingestion and evidence-anchored extraction ([ADR-028](../decisions/ADR-028-document-intelligence-proof.md), [Document Intelligence proof](../proofs/document-intelligence.md)). The second Integration Fabric capability, `@aao/integration-documents`, exposes `document.extract_text@1.0.0` as a normal governed `read_only` Tool with opaque host document references, and the Document Intelligence Workflow uses one bounded model call with deterministic page-local segmentation with overlap, precomputed evidence IDs (`ev.<16-hex>`), strict grounding validation, and injection-safe Markdown rendering without vector search, OCR, or document memory.
 - **Sprint 24 (complete)** proved governed action proposals, human approval waitpoints, and safe draft execution ([ADR-029](../decisions/ADR-029-operational-request-proof.md), [Operational Request proof](../proofs/operational-request.md)).
-- **Sprint 25 (closure pending)** proved multi-company composition without workflow forks or AAO Core modifications ([ADR-030](../decisions/ADR-030-company-configuration-portability.md), [Company Portability proof](../proofs/company-portability.md), [company configuration](../architecture/company-configuration.md)).
+- **Sprint 25 (complete)** proved multi-company composition without workflow forks or AAO Core modifications ([ADR-030](../decisions/ADR-030-company-configuration-portability.md), [Company Portability proof](../proofs/company-portability.md), [company configuration](../architecture/company-configuration.md)).
+- **Sprint 27–29 (complete)** added the Control Center, guided integration / Run Inspector, and Local V1 security hardening ([ADR-032](../decisions/ADR-032-operator-inspection-control-center-foundation.md), [ADR-033](../decisions/ADR-033-guided-integration-run-inspection.md), [ADR-034](../decisions/ADR-034-security-identity-adapter-hardening.md)).
+- **Sprint 30 (complete at qualification)** is the source-distributable Local V1 release candidate ([ADR-035](../decisions/ADR-035-local-v1-source-distribution.md)): benchmarks, external consumer proof, and documentation — not a new Runtime.
 - **Toolbox (Sprint 21+) evaluators stay provider-neutral.** They assert the right *capability* was used (e.g. `crm.accounts.search`), not that a vendor SDK method was called, except in an explicit adapter-conformance eval.
 
 The framework surface (Sprint 19) already uses that governance boundary unchanged; the generic Toolbox, Integration Fabric, capability packs, and Control Center will use the same governance boundary and the same portable verification invariant (evaluation policies attach to AAO contracts and execution semantics, not to individual model, Tool, or orchestration frameworks). This roadmap adds no implementation or deployment commitment for those future layers.
@@ -136,6 +138,6 @@ The framework surface (Sprint 19) already uses that governance boundary unchange
 | `RELIABLE_RUNTIME` | Reliability, recovery, and idempotency requirements are evidenced. | Complete |
 | `WORKFLOW_PROOF_COMPLETE` | The three proof workflows demonstrate the runtime contract. | Complete |
 | `TEMPLATE_THESIS_PROVEN` | A second-company adaptation proves portability. | Complete (Sprint 25) |
-| `CONTROL_CENTER_COMPLETE` | Operations Control Center and Run Inspector are functional. | Planned |
-| `FLAGSHIP_BENCHMARKED` | Benchmark and adversarial evidence are complete. | Planned |
-| `FLAGSHIP_V1_COMPLETE` | Flagship V1 acceptance criteria are met. | Planned |
+| `CONTROL_CENTER_COMPLETE` | Operations Control Center and Run Inspector are functional. | Complete (local, read-only; see limitations) |
+| `FLAGSHIP_BENCHMARKED` | Benchmark and adversarial evidence are complete. | Complete when Local V1 qualification records benchmark JSON + security suite |
+| `FLAGSHIP_V1_COMPLETE` | Flagship V1 acceptance criteria are met. | Local V1 release candidate (`aao-local-v1-rc`); npm/SaaS remain out of scope |
