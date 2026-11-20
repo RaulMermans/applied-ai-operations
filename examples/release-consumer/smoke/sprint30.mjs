@@ -69,6 +69,7 @@ process.stdout.write("ok  Packed Package Inventory → No Sensitive/Unexpected F
 
 const documented = assertDocumentedCommands(repositoryRoot);
 assert(documented.missing.length === 0, `missing scripts: ${documented.missing.join(", ")}`);
+assert(documented.undocumented.length === 0, `undocumented scripts: ${documented.undocumented.join(", ")}`);
 const help = spawnSync(process.execPath, [join(repositoryRoot, "packages/framework/dist/cli/main.js"), "--help"], { cwd: repositoryRoot, encoding: "utf8" });
 for (const fragment of REQUIRED_HELP_FRAGMENTS) assert(help.stdout.includes(fragment), `CLI help missing ${fragment}`);
 process.stdout.write("ok  Documented Commands → Match Real Commands\n");

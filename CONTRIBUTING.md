@@ -9,7 +9,7 @@ pnpm install --frozen-lockfile
 pnpm check   # must pass before you open a PR
 ```
 
-[docs/engineering/local-development.md](docs/engineering/local-development.md) has the full command reference. First-time contributors should start at [Getting started (Local V1)](docs/guides/getting-started-local-v1.md). Before a release-qualification change, `pnpm release:verify:local-v1` must pass (or `pnpm check` plus `pnpm release:verify:local-v1 --after-core`).
+[docs/engineering/local-development.md](docs/engineering/local-development.md) has the full command reference. First-time contributors should start at [Getting started (Local V1)](docs/guides/getting-started-local-v1.md). Before a release-qualification change, `pnpm release:verify:local-v1` must pass on a clean worktree of the commit being qualified.
 
 ## Ground rules
 

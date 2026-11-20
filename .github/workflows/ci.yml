@@ -22,12 +22,12 @@ on:
 # or network (a guard fails the step on any connection attempt), and no
 # model judge. They read the approved baseline and never write it. CI does
 # not deploy, publish, release, or provision anything. After the core
-# sequence, `pnpm release:verify:local-v1 --after-core` runs flagship compiled
-# smokes, offline proofs (including security hardening), the Local V1
-# consumer smoke, and pack/docs checks. Benchmarks are skipped when CI=true. After the core
-# sequence, `pnpm release:verify:local-v1 --after-core` runs flagship compiled
-# smokes, offline proofs (including security hardening), the Local V1
-# consumer smoke, and pack/docs checks. Benchmarks are skipped when CI=true.
+# sequence, `pnpm release:verify:local-v1` is the authoritative Local V1
+# qualifier: it always re-runs `pnpm check`, then flagship compiled smokes,
+# offline proofs (including security hardening), the Local V1 consumer smoke,
+# and pack/docs checks, and writes a Git-bound report. The previous core-skip
+# shortcut is deprecated and cannot skip core qualification. Benchmarks are
+# skipped when CI=true.
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -77,4 +77,4 @@ jobs:
         run: pnpm --filter @aao/framework smoke:no-build
 
       - name: Local V1 release qualification (flagship smokes, proofs, security, consumer)
-        run: pnpm release:verify:local-v1 --after-core
+        run: pnpm release:verify:local-v1

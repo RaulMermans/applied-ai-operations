@@ -17,10 +17,10 @@ The executable verdict is `pnpm release:verify:local-v1`, which prints `LOCAL_V1
 | Evaluation | `pnpm eval:ci` PASS | PASS |
 | Security | `pnpm proof:security-hardening` and Sprint 29 smoke | PASS |
 | Durability | Existing durability tests + documented Approval-waiting restart limitation | PASS (limitation explicit) |
-| Packaging | `pnpm pack` inventory: no secrets; npm publication deferred | PASS |
+| Packaging | `pnpm pack` inventory: allowlisted entries only, forbidden paths rejected, bounded content scan; npm publication deferred | PASS |
 | Benchmarks | `pnpm benchmark:local-v1` produces a SHA-stamped JSON report | PASS (descriptive) |
 | Documentation | Commands in `package.json` match guides | PASS |
-| CI | Core verify + `pnpm release:verify:local-v1 --after-core` | PASS |
+| CI | Core verify + authoritative `pnpm release:verify:local-v1` (core check is not skippable) | PASS |
 | Release state | Git SHA recorded in the verify report; no unauthorized publish | PASS |
 
 npm publication, SaaS deployment, and remote operator auth are `NOT_APPLICABLE` for this candidate.
