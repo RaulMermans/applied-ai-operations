@@ -48,6 +48,7 @@ export function readDocumentedCommands(root = repositoryRoot) {
 export function assertDocumentedCommands(root = repositoryRoot) {
   const result = readDocumentedCommands(root);
   if (result.missing.length > 0) throw new Error(`package.json missing scripts: ${result.missing.join(", ")}`);
+  if (result.undocumented.length > 0) throw new Error(`required scripts are undocumented: ${result.undocumented.join(", ")}`);
   return result;
 }
 
