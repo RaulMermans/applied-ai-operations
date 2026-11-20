@@ -104,7 +104,7 @@ describe("inspectTarball", () => {
 
   it("rejects a forbidden .env file", () => {
     const report = inspectTarball(stageAndPack(requiredFiles({ "package/.env": "TOKEN=x" })));
-    expect(report.forbidden.some((entry) => entry.endsWith(".env"))).toBe(true);
+    expect(report.forbidden.some((entry: string) => entry.endsWith(".env"))).toBe(true);
     expect(() => assertPackInventory([{ name: "@aao/test-pack", ...report }])).toThrow(/forbidden-path/);
   });
 
@@ -112,7 +112,7 @@ describe("inspectTarball", () => {
     const report = inspectTarball(
       stageAndPack(requiredFiles({ "package/dist/index.js": "export const k = `-----BEGIN RSA PRIVATE KEY-----`;\n" })),
     );
-    expect(report.contentFindings.some((item) => item.rule === "private-key-block")).toBe(true);
+    expect(report.contentFindings.some((item: { rule: string }) => item.rule === "private-key-block")).toBe(true);
     expect(() => assertPackInventory([{ name: "@aao/test-pack", ...report }])).toThrow(/private-key-block/);
     try {
       assertPackInventory([{ name: "@aao/test-pack", ...report }]);
@@ -124,7 +124,7 @@ describe("inspectTarball", () => {
   it("rejects a high-confidence access token in packaged content", () => {
     const token = `ghp_${"A".repeat(36)}`;
     const report = inspectTarball(stageAndPack(requiredFiles({ "package/dist/index.js": `export const t = "${token}";\n` })));
-    expect(report.contentFindings.some((item) => item.rule === "high-confidence-token")).toBe(true);
+    expect(report.contentFindings.some((item: { rule: string }) => item.rule === "high-confidence-token")).toBe(true);
     expect(() => assertPackInventory([{ name: "@aao/test-pack", ...report }])).toThrow(/high-confidence-token/);
     try {
       assertPackInventory([{ name: "@aao/test-pack", ...report }]);
@@ -137,7 +137,7 @@ describe("inspectTarball", () => {
     const report = inspectTarball(
       stageAndPack(requiredFiles({ "package/package.json": JSON.stringify({ name: "@aao/test-pack", version: "0.0.0" }) })),
     );
-    expect(report.missingMetadata.some((item) => item.rule === "package-not-private")).toBe(true);
+    expect(report.missingMetadata.some((item: { rule: string }) => item.rule === "package-not-private")).toBe(true);
     expect(() => assertPackInventory([{ name: "@aao/test-pack", ...report }])).toThrow(/package-not-private/);
   });
 
@@ -147,7 +147,7 @@ describe("inspectTarball", () => {
         symlinkSync("/tmp/secret", join(staging, "package", "link"));
       }),
     );
-    expect(report.unsafe.some((item) => item.rule === "unsafe-archive-entry")).toBe(true);
+    expect(report.unsafe.some((item: { rule: string }) => item.rule === "unsafe-archive-entry")).toBe(true);
     expect(() => assertPackInventory([{ name: "@aao/test-pack", ...report }])).toThrow(/unsafe-archive-entry/);
   });
 
@@ -155,7 +155,7 @@ describe("inspectTarball", () => {
     const report = inspectTarball(
       stageAndPack(requiredFiles({ "package/dist/index.js": "x".repeat(PACK_LIMITS.maxEntryBytes + 1) })),
     );
-    expect(report.oversized.some((item) => item.rule === "oversized-archive-entry")).toBe(true);
+    expect(report.oversized.some((item: { rule: string }) => item.rule === "oversized-archive-entry")).toBe(true);
     expect(() => assertPackInventory([{ name: "@aao/test-pack", ...report }])).toThrow(/oversized-archive-entry/);
   });
 
@@ -175,7 +175,7 @@ describe("packed Local V1 packages", () => {
     const integration = inspectPackedPackage(join(root, "packages/integration-public-web"));
     expect(framework.hasFilesField).toBe(true);
     expect(integration.hasFilesField).toBe(true);
-    expect(framework.workspaceDependencies.length).toBeGreaterThan(0);
+    expect(framework.workspaceDependencies?.length).toBeGreaterThan(0);
     expect(() => assertPackInventory([framework, integration])).not.toThrow();
   }, 30_000);
 });

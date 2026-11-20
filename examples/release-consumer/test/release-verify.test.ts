@@ -98,7 +98,12 @@ function newRoot() {
 }
 
 function readDecision(root: string) {
-  return JSON.parse(readFileSync(reportPath(root), "utf8")) as { decision: string; sourceCommit: string | null; steps: Array<{ id: string; passed: boolean }> };
+  return JSON.parse(readFileSync(reportPath(root), "utf8")) as {
+    schemaVersion: number;
+    decision: string;
+    sourceCommit: string | null;
+    steps: Array<{ id: string; passed: boolean }>;
+  };
 }
 
 describe("release verifier", () => {

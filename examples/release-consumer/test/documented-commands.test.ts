@@ -26,11 +26,11 @@ function fixture(scripts: Record<string, string>, docs: Record<string, string>) 
 }
 
 function requiredScripts(): Record<string, string> {
-  return Object.fromEntries(REQUIRED_SCRIPTS.map((name) => [name, `echo ${name}`]));
+    return Object.fromEntries(REQUIRED_SCRIPTS.map((name: string) => [name, `echo ${name}`]));
 }
 
-function documentAll(scripts: string[]): Record<string, string> {
-  const body = scripts.map((name) => `pnpm ${name}`).join("\n");
+function documentAll(scripts: string[]): { readme: string; contributing: string; gettingStarted: string; localDev: string } {
+  const body = scripts.map((name: string) => `pnpm ${name}`).join("\n");
   return { readme: body, contributing: "internal", gettingStarted: body, localDev: body };
 }
 
@@ -38,12 +38,12 @@ describe("documented commands", () => {
   it("fails when a required script is missing", () => {
     const scripts = requiredScripts();
     delete scripts.check;
-    const root = fixture(scripts, documentAll(REQUIRED_SCRIPTS.filter((name) => name !== "check")));
+    const root = fixture(scripts, documentAll(REQUIRED_SCRIPTS.filter((name: string) => name !== "check")));
     expect(() => assertDocumentedCommands(root)).toThrow(/missing scripts: check/);
   });
 
   it("fails when a required script exists but is undocumented", () => {
-    const documented = REQUIRED_SCRIPTS.filter((name) => name !== "lint");
+    const documented = REQUIRED_SCRIPTS.filter((name: string) => name !== "lint");
     const root = fixture(requiredScripts(), documentAll(documented));
     expect(() => assertDocumentedCommands(root)).toThrow(/undocumented: lint/);
   });
