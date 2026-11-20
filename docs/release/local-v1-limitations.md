@@ -6,6 +6,7 @@ Local V1 is a **source-distributable release candidate**. This document is the i
 
 - The repository is the supported distribution. Packages remain `private: true` at version `0.0.0` with `workspace:*` internal dependencies.
 - Packages are **not published to npm**.
+- Pack inventory is a regression gate: every inspected tarball must match an explicit `files` allowlist, include LICENSE/README/package.json, and pass bounded scans for high-confidence secrets (private-key blocks, known credential filenames, access-token patterns, `.env`/private config). That scan is **not** a guarantee that every secret or sensitive business value is detected.
 - A packed `@aao/framework` tarball does not resolve on its own: unpublished workspace packages are not rewritten to registry versions.
 - There is no GitHub Release, container image, or hosted SaaS.
 
