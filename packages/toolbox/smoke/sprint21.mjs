@@ -119,9 +119,9 @@ try {
   const tarball = readdirSync(packDir).find((file) => file.endsWith('.tgz'));
   assert(tarball, 'pnpm pack produced no tarball');
   entries = execFileSync('tar', ['-tzf', join(packDir, tarball)], { encoding: 'utf8' }).trim().split('\n').sort();
-  const unexpected = entries.filter((entry) => !/^package\/(package\.json|README\.md|dist\/.+\.(js|d\.ts))$/.test(entry));
+  const unexpected = entries.filter((entry) => !/^package\/(package\.json|README\.md|LICENSE|dist\/.+\.(js|d\.ts))$/.test(entry));
   assert(unexpected.length === 0, `unexpected packed files: ${unexpected.join(', ')}`);
-  for (const required of ['package/package.json', 'package/README.md', 'package/dist/index.js', 'package/dist/index.d.ts', 'package/dist/core/text.js']) assert(entries.includes(required), `missing packed file ${required}`);
+  for (const required of ['package/package.json', 'package/README.md', 'package/LICENSE', 'package/dist/index.js', 'package/dist/index.d.ts', 'package/dist/core/text.js']) assert(entries.includes(required), `missing packed file ${required}`);
   assert(!entries.some((entry) => /test|fixture|smoke|scripts|\.map$|\.env|\.log$|src\//.test(entry)), 'pack leaked tests, fixtures, scripts, maps, env, logs, or sources');
 } finally {
   rmSync(packDir, { recursive: true, force: true });

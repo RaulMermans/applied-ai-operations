@@ -6,3 +6,5 @@ coverage/
 packages/framework/test/consumer/.out/
 packages/toolbox/test/consumer/.out/
 .pnpm-store/
+benchmarks/local-v1/out/
+docs/release/out/

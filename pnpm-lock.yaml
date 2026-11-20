@@ -48,6 +48,30 @@ importers:
         specifier: workspace:*
         version: link:../../packages/config
 
+  benchmarks/local-v1:
+    dependencies:
+      '@aao/capability-packs':
+        specifier: workspace:*
+        version: link:../../packages/capability-packs
+      '@aao/durability':
+        specifier: workspace:*
+        version: link:../../packages/durability
+      '@aao/framework':
+        specifier: workspace:*
+        version: link:../../packages/framework
+      '@aao/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
+      '@aao/operator-inspection':
+        specifier: workspace:*
+        version: link:../../packages/operator-inspection
+      '@aao/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      '@aao/workflow-dsl':
+        specifier: workspace:*
+        version: link:../../packages/workflow-dsl
+
   examples/capability-packs:
     dependencies:
       '@aao/capability-packs':
@@ -259,6 +283,43 @@ importers:
 
   examples/operator-inspection:
     dependencies:
+      '@aao/operator-inspection':
+        specifier: workspace:*
+        version: link:../../packages/operator-inspection
+    devDependencies:
+      '@types/node':
+        specifier: ^22.15.3
+        version: 22.20.4
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.1.3
+        version: 3.2.7(@types/node@22.20.4)(tsx@4.23.15)(yaml@2.9.1)
+
+  examples/release-consumer:
+    dependencies:
+      '@aao/capability-packs':
+        specifier: workspace:*
+        version: link:../../packages/capability-packs
+      '@aao/evaluation':
+        specifier: workspace:*
+        version: link:../../packages/evaluation
+      '@aao/example-capability-packs':
+        specifier: workspace:*
+        version: link:../capability-packs
+      '@aao/example-company-portability':
+        specifier: workspace:*
+        version: link:../company-portability
+      '@aao/example-security-hardening':
+        specifier: workspace:*
+        version: link:../security-hardening
+      '@aao/framework':
+        specifier: workspace:*
+        version: link:../../packages/framework
+      '@aao/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
       '@aao/operator-inspection':
         specifier: workspace:*
         version: link:../../packages/operator-inspection
