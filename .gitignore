@@ -8,3 +8,6 @@ packages/toolbox/test/consumer/.out/
 .pnpm-store/
 benchmarks/local-v1/out/
 docs/release/out/
+
+# RE:VERSE generated rehearsal reports
+apps/reverse/out/

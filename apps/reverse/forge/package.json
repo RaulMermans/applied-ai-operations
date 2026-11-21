@@ -1,0 +1,10 @@
+{
+  "name": "reverse-forge-probe",
+  "private": true,
+  "version": "0.0.0",
+  "license": "MIT",
+  "description": "Standalone Forge app (Node 22, Forge CLI). Deliberately not an AAO workspace package.",
+  "engines": {
+    "node": ">=22.23.4 <23 || >=24.22.1 <25"
+  }
+}
