@@ -1,0 +1,24 @@
+{
+  "name": "@aao/reverse",
+  "private": true,
+  "version": "0.0.0",
+  "license": "MIT",
+  "type": "module",
+  "description": "RE:VERSE (Codegeist 2026) application consuming AAO. Sprint 0: RollbackProof PostgreSQL spike and Forge feasibility probe.",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:unit": "vitest run --root ../.. apps/reverse/test",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "rollbackproof": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@aao/contracts": "workspace:*",
+    "@testcontainers/postgresql": "11.14.0",
+    "pg": "8.23.1",
+    "testcontainers": "11.14.0",
+    "zod": "^3.24.3"
+  },
+  "devDependencies": {
+    "@types/pg": "8.23.1"
+  }
+}

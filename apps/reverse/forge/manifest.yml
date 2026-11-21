@@ -1,0 +1,22 @@
+# RE:VERSE Sprint 0 Forge feasibility probe. NOT the RollbackProof engine.
+# `app.id` is a placeholder: replace it with the id printed by `forge register`
+# (an external action that needs an authorized Atlassian account).
+modules:
+  bitbucket:mergeCheck:
+    - key: reverse-rollbackproof-probe
+      function: probe
+      name: RE:VERSE RollbackProof (feasibility probe)
+      description: Sprint 0 probe. Returns a deterministic response; no rollback compatibility is evaluated.
+      triggers:
+        - on-code-pushed
+        - on-merge
+  function:
+    - key: probe
+      handler: index.rollbackProofProbe
+permissions:
+  scopes:
+    - read:pullrequest:bitbucket
+app:
+  id: ari:cloud:ecosystem::app/00000000-0000-0000-0000-000000000000
+  runtime:
+    name: nodejs22.x
